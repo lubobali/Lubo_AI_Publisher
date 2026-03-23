@@ -1,0 +1,206 @@
+"""Playwright screenshot engine — captures web pages at LinkedIn-optimal size."""
+
+import contextlib
+import logging
+import re
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import urlparse
+
+from playwright.async_api import async_playwright
+
+logger = logging.getLogger(__name__)
+
+SCREENSHOT_WIDTH = 1200
+SCREENSHOT_HEIGHT = 627
+SCREENSHOT_DIR = Path(__file__).parent.parent / "screenshots"
+NAVIGATION_TIMEOUT_MS = 30000
+MIN_SCREENSHOT_BYTES = 10_000  # 10KB — anything smaller is likely a broken placeholder
+
+
+@dataclass
+class ScreenshotResult:
+    """Result of a successful screenshot capture."""
+
+    path: str
+    url: str
+    width: int
+    height: int
+
+
+def build_filename(url: str) -> str:
+    """Build a unique, filesystem-safe filename from a URL."""
+    parsed = urlparse(url)
+    domain = parsed.netloc.replace("www.", "")
+    # Take the path, strip leading slash, replace non-alphanumeric chars
+    path_part = parsed.path.strip("/")
+    slug = re.sub(r"[^a-zA-Z0-9]", "-", f"{domain}-{path_part}")
+    # Truncate slug to avoid overly long filenames
+    slug = slug[:80].rstrip("-")
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return f"{timestamp}-{slug}.png"
+
+
+async def take_screenshot(
+    url: str,
+    dark_mode: bool = True,
+    timeout_ms: int = NAVIGATION_TIMEOUT_MS,
+) -> ScreenshotResult | None:
+    """Navigate to URL and capture a screenshot at LinkedIn-optimal dimensions.
+
+    Returns ScreenshotResult on success, None on failure.
+    Browser is always closed, even on error.
+    """
+    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        try:
+            context = await browser.new_context(
+                viewport={"width": SCREENSHOT_WIDTH, "height": SCREENSHOT_HEIGHT},
+                color_scheme="dark" if dark_mode else "light",
+                device_scale_factor=1.5,
+            )
+            page = await context.new_page()
+
+            await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            # Wait for images and assets to load (some sites never reach networkidle)
+            with contextlib.suppress(Exception):
+                await page.wait_for_load_state("networkidle", timeout=10000)
+            await page.wait_for_timeout(1000)
+
+            # Detect error pages (400, 403, 404, 503, etc.)
+            page_text = await page.evaluate("document.body?.innerText || ''")
+            error_signals = [
+                "400",
+                "403",
+                "404",
+                "500",
+                "502",
+                "503",
+                "Bad Request",
+                "Forbidden",
+                "Not Found",
+                "Access Denied",
+                "blocked by",
+                "security policies",
+                "something went wrong",
+                "Apologies, but",
+                "Page not found",
+                "Server Error",
+                "Internal Server Error",
+                "Refresh the page",
+            ]
+            if any(signal in page_text[:1000] for signal in error_signals) and len(page_text) < 2000:
+                logger.warning("Error page detected for %s — skipping", url)
+                return None
+
+            # Remove cookie banners, popups, sticky navs, notification bars
+            await page.evaluate("""
+                const selectors = [
+                    '#cookie-consent', '#gdpr-banner', '#onetrust-consent-sdk',
+                    '.cookie-banner', '.cookie-consent', '.consent-banner',
+                    '[class*="cookie"]', '[id*="cookie"]', '[id*="consent"]',
+                    '.sticky-footer', '.sticky-header',
+                    '[class*="popup"]', '[class*="modal"]', '[class*="overlay"]',
+                    '[class*="newsletter"]', '[class*="subscribe"]',
+                    '[class*="banner"]', '[class*="notification"]',
+                    '[class*="cta-modal"]', '[class*="bottom-bar"]',
+                    '.tp-backdrop', '.tp-modal',
+                    '[class*="video-player"]', '[class*="unmute"]',
+                    '[class*="ad-"]', '[class*="advert"]',
+                    'iframe[src*="ads"]', '[id*="ad-"]',
+                ];
+                selectors.forEach(sel => {
+                    document.querySelectorAll(sel).forEach(el => el.remove());
+                });
+                // Also try clicking dismiss/accept buttons
+                const buttons = document.querySelectorAll(
+                    'button[class*="dismiss"], button[class*="close"], button[class*="accept"]'
+                );
+                buttons.forEach(b => b.click());
+            """)
+
+            # Scroll past nav bar to show article content
+            await page.evaluate("window.scrollBy(0, 80)")
+            await page.wait_for_timeout(500)
+
+            filename = build_filename(url)
+            filepath = SCREENSHOT_DIR / filename
+
+            screenshot_bytes = await page.screenshot(full_page=False)
+
+            # Reject tiny screenshots — likely broken placeholder pages
+            if len(screenshot_bytes) < MIN_SCREENSHOT_BYTES:
+                logger.warning(
+                    "Screenshot too small (%d bytes) for %s — likely placeholder",
+                    len(screenshot_bytes),
+                    url,
+                )
+                return None
+
+            filepath.write_bytes(screenshot_bytes)
+
+            logger.info("Screenshot saved: %s", filepath)
+            return ScreenshotResult(
+                path=str(filepath),
+                url=url,
+                width=SCREENSHOT_WIDTH,
+                height=SCREENSHOT_HEIGHT,
+            )
+        except Exception as e:
+            logger.warning("Screenshot failed for %s: %s", url, e)
+            return None
+        finally:
+            await browser.close()
+
+
+async def take_lubot_screenshot() -> ScreenshotResult | None:
+    """Screenshot lubot.ai after clicking Start — SPA needs interaction to render.
+
+    Returns ScreenshotResult on success, None on failure.
+    """
+    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    url = "https://lubot.ai"
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        try:
+            context = await browser.new_context(
+                viewport={"width": SCREENSHOT_WIDTH, "height": SCREENSHOT_HEIGHT},
+                color_scheme="dark",
+                device_scale_factor=1.5,
+            )
+            page = await context.new_page()
+
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            with contextlib.suppress(Exception):
+                await page.wait_for_load_state("networkidle", timeout=10000)
+
+            # Click "Start LuBot" to render the actual UI
+            with contextlib.suppress(Exception):
+                await page.click("text=Start LuBot", timeout=5000)
+                await page.wait_for_timeout(3000)  # Let the UI render
+
+            filename = build_filename(url)
+            filepath = SCREENSHOT_DIR / filename
+            screenshot_bytes = await page.screenshot(full_page=False)
+
+            if len(screenshot_bytes) < MIN_SCREENSHOT_BYTES:
+                logger.warning("LuBot screenshot too small (%d bytes)", len(screenshot_bytes))
+                return None
+
+            filepath.write_bytes(screenshot_bytes)
+            logger.info("LuBot screenshot saved: %s", filepath)
+            return ScreenshotResult(
+                path=str(filepath),
+                url=url,
+                width=SCREENSHOT_WIDTH,
+                height=SCREENSHOT_HEIGHT,
+            )
+        except Exception as e:
+            logger.warning("LuBot screenshot failed: %s", e)
+            return None
+        finally:
+            await browser.close()

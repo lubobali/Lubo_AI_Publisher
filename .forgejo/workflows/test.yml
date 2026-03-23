@@ -1,0 +1,52 @@
+name: LuBot Publisher CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: publisher
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: publisher_test
+        options: >-
+          --health-cmd "pg_isready -U publisher"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgresql://publisher:test_password@localhost:5432/publisher_test
+      TIMEZONE: America/Chicago
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python and dependencies
+        run: |
+          apt-get update -qq && apt-get install -y -qq python3 python3-pip > /dev/null 2>&1
+          pip install --break-system-packages -r requirements.txt > /dev/null 2>&1
+          python3 --version
+          ruff --version
+
+      - name: Ruff lint
+        run: ruff check src/ tests/
+
+      - name: Ruff format check
+        run: ruff format --check src/ tests/
+
+      - name: App startup check
+        run: python3 -c "from src import db; print('Import OK')"
+
+      - name: Run tests
+        run: python3 -m pytest tests/ -q --tb=short

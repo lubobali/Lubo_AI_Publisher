@@ -1,0 +1,820 @@
+==============================================================================
+                    LUBOT PUBLISHER — FULL BUILD PLAN
+                    Autonomous Social Content Engine
+                    Created: March 20, 2026
+                    Updated: March 23, 2026
+==============================================================================
+
+GOAL: Grow Lubo Bali's social media audience (LinkedIn first, then X,
+Instagram, Substack) by posting daily, high-quality AI/Data Engineering
+content with real screenshots. AI-generated posts go through approval
+queue. Manual posts also supported — everything tracked in one system.
+
+==============================================================================
+1. WHAT IT IS
+==============================================================================
+
+A standalone Python service that runs on Hetzner, completely separate from
+LuBot. Every day it:
+
+  1. Wakes up at a random time (weekdays 4-10pm CT, weekends 10am-6pm CT)
+  2. Picks today's topic from a rotating calendar
+  3. Scrapes the web for the latest, most interesting content on that topic
+  4. AI (NVIDIA 253B) writes a LinkedIn post in Lubo's voice
+  5. Playwright takes 1-2 real screenshots (websites, terminals, dashboards)
+  6. Saves post to approval queue (status: PENDING)
+  7. Lubo approves/rejects from web dashboard
+  8. Approved posts publish to LinkedIn (and later X, Instagram, Substack)
+  9. Tracks engagement metrics and feeds them back into future posts
+
+Lubo can also create manual posts from the dashboard — same tracking,
+same analytics, same system. Everything in one place.
+
+No third-party posting tools (no Buffer, no Typefully). Direct platform APIs.
+Inspired by Kevin Naughton's Ferryman ($10k MRR SaaS built on same API).
+
+==============================================================================
+2. ARCHITECTURE
+==============================================================================
+
+Completely separate from LuBot. Nothing shared.
+
+  lubot-publisher/
+  ├── config/
+  │   ├── topics.yaml              Topic templates + rotation rules
+  │   ├── voice_rules.yaml         Writing style rules (Lubo's voice)
+  │   ├── schedule.yaml            Posting windows + randomization
+  │   └── scraper_sources.yaml     News sources per topic category
+  ├── src/
+  │   ├── scheduler.py             Daily cron — picks topic, time, runs pipeline
+  │   ├── scraper.py               Multi-source web scraper
+  │   ├── writer.py                NVIDIA 253B post writer
+  │   ├── screenshotter.py         Playwright screenshot engine
+  │   ├── publisher.py             Platform-agnostic publisher interface
+  │   ├── publishers/
+  │   │   ├── linkedin.py          LinkedIn API (OAuth, text/image posts)
+  │   │   ├── x.py                 Twitter/X API (future)
+  │   │   ├── instagram.py         Instagram API (future)
+  │   │   └── substack.py          Substack API (future)
+  │   ├── token_manager.py         Token expiry monitor + re-auth flow
+  │   ├── topic_rotator.py         Rotates days weekly, prevents repeats
+  │   ├── analytics_worker.py      Fetches engagement metrics daily
+  │   ├── self_learner.py          Adjusts content based on performance data
+  │   ├── duplicate_checker.py     Embedding similarity + URL dedup
+  │   ├── db.py                    PostgreSQL connection + migrations
+  │   └── web/
+  │       ├── app.py               FastAPI web dashboard
+  │       ├── routes.py            API routes (approve, reject, create post)
+  │       └── templates/           HTML templates (Jinja2)
+  ├── templates/
+  │   └── voice_samples.txt        10-15 of Lubo's real LinkedIn posts
+  ├── tests/                       Full test suite (same rules as LuBot)
+  ├── .env                         LinkedIn secrets, NVIDIA API key, DB creds
+  ├── requirements.txt
+  ├── Dockerfile
+  ├── docker-compose.yml
+  └── .forgejo/workflows/test.yml  CI pipeline
+
+==============================================================================
+3. LINKEDIN API SETUP (DONE)
+==============================================================================
+
+  App name:        LuBot Publisher
+  Client ID:       863iqo5u8ah0mt
+  Product:         Share on LinkedIn (v202401)
+  OAuth scope:     w_member_social
+  Permission:      Member (3-legged OAuth)
+  Token TTL:       2 months (5,184,000 seconds)
+
+  Redirect URLs:
+    - https://lubot.ai/auth/linkedin/callback
+    - http://localhost:8000/auth/linkedin/callback
+
+  Available endpoints:
+    - /rest/posts          CREATE, DELETE, PARTIAL_UPDATE
+    - /rest/images         BATCH_GET, initializeUpload, GET, PARTIAL_UPDATE
+    - /rest/videos         BATCH_GET, initializeUpload, finalizeUpload, GET
+    - /rest/reactions      DELETE, PARTIAL_UPDATE, FINDER
+    - /rest/documents      BATCH_GET, initializeUpload, FINDER, GET
+
+  IMPORTANT: Refresh tokens are NOT available for w_member_social (only MDP
+  partners). Token expires every 60 days. Solution: token_manager.py monitors
+  expiry and emails Lubo a re-auth link 7 days before expiration. One click,
+  30 seconds, every 2 months.
+
+==============================================================================
+4. POSTING FLOW (how a post gets created)
+==============================================================================
+
+  Step 1 — SCHEDULE (scheduler.py)
+    - Night before: pre-calculate tomorrow's random post time
+    - Weekdays: random between 4:00 PM - 10:00 PM CT
+    - Weekends: random between 10:00 AM - 6:00 PM CT
+    - Never same time two days in a row (min 1hr difference)
+    - Cron wakes up at calculated time
+
+  Step 2 — TOPIC SELECTION (topic_rotator.py)
+    - Check rotating calendar for today's topic category
+    - Topics rotate weekly so Monday is NOT always the same topic
+    - Week 1: Mon=AI News, Tue=Tech Talk, Wed=AI Gadgets...
+    - Week 2: Mon=Biohacker, Tue=Big Tech, Wed=DE Work...
+    - Shifts by 1 position each week
+
+  Step 3 — SCRAPE (scraper.py)
+    - Search multiple sources for today's topic (not just first Google result)
+    - Find 3-5 candidate stories
+    - Rank by recency, relevance, and uniqueness
+    - Check against duplicate_checker.py (URL + embedding similarity)
+    - Pick the best non-duplicate story
+    - Sources per category configured in scraper_sources.yaml
+
+  Step 4 — WRITE (writer.py)
+    - Send to NVIDIA 253B with:
+      a. Today's topic + scraped content
+      b. Voice rules (casual ESL tone, no AI slop)
+      c. 3-5 sample posts for style matching
+      d. Analytics feedback (what topics performed best recently)
+      e. Instruction to suggest screenshot target URL
+    - Output: post text + screenshot URL
+
+  Step 5 — SCREENSHOT (screenshotter.py)
+    - Playwright navigates to the suggested URL
+    - Takes screenshot at 1200x627px (LinkedIn optimal)
+    - Dark mode when possible
+    - Crops browser chrome — looks like a natural screenshot
+    - For terminal screenshots: use actual terminal output captures
+    - Save to local storage with timestamp
+
+  Step 6 — POST (linkedin_client.py)
+    - Initialize image upload via /rest/images
+    - Upload screenshot binary
+    - Create post via /rest/posts with:
+      author: urn:li:person:{LUBO_ID}
+      commentary: the AI-written post
+      content.media.id: the uploaded image URN
+      visibility: PUBLIC
+      distribution.feedDistribution: MAIN_FEED
+    - Save LinkedIn post URN to database
+
+  Step 7 — LOG (db.py)
+    - Save everything to publisher_posts table
+    - Topic, text, image, source URL, post URN, timestamp
+
+==============================================================================
+5. TOPIC CATEGORIES (7 topics, rotating weekly)
+==============================================================================
+
+  1. AI NEWS
+     What: Hot AI news from the past week, quick post
+     Screenshot: Website of the tool/article/announcement
+     Sources: TechCrunch, The Verge, HackerNews, Reddit r/MachineLearning,
+              Twitter/X AI accounts, ArXiv popular, VentureBeat
+     Style: "Did you see this? [tool] just dropped and its [specific detail]"
+
+  2. TECH TALK
+     What: Something Lubo built — his stack, his work, real project details
+     Screenshot: Terminal output, code snippet, or dashboard chart
+     Sources: Lubo's own work (LuBot codebase, recent git commits)
+     Style: "Been working on [thing]. Heres what I learned after [time/effort]"
+
+  3. AI GADGETS
+     What: Latest AI gadgets, hardware, physical products
+     Screenshot: Product page or demo video screenshot
+     Sources: Product Hunt, The Verge, Wired, gadget review sites
+     Style: "This just came out and honestly [hot take]"
+
+  4. MY AGENT (LuBot showcase)
+     What: LuBot new features, real AI output, the future of agents
+     Screenshot: Real LuBot chat screenshot with actual output
+     Sources: LuBot codebase, recent deploys, feature screenshots
+     Style: "One of the futures. Built this with [tech]. Look at that output"
+
+  5. BIOHACKER
+     What: Latest biohacking moves, supplements, longevity science
+     Screenshot: Related health/biohacking image, podcast screenshot
+     Sources: Dave Asprey (social, podcast, blog), Gary Brecka (social,
+              podcast, YouTube), Huberman Lab, Peter Attia, biohacking news
+     Style: Short summary, real talk, what caught his attention
+
+  6. BIG TECH
+     What: Interesting short news from FAANG or major tech companies
+     Screenshot: News article or product announcement page
+     Sources: Bloomberg Tech, TechCrunch, The Information, Reuters Tech
+     Style: Short, opinionated take. "Google just [did thing]. Heres why
+             this matters for [specific reason]"
+
+  7. DE WORK
+     What: Data engineering work Lubo has done, pipelines, tools
+     Screenshot: Terminal, Airflow DAG, dbt output, Spark job, SQL query
+     Sources: Lubo's own work, DE community highlights
+     Style: "Just finished [pipeline/migration/tool]. Numbers: [specific stats]"
+
+  ROTATION: Topics shift by 1 position each week. After 7 weeks, full cycle
+  completes and starts over. No follower can predict what day = what topic.
+
+==============================================================================
+6. WRITING STYLE RULES (voice_rules.yaml)
+==============================================================================
+
+  CORE VOICE:
+    - Casual, confident, real person talking
+    - ESL natural English — not perfect grammar, but always makes sense
+    - Like texting a friend who happens to be a senior engineer
+    - Lubo's actual personality: direct, technical, no BS
+
+  STRUCTURE:
+    - First 2 lines MUST be a catchy hook (this is what people see before
+      "see more" — most important part of the post)
+    - Short paragraphs, 1-3 sentences each
+    - Total length: 400-1500 characters (varies — mix short and long posts)
+    - End with a question OR hot take to drive comments
+
+  DO:
+    - Use specific numbers ("50GB file, 3.2 seconds", "120K lines of code")
+    - Include personal experience ("I tested this", "we built this")
+    - Be opinionated ("everyone hyping X but honestly Y is better because")
+    - Break lines often, white space is your friend
+    - Reference real tools by name (not "a popular framework")
+
+  DO NOT:
+    - No dashes (—) or en-dashes
+    - No special characters humans dont normally type
+    - No bullet points with fancy symbols
+    - No "In todays rapidly evolving landscape" or any AI slop phrases
+    - No perfect grammar — occasional typos OK, missing articles OK
+    - No emojis except maybe 1-2 if natural (fire, rocket, thats it)
+    - No "Lets dive in" or "Heres the thing" or "Game changer"
+    - No external links in post body (kills LinkedIn reach)
+    - No walls of text — if its more than 3 sentences, break it up
+    - Never sound like a LinkedIn influencer
+    - Never use more than 3-5 hashtags, always at the very end
+
+  HASHTAG RULES:
+    - 3-5 hashtags maximum
+    - Always at the very end of the post, never inline
+    - Mix broad (#AI #DataEngineering) with specific (#NVIDIA #FastAPI)
+    - Rotate hashtags — dont use exact same set every post
+
+  EXAMPLES OF GOOD FIRST 2 LINES:
+    - "Just tested the new Claude model on our 8000 line codebase. The results
+       were not what I expected"
+    - "Everyone is talking about GPT-5 but nobody is talking about this"
+    - "Built a stock analysis agent that runs 49 modules in parallel. Heres
+       what 3 months of building looked like"
+    - "Dave Asprey just dropped something interesting about sleep and honestly
+       I tried it last week"
+
+==============================================================================
+7. DUPLICATE PREVENTION + POST HISTORY
+==============================================================================
+
+  Database: Separate PostgreSQL database (NOT LuBot's Neon DB)
+  Option A: Separate Neon project
+  Option B: Local PostgreSQL on Hetzner in Docker
+
+  TABLE: publisher_posts
+    id                  SERIAL PRIMARY KEY
+    posted_at           TIMESTAMP WITH TIME ZONE NOT NULL
+    topic_category      VARCHAR(50) NOT NULL
+    topic_title         VARCHAR(500) NOT NULL
+    source_url          TEXT
+    post_text           TEXT NOT NULL
+    image_path          TEXT
+    hashtags            TEXT[]
+    linkedin_post_urn   VARCHAR(200)
+    posting_time_ct     VARCHAR(10)           -- "4:47 PM" for schedule analysis
+    day_of_week         VARCHAR(10)           -- "monday" for rotation tracking
+    created_at          TIMESTAMP DEFAULT NOW()
+
+  TABLE: publisher_analytics
+    id                  SERIAL PRIMARY KEY
+    post_id             INTEGER REFERENCES publisher_posts(id)
+    linkedin_post_urn   VARCHAR(200) NOT NULL
+    checked_at          TIMESTAMP WITH TIME ZONE NOT NULL
+    likes               INTEGER DEFAULT 0
+    comments            INTEGER DEFAULT 0
+    shares              INTEGER DEFAULT 0
+    impressions         INTEGER DEFAULT 0
+    clicks              INTEGER DEFAULT 0
+    engagement_rate     FLOAT DEFAULT 0.0
+
+  TABLE: publisher_topic_performance
+    topic_category      VARCHAR(50) PRIMARY KEY
+    total_posts         INTEGER DEFAULT 0
+    avg_likes           FLOAT DEFAULT 0
+    avg_comments        FLOAT DEFAULT 0
+    avg_impressions     FLOAT DEFAULT 0
+    avg_engagement_rate FLOAT DEFAULT 0
+    best_post_id        INTEGER
+    worst_post_id       INTEGER
+    best_posting_hour   INTEGER               -- best hour for this category
+    updated_at          TIMESTAMP DEFAULT NOW()
+
+  TABLE: publisher_scraped_urls
+    id                  SERIAL PRIMARY KEY
+    url                 TEXT UNIQUE NOT NULL
+    scraped_at          TIMESTAMP DEFAULT NOW()
+    used                BOOLEAN DEFAULT FALSE
+
+  DUPLICATE PREVENTION LOGIC:
+    1. Exact URL check — never post about same article twice
+    2. Semantic similarity — NVIDIA embeddings compare new topic against last
+       90 days. If cosine similarity > 0.85, skip and pick next candidate
+    3. Category balance — query posts per category last 30 days, ensure
+       even distribution
+    4. Recency — for news categories, never post about news older than 7 days
+    5. Title fuzzy match — Levenshtein distance check on topic titles
+
+==============================================================================
+8. ANALYTICS + SELF-LEARNING ENGINE
+==============================================================================
+
+  The system gets smarter over time. After 30 days of data, it knows what
+  Lubo's audience wants.
+
+  DAILY ANALYTICS WORKER (analytics_worker.py):
+    - Runs every morning
+    - Fetches engagement metrics for all posts from last 7 days via LinkedIn API
+    - Updates publisher_analytics table
+    - Recalculates publisher_topic_performance
+
+  WHAT WE TRACK:
+    - Impressions: how many people saw the post
+    - Likes: basic engagement
+    - Comments: deep engagement (most valuable signal)
+    - Shares: viral potential
+    - Clicks: are people clicking on screenshots/links
+    - Engagement rate: (likes + comments + shares) / impressions
+    - Best posting time per category
+    - Follower growth: weekly tracking
+
+  SELF-LEARNING FEEDBACK LOOP (self_learner.py):
+    - Before writing each post, AI gets a performance report:
+      "Your top topics last 30 days:
+       1. Biohacker — avg 52 likes, 15 comments (trending UP)
+       2. AI News — avg 45 likes, 12 comments
+       3. Tech Talk — avg 38 likes, 8 comments
+       Worst: Big Tech — avg 12 likes, 2 comments
+       Best time: 5:30 PM CT (2x better than 8 PM)"
+    - AI adjusts tone, depth, and angle based on feedback
+    - Low performers get different angles next time (not dropped entirely)
+    - Posting time window adjusts toward best-performing hours
+
+  AFTER 90 DAYS THE SYSTEM KNOWS:
+    - Which topics YOUR audience loves
+    - What time YOUR followers are most active
+    - Whether short or long posts perform better
+    - If terminal screenshots outperform website screenshots
+    - Which hashtags drive discovery
+    - Optimal posting frequency
+
+  GROWTH METRICS DASHBOARD (future):
+    - Weekly follower count tracking
+    - Month-over-month engagement growth
+    - Content performance trends
+    - Audience growth rate
+
+==============================================================================
+9. ANTI-DETECTION + LINKEDIN SAFETY
+==============================================================================
+
+  We use the OFFICIAL LinkedIn API (not browser automation), so we are
+  already compliant. But extra safety measures:
+
+  POSTING SAFETY:
+    - 1 post per day maximum (well within LinkedIn limits)
+    - Random posting time (never same time two days in a row)
+    - Weekdays 4-10pm CT, weekends 10am-6pm CT
+    - Minimum 1 hour difference between consecutive days
+    - No burst actions (post + like + comment in same second)
+
+  CONTENT SAFETY:
+    - Vary post length (short 400char to long 1500char)
+    - Different hashtag sets per post
+    - Mix of screenshot types (terminal, website, dashboard)
+    - Different hook styles (question, statement, story)
+    - No links in post body (uses comment for links — also better reach)
+
+  RATE LIMITS:
+    - LinkedIn rate limits reset daily at midnight UTC
+    - 1 post/day = nowhere near any limit
+    - Monitor via Developer Portal Analytics tab
+    - Auto-stop if 429 received (wait 24h, retry)
+
+  TOKEN MANAGEMENT:
+    - Access token expires every 60 days
+    - token_manager.py checks daily
+    - 7 days before expiry: sends notification (email or Slack)
+    - Lubo clicks re-auth link (30 seconds, one click)
+    - New token saved automatically
+
+==============================================================================
+10. SECURITY (CRITICAL — same as LuBot, learned from hack)
+==============================================================================
+
+  Lubo's server was hacked before. After that, LuBot was rebuilt with
+  hardened security. Publisher gets the SAME security from day one.
+  No shortcuts. No "its just a personal tool" excuses.
+
+  DISTROLESS CONTAINERS:
+    - Google's gcr.io/distroless base images
+    - No shell (/bin/sh, /bin/bash removed)
+    - No package managers (apt, apk, pip removed)
+    - No utility tools (wget, curl, chmod, rm removed)
+    - Attack surface: ~0.01% vs ~93% on standard containers
+    - Immutable — rebuilt from source on every deploy
+
+  NON-ROOT EXECUTION:
+    - All containers run as UID 1000
+    - No privilege escalation possible
+    - Read-only filesystem inside containers
+
+  SECRETS MANAGEMENT:
+    - LinkedIn Client ID/Secret in .env ONLY
+    - LinkedIn Access Token in .env ONLY
+    - NVIDIA API Key in .env ONLY
+    - Database credentials in .env ONLY
+    - .env in .gitignore — NEVER committed to git
+    - .env in .dockerignore — NEVER baked into images
+    - Separate .env per environment (if staging vs prod needed later)
+
+  NETWORK SECURITY:
+    - NO public ports exposed (this is a background worker, not a web server)
+    - Docker internal network only
+    - Outbound connections only: LinkedIn API, NVIDIA API, web scraping
+    - No inbound traffic needed at all
+    - UFW firewall already configured on Hetzner
+    - Tailscale VPN for admin access only
+    - More secure than LuBot because zero attack surface from internet
+
+  CODE SECURITY:
+    - Ruff linting on every commit
+    - Pre-commit hooks prevent committing .env files
+    - CI runs full test suite before any deploy
+    - No secrets in logs — token values masked in all log output
+    - OAuth tokens stored encrypted at rest (Fernet, same as LuBot)
+
+  DOCKER COMPOSE HARDENING:
+    - read_only: true (read-only root filesystem)
+    - no_new_privileges: true
+    - security_opt: no-new-privileges
+    - cap_drop: ALL (drop all Linux capabilities)
+    - tmpfs: /tmp (writable temp only in memory)
+    - Isolated Docker network (not shared with LuBot containers)
+
+  BACKUP SECURITY:
+    - Restic backups encrypted with AES-256 to Backblaze B2
+    - Same 3-layer backup as LuBot (Forgejo + GitHub mirror + Restic/B2)
+    - Database dumps included in nightly backup
+
+==============================================================================
+11. INFRASTRUCTURE + DEVOPS
+==============================================================================
+
+  SERVER: Hetzner (same machine as LuBot, separate container)
+  REPO: Separate git repo on Forgejo + GitHub mirror
+  BACKUPS: Restic to Backblaze B2 (same backup infra as LuBot)
+  DOMAIN: No public domain needed (runs as background service)
+
+  DOCKER:
+    - docker-compose.yml with:
+      - publisher (Python app)
+      - publisher-db (PostgreSQL 16) OR connect to separate Neon project
+    - Isolated network, no connection to LuBot containers
+
+  CI/CD (Forgejo Actions):
+    - Trigger on push to develop/main
+    - Ruff lint + format
+    - Full pytest suite
+    - App startup check
+    - Same rules as LuBot CI — if CI passes, it works in prod
+
+  ENVIRONMENT:
+    - .env file with:
+      LINKEDIN_CLIENT_ID=863iqo5u8ah0mt
+      LINKEDIN_CLIENT_SECRET=***
+      LINKEDIN_ACCESS_TOKEN=***
+      LINKEDIN_PERSON_URN=urn:li:person:***
+      NVIDIA_API_KEY=***
+      DATABASE_URL=postgresql://...
+      TIMEZONE=America/Chicago
+
+==============================================================================
+12. BUILD ORDER (RECR — one step at a time)
+==============================================================================
+
+  Step 1: SCAFFOLD ✅ DONE (Mar 20, 2026) — commit c91c513
+    - Forgejo repo: lubo/lubot-publisher at git.lubot.ai
+    - Project structure (src/, config/, tests/, templates/)
+    - Docker + docker-compose with PostgreSQL 16 (port 5433, isolated)
+    - Forgejo CI pipeline (.forgejo/workflows/test.yml)
+    - requirements.txt, pyproject.toml (ruff config)
+    - Pre-commit hook (ruff + pytest)
+    - 4 smoke tests passing
+    - GitHub mirror: NOT YET SET UP
+
+  Step 2: DATABASE ✅ DONE (Mar 20, 2026) — commit f6f6c8c
+    - PostgreSQL 16 in Docker (separate from LuBot)
+    - All 4 tables: publisher_posts, publisher_analytics,
+      publisher_topic_performance, publisher_scraped_urls
+    - SQLAlchemy models with relationships, ARRAY types, unique constraints
+    - 17 DB tests (connection, table structure, full CRUD)
+
+  Step 3: LINKEDIN OAUTH ✅ DONE (Mar 20, 2026) — CI run #4
+    - token_manager.py: expiry checking, re-auth URL builder
+    - Email alerts to data@lubobali.com via Namecheap SMTP (7 days before expiry)
+    - linkedin_client.py: OAuth code exchange (authorization_code grant)
+    - get_auth_headers() with Bearer token, LinkedIn-Version, X-Restli headers
+    - 15 token manager tests + 6 linkedin client tests
+
+  Step 4: LINKEDIN POST (text only) ✅ DONE (Mar 20, 2026) — CI run #5
+    - create_text_post() via /rest/posts API
+    - Correct body: author, commentary, visibility PUBLIC, MAIN_FEED distribution
+    - Returns post URN from x-restli-id header
+    - 3 new tests
+
+  Step 5: LINKEDIN IMAGE UPLOAD + POST WITH IMAGE ✅ DONE (Mar 20, 2026) — commit f3d6223, CI run #6
+    - initialize_image_upload() via /rest/images?action=initializeUpload
+    - upload_image() PUTs binary to LinkedIn's upload URL
+    - create_image_post() with content.media block referencing image URN
+    - 5 new tests
+
+  TOTAL AFTER STEP 5: 50 tests passing, all CI green, lint clean
+
+  Step 6: WEB SCRAPER ✅ DONE (Mar 21, 2026) — commit 3cc9406, CI run #137
+    - scraper.py: ScrapedArticle dataclass, multi-source fetching
+    - 3 parser types: RSS/Atom feeds, HackerNews Algolia API, Reddit
+    - HTTP fetching with configurable retry + rate limit delay
+    - Article ranking by recency, URL dedup, configurable result limit
+    - scraper_sources.yaml upgraded with real URLs for all 7 categories
+    - Live-tested: pulling real articles from TechCrunch, HN, Reddit, Verge
+    - Reddit switched from JSON API (403 blocked) to RSS feeds
+    - Added lxml dependency for BeautifulSoup XML parsing
+    - 32 new tests (82 total)
+
+  Step 7: PLAYWRIGHT SCREENSHOTTER ✅ DONE (Mar 22, 2026) — CI run #139
+    - screenshotter.py: ScreenshotResult dataclass, Playwright async capture
+    - 1200x627px viewport (LinkedIn optimal), dark/light mode via color_scheme
+    - Auto-save with timestamped filenames, filesystem-safe URL slugs
+    - Graceful failure handling (returns None), browser always closed
+    - 18 new tests (100 total), all Playwright mocked
+
+  Step 8: AI WRITER (NVIDIA 253B) ✅ DONE (Mar 22, 2026) — CI run #141
+    - writer.py: WriterResult dataclass (post_text, screenshot_url, hashtags)
+    - build_system_prompt(): voice rules + 20 real voice samples + JSON format
+    - build_user_prompt(): topic + scraped articles + topic-specific rules
+    - Topic-specific rules: biohacker=personal experience, my_agent=LuBot marketing
+    - parse_response(): extracts JSON from LLM output (handles markdown blocks)
+    - write_post(): orchestrates prompt building + NVIDIA NIM API call
+    - NVIDIA Nemotron via OpenAI SDK (same interface, different base URL)
+    - 20 voice samples collected from Lubo's real LinkedIn posts
+    - Voice rules updated: always "I" never "we", biohacker personal, LuBot weekly
+    - 33 new tests (133 total)
+
+  TOTAL AFTER STEP 8: 133 tests passing, all CI green, lint clean
+
+  --- PHASE 2: PIPELINE BACKEND (Steps 9-15) ---
+
+  Step 9: PUBLISHER INTERFACE ✅ DONE (Mar 22, 2026) — commit 0b1e180, CI run #142
+    - publisher.py: Abstract Publisher base class (ABC) with publish_text(),
+      publish_image(), get_post_url()
+    - LinkedInPublisher wraps linkedin_client.py (3-step image upload flow)
+    - Platform registry: get_publisher(), list_platforms()
+    - DB: added status column to publisher_posts (pending/approved/rejected/published)
+    - DB: added PublisherDestination table (post_id, platform, platform_post_urn, status)
+    - PublisherPost.destinations relationship (one-to-many)
+    - Models updated from 4 to 5 tables
+    - Future: XPublisher, InstagramPublisher, SubstackPublisher (just add to registry)
+    - 20 new tests (153 total)
+
+  TOTAL AFTER STEP 9: 153 tests passing, all CI green, lint clean
+
+  Step 10: DUPLICATE CHECKER ✅ DONE (Mar 22, 2026)
+    - duplicate_checker.py: 5-layer duplicate prevention
+    - URL dedup against publisher_scraped_urls (exact match)
+    - Levenshtein title similarity (80% threshold, case-insensitive)
+    - NVIDIA NIM embedding cosine similarity (0.85 threshold)
+    - Category balance detection (2x average = overrepresented)
+    - 7-day recency enforcement for news categories (ai_news, ai_gadgets, big_tech)
+    - Added post_embedding (JSON) column to PublisherPost
+    - Full check_article() orchestration: URL → recency → title → category → embedding
+    - 45 new tests (198 total)
+
+  Step 11: TOPIC ROTATOR + SCHEDULE RANDOMIZER ✅ DONE (Mar 22, 2026)
+    - topic_rotator.py: 7-category weekly rotation with shift
+    - get_todays_topic(): shift by 1 each week, 7-week cycle repeats
+    - get_random_post_time(): weekday 4-10pm CT, weekend 10am-6pm CT
+    - Min 1hr difference between consecutive days (100 retries + fallback)
+    - Loads config from topics.yaml and schedule.yaml
+    - 28 new tests (226 total)
+
+  Step 12: ANALYTICS WORKER ✅ DONE (Mar 22, 2026)
+    - analytics_worker.py: fetch + store engagement metrics
+    - AnalyticsWorker.fetch_post_metrics(): LinkedIn API (likes, comments)
+    - store_metrics(): saves to publisher_analytics with engagement_rate
+    - get_posts_for_update(): published posts with URNs from last N days
+    - recalculate_topic_performance(): aggregates latest metrics per category
+    - 15 new tests (241 total)
+
+  Step 13: SELF-LEARNING ENGINE ✅ DONE (Mar 22, 2026)
+    - self_learner.py: performance reports and content adjustments
+    - SelfLearner.generate_performance_report(): ranked by engagement rate
+    - TopicInsight: trend detection (up/down/stable vs overall average)
+    - PerformanceReport.format_for_writer(): context string for AI prompts
+    - get_best_posting_hour(): optimal time per category
+    - 12 new tests (253 total)
+
+  Step 14: DAILY PIPELINE ✅ DONE (Mar 22, 2026)
+    - scheduler.py: full pipeline orchestration
+    - Pipeline.generate_post(): topic → scrape → dedup → write → screenshot → PENDING
+    - Skips duplicate articles, tries next candidate
+    - Self-learning feedback injected into writer prompt
+    - approve_post(), reject_post(): status workflow (pending→approved/rejected)
+    - publish_approved_posts(): publishes to platform, records destinations
+    - Graceful error handling at every stage
+    - 11 new tests (264 total)
+
+  Step 15: BACKEND API ROUTES ✅ DONE (Mar 22, 2026)
+    - api.py: FastAPI REST API for dashboard frontend
+    - GET /api/posts (list with status/category filters)
+    - GET /api/posts/{id} (single post detail)
+    - POST /api/posts (create manual post)
+    - POST /api/posts/{id}/approve, POST /api/posts/{id}/reject
+    - GET /api/analytics (topic performance data)
+    - GET /api/health (health check)
+    - Pydantic schemas: PostOut, CreatePostRequest, TopicPerformanceOut
+    - DB session dependency injection via FastAPI Depends()
+    - 16 new tests (280 total)
+
+  TOTAL AFTER STEP 15: 280 tests passing, all CI green, lint clean
+
+  --- PHASE 2.5: CONTENT QUALITY (Steps 15a-15d) ---
+  Engine must produce production-quality posts before building UI.
+
+  Step 15a: SCRAPER SOURCE OVERHAUL ✅ DONE (Mar 22, 2026)
+    - 136 verified RSS feeds across 7 categories, zero Reddit
+    - 27 AI News, 23 Tech Talk, 24 AI Gadgets, 18 Biohacker, 20 DE Work, 27 Big Tech
+    - Biohacker priority: Dave Asprey > Paul Saladino > Gary Brecka
+    - Source priority ranking: articles from top sources rank first, then by date
+    - HackerNews kept for supplemental links
+
+  Step 15b: SCREENSHOT + IMAGE FIXES ✅ DONE (Mar 22-23, 2026)
+    - domcontentloaded + networkidle wait + cookie/popup/banner removal
+    - Error page detection: 400, 403, 404, 500, "blocked by", "something went wrong"
+    - My Agent posts always screenshot lubot.ai (SPA click interaction)
+    - Skip AI-suggested URLs (unreliable), use real article URLs only
+    - 1.5x device scale factor for sharper images
+    - AI image generation fallback via NVIDIA Stable Diffusion XL
+
+  Step 15c: KNOWLEDGE BASE (Books → Vectors → RAG) — NOT STARTED
+    - Download free DE/AI/ML books (DDIA, ML Yearning, Fundamentals of DE, etc.)
+    - PyPDF2 extracts full text from PDFs
+    - Chunk into ~500 word sections (one concept per chunk)
+    - Generate embeddings via NVIDIA NIM API (same as dedup)
+    - Store in PostgreSQL: publisher_knowledge_base table (chunk text + vector)
+    - Writer queries vector DB for chunks relevant to today's topic
+    - Injects best 2-3 concepts into prompt as "things Lubo learned/applied"
+    - DE Work category mixes fresh articles + book concepts
+    - Makes posts more authoritative ("just applied this DDIA pattern...")
+
+  Step 15d: FULL E2E VALIDATION — IN PROGRESS (Mar 22-23, 2026)
+    - 371 tests green, lint clean, CI green (commit b5ccf99)
+    - Model: nvidia/llama-3.1-nemotron-ultra-253b-v1 (with reasoning_content fallback)
+    - Post-processor pipeline (src/post_processor.py):
+      - strip_dashes, strip_apostrophes (ESL style), strip_json_wrapper
+      - strip_filler_phrases, enforce_line_breaks, validate_post quality gate
+    - ESL voice cloning from 20 real LinkedIn posts:
+      - No apostrophes (im, dont, cant — enforced in code)
+      - Writing patterns: fragments, humor, rapid-fire questions, trailing "..."
+      - Stronger rules: no formal headers, no template structure, no invented numbers
+    - Bug fixes (all verified 0/7 on last run):
+      - Topic rotator ISO week → epoch-based Sunday weeks
+      - Hashtag duplication → strip + dedup in both parser paths
+      - Writer fabrication → anti-fabrication prompts + rules
+      - Screenshot errors → error page detection (400-500) + cookie removal
+      - JSON wrapper leak → smarter extraction with "post_text" key search + newline escaping
+      - News-anchor openings → post-processor strips "Hot AI news", "Big Tech news today" etc.
+      - Week generation → always Sun-Sat (guarantees all 7 categories)
+      - My Agent posts → ONE feature rule, no ad copy, no feature dumps
+    - Remaining issues for next session:
+      - Posts still open with news FACTS instead of Lubos REACTION (prompt tuning)
+      - Apostrophe stripping breaks sentences at boundaries ("Whats Not a car guy")
+      - Same articles selected on each run (dedup table empty = deterministic)
+
+  --- PHASE 3: REACT FRONTEND + DEPLOY (Steps 16-17) ---
+
+  Step 16: REACT DASHBOARD FRONTEND (publisher.lubobali.com)
+    - Same stack as LuBot: React 19 + Vite + Tailwind 4 + shadcn/ui + Radix
+    - Dark theme matching LuBot (navy #0a0e1a, green accent #22c55e)
+    - Mobile-first responsive design (phone, tablet, desktop)
+    - Simple auth (login page, session cookie from FastAPI backend)
+    - Pages:
+      a. POST QUEUE — pending AI posts, approve/reject with one click
+      b. CREATE POST — write manual post (text + image + category + platform)
+      c. POST HISTORY — all posts (auto + manual) with status, dates, metrics
+      d. ANALYTICS — engagement per post, per category, trends, charts
+      e. Platform selector — checkboxes for which platforms to publish to
+    - Separate directory: publisher-frontend/ (or monorepo subfolder)
+    - Vite build → static files served by nginx
+    - Marketable: clean enough to sell as a product to others
+
+  Step 17: DEPLOY + FIRST REAL POST
+    - DNS: A record publisher.lubobali.com → 178.156.214.8
+    - Nginx: reverse proxy + SSL (Let's Encrypt)
+    - Deploy backend + frontend to Hetzner Docker
+    - Playwright browser install in container
+    - Lubo does LinkedIn OAuth one-click authorization
+    - First real test post via dashboard approval
+    - Verify everything works end-to-end
+    - Set up daily cron
+    - GO LIVE
+
+==============================================================================
+13. TESTING RULES (same as LuBot — no exceptions)
+==============================================================================
+
+  - RECR loop: write test FIRST, then implement
+  - Mock external APIs: LinkedIn, NVIDIA, web scraping responses
+  - Real internal logic: rotation, scheduling, dedup, analytics calculations
+  - Pre-commit: ruff lint + format + pytest
+  - CI: Forgejo Actions on every push
+  - Zero failures before moving forward
+  - Never weaken a test to make it pass
+  - Test the pipeline, not the AI output
+  - Integration tests after wiring modules together
+
+==============================================================================
+14. VOICE SAMPLES NEEDED
+==============================================================================
+
+  ✅ DONE — 20 real LinkedIn posts collected in templates/voice_samples.txt
+    - Style reference for NVIDIA 253B writer
+    - ESL patterns extracted: no apostrophes, dropped articles, fragments
+    - Voice rules in config/voice_rules.yaml with esl_grammar + writing_patterns
+
+==============================================================================
+15. SUCCESS METRICS
+==============================================================================
+
+  MONTH 1 (baseline):
+    - 30 posts published without manual intervention
+    - Zero duplicate posts
+    - All posts match Lubo's voice (he doesnt need to delete any)
+    - Track baseline engagement per category
+
+  MONTH 3 (growth):
+    - Engagement rate increasing month-over-month
+    - Self-learning engine adjusting content based on data
+    - Follower growth accelerating
+    - Best posting times identified
+
+  MONTH 6 (scale):
+    - Double current follower count (2,227 -> 4,500+)
+    - Consistent daily posting streak (180+ posts)
+    - Clear data on what content drives followers
+    - Consider adding second post per day if engagement supports it
+    - Consider expanding to Twitter/X
+
+==============================================================================
+16. MULTI-PLATFORM STRATEGY (built into architecture from day 1)
+==============================================================================
+
+  The publisher interface is platform-agnostic. Adding a new platform means:
+    1. Create src/publishers/x.py (or instagram.py, substack.py)
+    2. Implement publish_text(), publish_image(), get_post_url()
+    3. Register in platform registry
+    4. Add checkbox to dashboard
+
+  PLATFORM ROADMAP:
+    Phase 1 (v1): LinkedIn only — full pipeline, dashboard, analytics
+    Phase 2: Twitter/X — same posts, cross-posted automatically
+    Phase 3: Instagram — image-focused posts, different formatting
+    Phase 4: Substack — longer-form content, weekly digest style
+
+  Each platform has its own:
+    - API client (OAuth, posting, image upload)
+    - Token manager (different expiry rules)
+    - Analytics fetcher (different metrics)
+    - Formatting rules (character limits, hashtag rules, image sizes)
+
+  But they all share:
+    - Same content pipeline (scraper → writer → screenshotter)
+    - Same approval queue (approve once, publish to selected platforms)
+    - Same database (unified analytics across all platforms)
+    - Same self-learning engine (what works WHERE)
+
+==============================================================================
+17. FUTURE ENHANCEMENTS (after v1 is stable)
+==============================================================================
+
+  - Comment auto-reply (AI responds to comments in Lubo's voice)
+  - Link-in-comments automation (post link as first comment for better reach)
+  - A/B testing (two versions of same post, pick better performer)
+  - Weekly email digest (summary of performance, top posts, growth)
+  - Video support (short AI-narrated clips)
+  - Mobile-friendly dashboard (responsive CSS)
+  - Scheduled approval (approve now, publish at specific time)
+
+==============================================================================
+  END OF PLAN
+==============================================================================

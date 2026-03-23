@@ -1,0 +1,487 @@
+# News sources per topic category — 136 verified RSS feeds
+# No Reddit (blocks headless browsers)
+# All feeds tested and working as of March 22, 2026
+# HackerNews links to external URLs (screenshottable)
+
+ai_news:
+  # Tier 1 — AI Lab Blogs
+  - name: OpenAI Blog
+    type: rss
+    url: https://openai.com/blog/rss.xml
+  - name: Google DeepMind
+    type: rss
+    url: https://deepmind.google/blog/rss.xml
+  - name: Hugging Face
+    type: rss
+    url: https://huggingface.co/blog/feed.xml
+  - name: NVIDIA Blog
+    type: rss
+    url: https://blogs.nvidia.com/feed/
+  - name: NVIDIA Developer
+    type: rss
+    url: https://developer.nvidia.com/blog/feed/
+  - name: Microsoft AI
+    type: rss
+    url: https://blogs.microsoft.com/ai/feed/
+  - name: Apple ML Research
+    type: rss
+    url: https://machinelearning.apple.com/rss.xml
+  - name: Google AI Blog
+    type: rss
+    url: https://blog.google/technology/ai/rss/
+  # Tier 2 — Top Journalism
+  - name: TechCrunch AI
+    type: rss
+    url: https://techcrunch.com/category/artificial-intelligence/feed/
+  - name: The Verge AI
+    type: rss
+    url: https://www.theverge.com/rss/ai-artificial-intelligence/index.xml
+  - name: VentureBeat AI
+    type: rss
+    url: https://venturebeat.com/category/ai/feed/
+  - name: Ars Technica
+    type: rss
+    url: https://feeds.arstechnica.com/arstechnica/technology-lab
+  - name: Wired AI
+    type: rss
+    url: https://www.wired.com/feed/tag/ai/latest/rss
+  - name: MIT Technology Review
+    type: rss
+    url: https://www.technologyreview.com/feed/
+  - name: IEEE Spectrum
+    type: rss
+    url: https://spectrum.ieee.org/feeds/feed.rss
+  # Tier 3 — AI-Focused Publications
+  - name: MarkTechPost
+    type: rss
+    url: https://www.marktechpost.com/feed/
+  - name: Synced Review
+    type: rss
+    url: https://syncedreview.com/feed/
+  - name: The Gradient
+    type: rss
+    url: https://thegradient.pub/rss/
+  - name: AI Business
+    type: rss
+    url: https://aibusiness.com/rss.xml
+  - name: MIT News AI
+    type: rss
+    url: https://news.mit.edu/topic/mitartificial-intelligence2-rss.xml
+  # Tier 4 — Educational / Technical
+  - name: BAIR Berkeley
+    type: rss
+    url: https://bair.berkeley.edu/blog/feed.xml
+  - name: W&B Blog
+    type: rss
+    url: https://wandb.ai/fully-connected/rss.xml
+  - name: Towards Data Science
+    type: rss
+    url: https://towardsdatascience.com/feed
+  - name: Analytics Vidhya
+    type: rss
+    url: https://www.analyticsvidhya.com/feed/
+  - name: ML Mastery
+    type: rss
+    url: https://machinelearningmastery.com/feed/
+  - name: KDnuggets
+    type: rss
+    url: https://www.kdnuggets.com/feed
+  - name: HackerNews AI
+    type: hackernews
+    url: https://hn.algolia.com/api/v1/search_by_date
+    search_query: AI
+
+tech_talk:
+  # Premier Shows & Blogs
+  - name: Lex Fridman
+    type: rss
+    url: https://lexfridman.com/feed/podcast/
+  - name: a16z Future
+    type: rss
+    url: https://future.com/feed/
+  - name: Stratechery
+    type: rss
+    url: https://stratechery.com/feed/
+  - name: The Pragmatic Engineer
+    type: rss
+    url: https://newsletter.pragmaticengineer.com/feed
+  - name: Exponential View
+    type: rss
+    url: https://www.exponentialview.co/feed
+  - name: Latent Space
+    type: rss
+    url: https://www.latent.space/feed
+  - name: Techmeme
+    type: rss
+    url: https://www.techmeme.com/feed.xml
+  # Deep Technical
+  - name: The New Stack
+    type: rss
+    url: https://thenewstack.io/feed/
+  - name: InfoQ
+    type: rss
+    url: https://feed.infoq.com/
+  - name: Dev.to
+    type: rss
+    url: https://dev.to/feed/
+  - name: Hacker Noon
+    type: rss
+    url: https://hackernoon.com/feed
+  - name: Martin Fowler
+    type: rss
+    url: https://martinfowler.com/feed.atom
+  - name: freeCodeCamp
+    type: rss
+    url: https://www.freecodecamp.org/news/rss/
+  - name: Stack Overflow Blog
+    type: rss
+    url: https://stackoverflow.blog/feed/
+  # Engineering Shows
+  - name: Software Engineering Daily
+    type: rss
+    url: https://softwareengineeringdaily.com/feed/
+  - name: SE Radio
+    type: rss
+    url: https://seradio.libsyn.com/rss
+  - name: The Changelog
+    type: rss
+    url: https://changelog.com/podcast/feed
+  - name: The Cloudcast
+    type: rss
+    url: https://www.thecloudcast.net/feeds/posts/default?alt=rss
+  - name: Hard Fork NYT
+    type: rss
+    url: https://feeds.simplecast.com/l2i9YnTd
+  - name: TWiT
+    type: rss
+    url: https://feeds.twit.tv/twit.xml
+  - name: DTNS
+    type: rss
+    url: https://feeds.feedburner.com/DailyTechNewsShow
+  - name: Darknet Diaries
+    type: rss
+    url: https://feeds.megaphone.fm/darknetdiaries
+  - name: HackerNews Programming
+    type: hackernews
+    url: https://hn.algolia.com/api/v1/search_by_date
+    search_query: programming
+
+ai_gadgets:
+  # Major Gadget News
+  - name: The Verge Tech
+    type: rss
+    url: https://www.theverge.com/rss/tech/index.xml
+  - name: Engadget
+    type: rss
+    url: https://www.engadget.com/rss.xml
+  - name: CNET
+    type: rss
+    url: https://www.cnet.com/rss/news/
+  - name: Toms Hardware
+    type: rss
+    url: https://www.tomshardware.com/feeds/all
+  - name: PCMag
+    type: rss
+    url: https://www.pcmag.com/feeds/rss/latest
+  - name: TechRadar
+    type: rss
+    url: https://www.techradar.com/rss
+  - name: Gizmodo
+    type: rss
+    url: https://gizmodo.com/feed
+  - name: Digital Trends
+    type: rss
+    url: https://www.digitaltrends.com/feed/
+  - name: SlashGear
+    type: rss
+    url: https://www.slashgear.com/feed/
+  - name: Mashable Tech
+    type: rss
+    url: https://mashable.com/feeds/rss/tech
+  - name: Popular Science
+    type: rss
+    url: https://www.popsci.com/feed/
+  # Robotics / Physical AI
+  - name: The Robot Report
+    type: rss
+    url: https://www.therobotreport.com/feed/
+  - name: Tech Xplore
+    type: rss
+    url: https://techxplore.com/rss-feed/
+  - name: Semiconductor Engineering
+    type: rss
+    url: https://semiengineering.com/feed/
+  # Wearables & Mobile
+  - name: Wareable
+    type: rss
+    url: https://www.wareable.com/feed
+  - name: Gadget Flow
+    type: rss
+    url: https://thegadgetflow.com/feed/
+  - name: 9to5Mac
+    type: rss
+    url: https://9to5mac.com/feed/
+  - name: 9to5Google
+    type: rss
+    url: https://9to5google.com/feed/
+  - name: Android Authority
+    type: rss
+    url: https://www.androidauthority.com/feed/
+  - name: GSMArena
+    type: rss
+    url: https://www.gsmarena.com/rss-news-reviews.php3
+  - name: MobileSyrup
+    type: rss
+    url: https://mobilesyrup.com/feed/
+  # More
+  - name: Toms Guide
+    type: rss
+    url: https://www.tomsguide.com/feeds/all
+  - name: ZDNet Hardware
+    type: rss
+    url: https://www.zdnet.com/topic/hardware/rss.xml
+  - name: ReadWrite
+    type: rss
+    url: https://readwrite.com/feed/
+  - name: HackerNews Hardware
+    type: hackernews
+    url: https://hn.algolia.com/api/v1/search_by_date
+    search_query: AI hardware gadget
+
+my_agent:
+  # Shares AI News + Tech Talk sources for inspiration
+  # Posts are about LuBot features, grounded by real_features list in voice_rules.yaml
+  - name: HackerNews AI Agents
+    type: hackernews
+    url: https://hn.algolia.com/api/v1/search_by_date
+    search_query: AI agent LLM
+  - name: The New Stack
+    type: rss
+    url: https://thenewstack.io/feed/
+  - name: VentureBeat AI
+    type: rss
+    url: https://venturebeat.com/category/ai/feed/
+  - name: InfoQ
+    type: rss
+    url: https://feed.infoq.com/
+  - name: LangChain Blog
+    type: rss
+    url: https://blog.langchain.dev/rss/
+  - name: Hugging Face
+    type: rss
+    url: https://huggingface.co/blog/feed.xml
+
+biohacker:
+  # Priority 1 — Lubo's trusted sources
+  - name: Dave Asprey
+    type: rss
+    url: https://daveasprey.com/feed/
+  - name: Heart & Soil (Paul Saladino)
+    type: rss
+    url: https://www.heartandsoil.co/feed/
+  - name: 10X Health (Gary Brecka)
+    type: rss
+    url: https://10xhealthsystem.com/feed/
+  # Priority 2 — Expert blogs
+  - name: Peter Attia MD
+    type: rss
+    url: https://peterattiamd.com/feed/
+  - name: Tim Ferriss
+    type: rss
+    url: https://tim.blog/feed/
+  - name: Thomas DeLauer
+    type: rss
+    url: https://thomasdelauer.com/feed/
+  - name: NootropicsExpert
+    type: rss
+    url: https://nootropicsexpert.com/feed/
+  - name: InsideTracker
+    type: rss
+    url: https://blog.insidetracker.com/rss.xml
+  # Priority 3 — Research & Science
+  - name: Longevity Technology
+    type: rss
+    url: https://longevity.technology/feed/
+  - name: Lifespan.io
+    type: rss
+    url: https://www.lifespan.io/feed/
+  - name: FightAging
+    type: rss
+    url: https://www.fightaging.org/feed/
+  - name: NovosLabs
+    type: rss
+    url: https://novoslabs.com/feed/
+  - name: LongevityAdvice
+    type: rss
+    url: https://longevityadvice.com/feed/
+  - name: STAT News
+    type: rss
+    url: https://www.statnews.com/feed/
+  - name: Nature Medicine
+    type: rss
+    url: https://www.nature.com/nm.rss
+  - name: ScienceDaily Health
+    type: rss
+    url: https://www.sciencedaily.com/rss/health_medicine.xml
+  - name: ScienceDaily Mind
+    type: rss
+    url: https://www.sciencedaily.com/rss/mind_brain.xml
+  - name: HackerNews Biohacking
+    type: hackernews
+    url: https://hn.algolia.com/api/v1/search_by_date
+    search_query: biohacking longevity supplements
+
+big_tech:
+  # Top News
+  - name: TechCrunch
+    type: rss
+    url: https://techcrunch.com/feed/
+  - name: The Verge
+    type: rss
+    url: https://www.theverge.com/rss/index.xml
+  - name: Ars Technica
+    type: rss
+    url: https://feeds.arstechnica.com/arstechnica/technology-lab
+  - name: CNBC Tech
+    type: rss
+    url: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19854910
+  - name: Bloomberg Tech
+    type: rss
+    url: https://feeds.bloomberg.com/technology/news.rss
+  - name: ZDNet
+    type: rss
+    url: https://www.zdnet.com/news/rss.xml
+  - name: The Register
+    type: rss
+    url: https://www.theregister.com/headlines.atom
+  - name: Wired Tech
+    type: rss
+    url: https://www.wired.com/feed/category/business/latest/rss
+  - name: Yahoo Finance Tech
+    type: rss
+    url: https://finance.yahoo.com/news/rss
+  - name: Fast Company
+    type: rss
+    url: https://www.fastcompany.com/technology/rss
+  - name: Fortune Tech
+    type: rss
+    url: https://fortune.com/feed/fortune-feeds/?id=3230629
+  - name: Inc
+    type: rss
+    url: https://www.inc.com/rss/
+  # Official FAANG Blogs
+  - name: Google Blog
+    type: rss
+    url: https://blog.google/rss/
+  - name: Microsoft Blog
+    type: rss
+    url: https://blogs.microsoft.com/feed/
+  - name: Apple Newsroom
+    type: rss
+    url: https://www.apple.com/newsroom/rss-feed.rss
+  - name: Amazon News
+    type: rss
+    url: https://www.aboutamazon.com/news/feed
+  - name: Meta Newsroom
+    type: rss
+    url: https://about.fb.com/news/feed/
+  - name: NVIDIA News
+    type: rss
+    url: https://nvidianews.nvidia.com/releases.xml
+  # Analysis
+  - name: Stratechery
+    type: rss
+    url: https://stratechery.com/feed/
+  - name: Techmeme
+    type: rss
+    url: https://www.techmeme.com/feed.xml
+  - name: Platformer
+    type: rss
+    url: https://www.platformer.news/rss/
+  - name: Big Technology
+    type: rss
+    url: https://www.bigtechnology.com/feed
+  - name: Daring Fireball
+    type: rss
+    url: https://daringfireball.net/feeds/main
+  - name: Rest of World
+    type: rss
+    url: https://restofworld.org/feed/
+  - name: The Markup
+    type: rss
+    url: https://themarkup.org/feeds/rss.xml
+  - name: 404 Media
+    type: rss
+    url: https://www.404media.co/rss/
+  - name: HackerNews Big Tech
+    type: hackernews
+    url: https://hn.algolia.com/api/v1/search_by_date
+    search_query: Google Apple Microsoft Meta Amazon
+
+de_work:
+  # Expert Blogs
+  - name: Eugene Yan
+    type: rss
+    url: https://eugeneyan.com/rss/
+  - name: Chip Huyen
+    type: rss
+    url: https://huyenchip.com/feed.xml
+  - name: Vicki Boykis
+    type: rss
+    url: https://vickiboykis.com/index.xml
+  - name: LangChain Blog
+    type: rss
+    url: https://blog.langchain.dev/rss/
+  # Digests & News
+  - name: Data Engineering Weekly
+    type: rss
+    url: https://www.dataengineeringweekly.com/feed
+  - name: Latent Space
+    type: rss
+    url: https://www.latent.space/feed
+  - name: Towards AI
+    type: rss
+    url: https://pub.towardsai.net/feed
+  - name: Software Engineering Daily
+    type: rss
+    url: https://softwareengineeringdaily.com/feed/
+  # Infrastructure & Tools
+  - name: Databricks Blog
+    type: rss
+    url: https://www.databricks.com/feed
+  - name: Snowflake Blog
+    type: rss
+    url: https://www.snowflake.com/feed/
+  - name: dbt Blog
+    type: rss
+    url: https://www.getdbt.com/blog/rss.xml
+  - name: Airbyte Blog
+    type: rss
+    url: https://airbyte.com/blog/rss.xml
+  - name: Dagster Blog
+    type: rss
+    url: https://dagster.io/blog/rss.xml
+  # Big Tech Engineering
+  - name: Engineering at Meta
+    type: rss
+    url: https://engineering.fb.com/feed/
+  - name: Airbnb Engineering
+    type: rss
+    url: https://medium.com/feed/airbnb-engineering
+  - name: Uber Engineering
+    type: rss
+    url: https://www.uber.com/blog/engineering/rss/
+  # General
+  - name: The New Stack
+    type: rss
+    url: https://thenewstack.io/feed/
+  - name: InfoQ
+    type: rss
+    url: https://feed.infoq.com/
+  - name: Stack Overflow Blog
+    type: rss
+    url: https://stackoverflow.blog/feed/
+  - name: HackerNews Data Engineering
+    type: hackernews
+    url: https://hn.algolia.com/api/v1/search_by_date
+    search_query: data engineering pipeline

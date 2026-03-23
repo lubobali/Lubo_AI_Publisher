@@ -1,0 +1,16 @@
+# Posting schedule — randomized within windows
+
+posting_windows:
+  weekday:
+    start_hour: 16  # 4 PM CT
+    end_hour: 22    # 10 PM CT
+  weekend:
+    start_hour: 10  # 10 AM CT
+    end_hour: 18    # 6 PM CT
+
+timezone: America/Chicago
+
+rules:
+  max_posts_per_day: 1
+  min_hour_difference: 1  # Minimum 1hr between consecutive days' post times
+  pre_calculate: true     # Calculate tomorrow's time the night before

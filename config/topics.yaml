@@ -1,0 +1,36 @@
+# Topic categories — 7 topics rotating weekly
+# Week N: topics shift by 1 position so Monday is NOT always the same topic
+
+categories:
+  - name: AI News
+    description: Hot AI news, quick post about tools/announcements
+    sources_key: ai_news
+
+  - name: Tech Talk
+    description: Something Lubo built — his stack, real project details
+    sources_key: tech_talk
+
+  - name: AI Gadgets
+    description: Latest AI gadgets, hardware, physical products
+    sources_key: ai_gadgets
+
+  - name: My Agent
+    description: LuBot showcase — new features, real AI output
+    sources_key: my_agent
+
+  - name: Biohacker
+    description: Biohacking, supplements, longevity science
+    sources_key: biohacker
+
+  - name: Big Tech
+    description: Short news from FAANG / major tech companies
+    sources_key: big_tech
+
+  - name: DE Work
+    description: Data engineering work — pipelines, tools, real numbers
+    sources_key: de_work
+
+# Rotation: shift by 1 each week. After 7 weeks, full cycle restarts.
+rotation:
+  shift_per_week: 1
+  cycle_length: 7

@@ -1,0 +1,41 @@
+services:
+  publisher:
+    build: .
+    container_name: lubot-publisher
+    env_file: .env
+    depends_on:
+      publisher-db:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - publisher-screenshots:/app/screenshots
+    networks:
+      - publisher-net
+
+  publisher-db:
+    image: postgres:16-alpine
+    container_name: lubot-publisher-db
+    environment:
+      POSTGRES_DB: publisher
+      POSTGRES_USER: publisher
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-publisher_dev}
+    ports:
+      - "5433:5432"
+    volumes:
+      - publisher-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U publisher -d publisher"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - publisher-net
+
+volumes:
+  publisher-db-data:
+  publisher-screenshots:
+
+networks:
+  publisher-net:
+    driver: bridge

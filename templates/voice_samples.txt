@@ -1,0 +1,403 @@
+# Lubo's Real LinkedIn Posts — Voice Samples
+# 20 posts collected March 22, 2026
+# These are the style reference for the AI writer
+
+# === SAMPLE 1 — MergeAI 2.0 Launch ===
+Update on MergeAI 2.0 - my latest AI System. 5 hours after the contest started I submitted MergeAI and passed the AI grader with 100/100. But I did not stop there. I kept building. Here is MergeAI 2.0.
+
+Upload Excel or CSV files.
+Ask questions in plain English.
+Get answers with interactive charts and tables.
+
+ 3 AI agents work together - live, in front of you:
+ 1. Schema Agent - reads your files and finds connections
+ 2. SQL Agent - writes real PostgreSQL queries
+ 3. Validator Agent - checks results and retries if something is wrong
+
+ What is new in 2.0:
+
+ - Interactive Plotly charts (bar, pie, line, scatter — AI picks the right one)
+ - Visual Schema Map — see how your files connect before you even ask a question
+ - AI-suggested queries — smart questions based on YOUR data
+ - Data Preview — see your columns and rows before querying
+ - Follow-up questions — the AI remembers context
+ - Excel upload and download — not just CSV
+ - File delete — clean up when you are done
+ - Full architecture page — see exactly how it is built
+ - 4 demo files preloaded — 12,000 rows ready to explore
+ - Mobile responsive — works on your phone
+
+ No code. No formulas. No SQL knowledge.
+ Click "View SQL" to see the exact query. Full transparency.
+
+ Two NVIDIA models power everything:
+ - Nemotron Ultra 253B — writes the SQL
+ - Nemotron Nano 8B — schema analysis and summaries
+
+ 4,000+ lines of TypeScript. Built with AdaL CLI.
+
+ Watch the full demo below.
+
+ #VibeCoding #DataExpert #NVIDIA #NVIDIAGTC #NextJS #AI #SaaS #GoldenTicket #GTC2026 #NVIDIANemotron #AIAgents #BuildInPublic
+
+# === SAMPLE 2 — LuBot.ai NVIDIA GTC Showcase ===
+One developer. Eight months. 112,000 lines of code.
+6 NVIDIA GTC models. This is LuBot.ai — a self-learning AI agent that turns your data into PhD-level predictions. Powered 100% by Nemotron.
+
+Live right now at lubot.ai with real users.
+Not a demo.
+
+ The full NVIDIA stack:
+ - Nemotron Ultra 253B - PhD-level analysis, Simpson's Paradox, correlation
+ - Nemotron Nano 8B - fast code generation, 50K tokens/sec
+ - Nemotron Vision 12B VL - image and screenshot analysis
+ - NV-EmbedQA-E5-v5 - semantic embeddings powering 6 features
+ - Nemotron-3-Nano 30B - self-hosted on my RTX 4090, 1M context
+ - Nemotron-mini 2.7B - ultra-light real-time inference via Ollama
+
+ Two modes -
+upload your files (CSV, Excel, PDF)
+or connect your Website for live traffic analytics.
+Then just talk:
+ "Is there a Simpson's Paradox in my data?" - done in seconds
+ "What's the correlation between marketing spend and revenue?" - real R-value, p-value, action plan
+
+- 28 AI tools.
+- 34 database tables.
+- 17 batch workers learning from you every night.
+- 95% of routing costs zero LLM tokens.
+
+LuBot remembers everything.
+ChatGPT forgets when you close the browser.
+LuBot doesn't.
+
+Security?
+Google's distroless containers. No shell. Nothing to exploit.
+
+ #NVIDIAGTC
+
+# === SAMPLE 3 — Bitcoin Streaming Pipeline ===
+This week everything is green. NVIDIA GTC is green. My pipeline is green. Even my mentor Zach Wilson at GTC turned green. I built a real time Bitcoin streaming pipeline with Databricks Delta Live Tables.
+Data comes from Polygon.io WebSocket API, BTC-USD trades going through Bronze Silver Gold medallion architecture.
+
+The part im most proud of is the quarantine pattern.
+Bad rows dont just disappear they get captured in a separate table with a reason column so you can see what failed and why.
+Silver + Quarantine = all rows. Nothing lost.
+
+ Tech stack:
+ - Spark Structured Streaming
+ - Delta Live Tables (DLT)
+ - Polygon.io WebSocket for live crypto trades
+ - 4 data quality checks on Silver layer
+ - 1 minute OHLCV candlestick aggregations in Gold
+ - Plotly charts for the analysis
+
+ 13 bugs in the original code.
+ Found and fixed all of them. 100/100.
+Pipeline runs end to end all tables green all expectations passing.
+
+ Didnt just fix the bugs. Added Plotly analysis charts and wrote up how the
+ quarantine pattern works to show the data quality story.
+
+#DataEngineering #DeltaLiveTables #Databricks #SparkStreaming #Bitcoin #NVIDIA #NVIDIAGTC #NVIDIAAI
+
+# === SAMPLE 4 — DataExpert Certificate ===
+Another Certificate of Achievement with distinction from ex-Airbnb, Netflix, and Meta engineer Zach Wilson. Now all I want is more constructive feedback so I can keep improving and growing. Thank you, it was an amazing bootcamp at DataExpert.io, with real big-tech hands-on experience.
+
+Huge thanks to Bruno Lima for teaching us dbt the right way.
+
+#dataengineering #analyticsengineering #dataexpertio #dbt #snowflake #databricks
+
+# === SAMPLE 5 — Matt Harrison TDD Book ===
+Today I leveled up my coding thanks to Matt Harrison and his new book "Effective Testing". Write the test FIRST then write the code. If the code has bugs it cant even get in, this is a game changer for me. I build LuBot.ai, an AI analytics platform. 122K lines of Python, 36 database tables, 42 API endpoints.
+Solo developer.
+The code works and its deployed but I was coding without tests, without linting, without CI/CD. Every deployment was basically a prayer.
+
+ Not anymore.
+
+ Today I set up a full testing pipeline from Matt's book:
+
+ - Ch. 16: Ruff linter that catches bad code in milliseconds
+ - Ch. 16: prek git hooks that auto run lint + tests on every commit. Bad code
+ cant even get in
+ - Ch. 15: CI/CD with Forgejo Actions on my private git server. Every push runs
+ the full test pipeline
+ - Ch. 14: TDD with the RECR loop. From now on I write the test first then the
+ code
+
+It took me 6 CI runs to get to green (see the screenshot).
+Each failure taught me something real.
+- Container images,
+- Python environments,
+- exit code handling.
+Not tutorial work, real debugging on real infrastructure.
+
+The book has this video coding style that makes it easy to follow and actually build things.
+Catching bugs before the code ships is way less painful than debugging in production at 3am trust me.
+
+ Im still reading and I bet there is more secret weapons in there for me to use and scale my code to the moon.
+
+Next up im building a full AI Stock Agent with 40 tools and every line of code will be tested before it ships.
+
+Thank you Matt for teaching me how to take my coding to the next level.
+
+ #Python #TDD #CICD #SoftwareEngineering #Testing #SoloDeveloper
+
+# === SAMPLE 6 — Anthropic Military AI Poll ===
+One of the biggest AI questions right now.
+Anthropic supports military AI, but refuses autonomous weapons and mass surveillance.
+Should companies draw red lines, or should governments decide?
+
+#AI #Ethics #Anthropic
+
+# === SAMPLE 7 — Stock Pipeline Optimization ===
+Zach, the stock pipeline was brutally broken this time, real challenge. I think for a second I felt how you were feeling at Netflix, Airbnb, and Meta fixing these things in production. So here's what happened. I got a PySpark pipeline processing 1.7 million minute-level stock bars. NVDA, TSLA, AAPL, AMZN, META, MSFT, GOOGL, NFLX and more.
+It calculates daily OHLCV, RSI signals, buy/sell regime classification, and cross-ticker correlation for every pair.
+
+The pipeline worked.
+The results were correct. But the performance was a disaster.
+
+I profiled every stage, dug into the Catalyst physical plans, and found 8 anti-patterns hiding in 7 stages:
+
+ - collect() pulling 1.7M rows to the driver just to count them
+ - Re-reading the same table from storage instead of reusing the cached
+ DataFrame
+ - Python UDFs breaking whole-stage codegen with Pickle serialization per
+ row
+ - F.first("open") / F.last("close") non-deterministic without ordering
+ - Broadcast joins disabled on 10-row tables forcing full shuffles
+ - repartition(500) before a groupBy that already shuffles
+ - Self-join with date_add() that silently skips weekends and holidays
+ - 10 Exchange nodes where 4 would do
+
+Fixed them all. 183 seconds down to 47. 4x faster.
+
+But speed wasn't even the best part.
+I caught 2 correctness bugs the original silently missed.
+F.first("open") is non-deterministic inside a groupBy, and date_add(trade_date, 1) doesn't know that Friday + 1 is Monday on Wall Street. The broken version missed 268 regime changes. Just gone. Silent data loss.
+
+Built the full visualisation notebook on Databricks with interactive Plotly charts. Candlesticks, RSI signal bands, regime change heatmaps, cross-ticker correlation matrices.
+All from real marketdata, all interactive.
+
+This is the real feel of stock market fluctuations. The data moves fast, the signals shift daily, and if your pipeline can't keep up or gets the data wrong, you're trading on lies.
+
+Tech: PySpark, Delta Lake, Databricks Serverless, Unity Catalog, Plotly
+
+#PySpark #DataEngineering #Databricks #DeltaLake #StockMarket #SparkOptimisation
+
+# === SAMPLE 8 — Vibe Coding Hackathon ===
+Joining Zach Wilson and Li Yin this weekend for the Vibe Coding hackathon. My project: 3 AI agents that collaborate in real-time. The Schema Agent reads your files and discovers how they connect,
+The SQL Agent writes cross-file joins,
+The Validator Agent checks the results - if something's off,
+it sends feedback back and they retry together until it's right.
+
+Ask in plain English:
+"compare salary vs training cost by department" -
+ across two completely separate files. The agents handle the rest.
+
+Tableau needs manual drag-and-drop.
+Power BI needs composite models.
+Looker needs a developer writing LookML.
+
+ My agents need one sentence.
+
+LuBot.ai agent is already built on AdalFlow framework.
+This weekend I'm using AdaL CLI to build the next evolution. Full circle with Adal
+
+ Already live at lubot.ai. Powered by NVIDIA NIM.
+
+#VibeCoding
+
+# === SAMPLE 9 — Delta Lake Pipeline ===
+Shipped a Delta Lake pipeline this week. Real stock market data, 8 tickers, minute-level bars from Polygon.io API. Ingests 23,000+ OHLCV records per run into a properly partitioned Delta table on Databricks.
+Timezone-aware timestamps (UTC + US/Eastern),
+OPTIMIZE with Z-ORDER,
+VACUUM,
+health checks,
+external table in Unity Catalog.
+
+Had it reviewed by Zach Wilson - scored 100/100 on his assessment.
+When one of the GOATs in data engineering says your pipeline is solid, that feels good.
+
+#DeltaLake #Databricks #PySpark #DataEngineering #UnityCatalog #Python
+
+# === SAMPLE 10 — Data Lakehouse Explainer ===
+A Data Lakehouse is not a house by the lake. Its literally like owning AND
+ renting at the same time - you get the freedom, the control, and somehow
+ you're paying less. Best deal in data engineering.
+
+ Data Warehouse = strict, organized, only tables allowed. Like a house where
+ only certain furniture fits.
+
+ Data Lake = throw anything in there. CSV, JSON, images, whatever. But no
+ rules. It becomes a swamp real quick.
+
+ Lakehouse = best of both worlds. Store anything you want but still get
+ transactions, schema, time travel. Zach Wilson said you can even park a tank in your house if you unconstrain it lol
+
+ And yes that's Hannah Montana in a Data Engineering slide.
+ Because if anyone understands living a double life its her.
+The lakehouse is doing the same thing - warehouse by day, lake by night.
+
+# === SAMPLE 11 — LuBot Cascade Routing ===
+What if 95% of your AI routing decisions cost zero LLM tokens - and the other 5% get NVIDIA Nemotron? I built The LuBot.ai Cascade - a 4-tier intent routing system where 95% of routing decisions cost zero LLM tokens.
+How it works:
+
+ Tier 0 - Deterministic Detection (0ms, 0 tokens)
+ Keywords and regex catch correlation, anomaly, concentration queries instantly.
+
+ Tier 1 - Pattern Matching (0ms, 0 tokens)
+ 80% of all queries - greetings, data queries, predictions - matched without any AI.
+
+Tier 2 - NVIDIA Embeddings (5ms, 0 tokens)
+NV-EmbedQA-E5-V5 compares query vectors against 125 pre-computed intent vectors. Semantic understanding, still no LLM call.
+
+Tier 3 - Nemotron Nano 8B (100ms)
+Only the hardest 5% reach the LLM. Ambiguous queries, complex multi-intent, edge cases.
+
+The cheapest method first. Only escalate when needed.
+
+This is not a demo. This is running in production at lubot.ai with real users analyzing real business data.
+
+#AI #LLM #NVIDIA #DataEngineering #CostOptimization
+
+# === SAMPLE 12 — Analytics Engineering Certification ===
+Just got the DataExpert.io Analytics Engineering Excellence Certification from Zach Wilson. This bootcamp is the shortest but hardest way to the top. And thats exactly why it works.
+Zach teach us what the best engineers do every day at their jobs and get paid top dollars for.
+-CDC pipelines.
+-SCD Type 2.
+-Snowflake & Snowpark.
+-dbt. Big shoutout to Bruno Lima too for teaching us dbt
+-Growth accounting.
+
+I'm not just learning this stuff.. I'm already building with it.
+
+happy I'm learning from one of the best.
+Straight from the source.
+
+10/10 stars.
+Totally worth it.
+
+# === SAMPLE 13 — NVIDIA vs Snowflake Embeddings ===
+NVIDIA NV-EmbedQA-E5-V5 vs Snowflake Arctic Embed L v2.0 - both 1024 dimensions. Both cosine similarity. So what is the difference? I built two RAG pipelines with two different embedding models and I want to share what I found.
+
+LuBot.ai runs NVIDIA embeddings with FAISS vector search in production. 1,024-dim vectors powering 6 different features —
+ - document RAG,
+- intent matching,
+- conversation memory,
+- semantic clustering,
+- few-shot RAG learning,
+- and vector search.
+
+Then I built the same thing in Snowflake. Parsed a 208-page PDF into 1,225 chunks,
+ embedded with Arctic Embed,
+vector search with
+ 0.81 similarity scores.
+Same 1024 dimensions.
+Same math.
+
+ The real difference?
+Not the embeddings - they are almost identical in quality.
+
+ The difference is where they run.
+Snowflake keeps everything inside their ecosystem.
+ NVIDIA gives you freedom - cloud, on-premise,
+ even self-hosted on a RTX 4090 which I actually do.
+
+ Same pattern. Different platforms. Both powerful.
+
+Sometimes you need to build the same thing twice to truly understand how powerful it is.
+
+ Real builders build everywhere.
+
+# === SAMPLE 14 — WAP Pipeline dbt + Airflow ===
+Just shipped a WAP (Write-Audit-Publish) pipeline using dbt + Airflow
+Few months ago I built WAP pattern in pure Python. Hundreds of lines of code, filtering, testing, loading, error handling...
+ It worked but honestly I felt like a magician pulling tricks without really understanding how the magic works.
+
+ This week I rebuilt the same thing with dbt + Airflow (Cosmos).
+
+ Now I get it. Now I see how the magic actually works.
+
+ What took 300+ lines of Python now fits in 3 SQL files:
+ - audit_fact_visits.sql - filter & stage data
+ - fact_visits.sql - incremental merge to production
+ - One YAML for tests
+
+ Airflow handles orchestration.
+Cosmos converts dbt models into tasks
+ automatically.
+Click Graph view - see exactly what runs, what order, what passed, what failed.
+
+ I went from being a magician who uses tricks... to someone who creates the
+ magic.
+
+ Less code. More clarity. Way faster debugging.
+dbt wont replace your Python skills - it multiplies them.
+
+ #DataEngineering #dbt #Airflow #WAP #DataQuality
+
+# === SAMPLE 15 — dbt Customer 360 ===
+Ever wondered why people use dbt instead of just writing Python?
+Built a Customer 360 pipeline from scratch - you know, the classic stuff: customer data, transactions, feedback, the whole thing.
+
+ 4 staging models - 3 marts - 15 tests - all passed
+
+ Tried to imagine doing this in pure Python...
+easily 500+ lines,
+tracking dependencies manually,
+writing my own test logic.
+No thanks.
+
+ With dbt?
+One line handles dependencies.
+Tests live in yaml.
+Run one command and everything just works.
+
+For any serious data project, dbt just makes life easier. Your code is readable, your team gets it, and debugging doesn't make you wanna cry.
+
+# === SAMPLE 16 — CDC Pipelines ===
+building CDC pipelines today few failed attempts but Zach Wilson kept poking holes until I cracked it lol
+SCD Type 2 with LAG() window functions
+Postgres >> Snowflake + growth accounting with Trino/Iceberg
+the devil is in the MERGE logic
+
+# === SAMPLE 17 — LuBot Eats Any Data ===
+your data analyst costs $80k/yr and still says "i cant work with this file format", took me weeks but finally cracked it
+LuBot.ai eats ANY data now:
+- stock prices
+- sales by country
+- random spreadsheet with no dates
+- literally just one number
+feeds it back as insights a CEO can actually read.
+no more "let me clean this first"
+real business data is messy. your tools shouldn't care
+try it - LuBot.ai
+
+# === SAMPLE 18 — Portfolio Exploded ===
+1474% above my typical daily visits.
+That's what happened to my portfolio after Zach Wilson gave away a free seat to his $7,500 bootcamp.
+I won it by doing daily quizzes every day for 50 days straight at DataExpert.io.
+My portfolio website exploded to 192 clicks in one day compared to my typical 12
+The lesson?
+Build in public.
+Don't think about results,
+just learn.
+Show up consistently.
+Good things follow by itself... just believe.
+Day 2 of the 15-week Data & AI Engineering bootcamp done. 191 more days to go haha
+lets goo
+
+# === SAMPLE 19 — 50 Day Streak ===
+50 days. didn't skip one.
+not gonna lie - I actually miss it now. every morning id wake up, do Zach's quiz like my morning coffee, then go straight to building.
+the crazy part? his questions kept giving me ideas for my own projects. half my best features started from those morning quizzes.
+wasn't trying to win anything. just wanted to learn and build. now i got a free $7,500 bootcamp?? still cant believe it.
+thanks Zach for the daily brain fuel
+
+# === SAMPLE 20 — Portfolio Analytics Pipeline (long-form) ===
+Here's Why You Should Keep Reading
+
+This isn't just another portfolio project — it's a production-grade analytics system built using the same principles I learned from Zach Wilson, one of the industry's most respected data engineers who spent years at Facebook, Netflix, and Airbnb.
+
+Through Zach's hands-on bootcamp experience, I discovered that the techniques used at Big Tech companies aren't reserved for billion-dollar platforms. The same data engineering patterns that power Netflix recommendations and Facebook's user insights can be applied to any business challenge.
