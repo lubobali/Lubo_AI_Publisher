@@ -15,6 +15,9 @@ httpx==0.28.1
 # AI / NVIDIA NIM
 openai==1.59.5
 
+# Observability
+langfuse==4.0.1
+
 # Web scraping
 beautifulsoup4==4.12.3
 lxml==6.0.2

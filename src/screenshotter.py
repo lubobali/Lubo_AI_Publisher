@@ -10,6 +10,8 @@ from urllib.parse import urlparse
 
 from playwright.async_api import async_playwright
 
+from src.observability import get_client, observe
+
 logger = logging.getLogger(__name__)
 
 SCREENSHOT_WIDTH = 1200
@@ -42,6 +44,29 @@ def build_filename(url: str) -> str:
     return f"{timestamp}-{slug}.png"
 
 
+def _report_screenshot_metadata(
+    url: str,
+    success: bool,
+    error_detected: bool,
+    failed_reason: str | None,
+    screenshot_size_bytes: int,
+) -> None:
+    """Report screenshot results to Langfuse."""
+    try:
+        get_client().update_current_span(
+            metadata={
+                "url": url,
+                "success": success,
+                "error_detected": error_detected,
+                "failed_reason": failed_reason,
+                "screenshot_size_bytes": screenshot_size_bytes,
+            }
+        )
+    except Exception:
+        logger.debug("Langfuse screenshot reporting failed", exc_info=True)
+
+
+@observe()
 async def take_screenshot(
     url: str,
     dark_mode: bool = True,
@@ -94,6 +119,7 @@ async def take_screenshot(
             ]
             if any(signal in page_text[:1000] for signal in error_signals) and len(page_text) < 2000:
                 logger.warning("Error page detected for %s — skipping", url)
+                _report_screenshot_metadata(url, False, True, "error_page_detected", 0)
                 return None
 
             # Remove cookie banners, popups, sticky navs, notification bars
@@ -138,11 +164,13 @@ async def take_screenshot(
                     len(screenshot_bytes),
                     url,
                 )
+                _report_screenshot_metadata(url, False, True, "screenshot_too_small", len(screenshot_bytes))
                 return None
 
             filepath.write_bytes(screenshot_bytes)
 
             logger.info("Screenshot saved: %s", filepath)
+            _report_screenshot_metadata(url, True, False, None, len(screenshot_bytes))
             return ScreenshotResult(
                 path=str(filepath),
                 url=url,
@@ -151,6 +179,7 @@ async def take_screenshot(
             )
         except Exception as e:
             logger.warning("Screenshot failed for %s: %s", url, e)
+            _report_screenshot_metadata(url, False, False, str(e), 0)
             return None
         finally:
             await browser.close()

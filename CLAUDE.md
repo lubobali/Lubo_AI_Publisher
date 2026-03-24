@@ -135,21 +135,72 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 15b. Screenshot + Image Fixes — error detection, cookie removal, lubot.ai SPA, 1.5x scale ✅
 15c. Knowledge Base — books→chunks→vectors→RAG in writer (NEXT)
 15d. Full E2E Validation — ESL voice cloning, post-processor, 4 bug fixes (IN PROGRESS)
+### Phase 2.6: Langfuse Observability (DONE)
+15e. Langfuse integration — 7 pipeline stages traced, 5 quality scores, prompt versioning ✅
 ### Phase 3: Frontend + Deploy
 16. React Dashboard (publisher.lubobali.com — React/Vite/Tailwind/shadcn, mobile-first)
 17. Deploy + First Real Post
 
 ## Current Status (Mar 23, 2026)
-- **371 tests**, all green, lint clean, CI green (commit f6dc0dc)
+- **418 tests**, all green, lint clean
+- **Langfuse observability LIVE** — 7 pipeline stages traced, 5 quality scores, prompt versioning
 - **Model**: nvidia/llama-3.1-nemotron-ultra-253b-v1 (with reasoning_content fallback)
 - **136 RSS sources** across 7 categories (no Reddit)
 - **Source priority ranking**: biohacker Dave Asprey > Saladino > Brecka, all categories respect YAML order
-- **Post-processor**: strips dashes, apostrophes (ESL), JSON wrappers, filler phrases, news-anchor openings, enforces line breaks
+- **Post-processor**: strips dashes, apostrophes (ESL), JSON wrappers, filler phrases, news-anchor openings, enforces line breaks + compliance scoring
 - **ESL voice cloning**: 20 real posts analyzed, no apostrophes, casual grammar, writing patterns
 - **Screenshots**: real article URLs only, error page detection (400-500), cookie removal, lubot.ai for My Agent
 - **Week generation**: always Sun-Sat (all 7 categories guaranteed every week)
 - **My Agent posts**: ONE feature per post, no ad copy, no feature dumps
 - **Bugs fixed**: JSON wrappers ✅, apostrophes ✅, dashes ✅, news-anchor openings ✅ (0/7 bugs on last run)
+- **Pipeline post-processing**: process_post() + validate_post() now run inside Pipeline.generate_post() for full Langfuse tracing
 - **Remaining**: posts still open with news facts instead of Lubo's reaction/insight (prompt tuning needed)
 - **Remaining**: apostrophe stripping can break sentences at boundaries ("Whats Not a car guy")
-- **Next session**: Fix insight-first openings, fix apostrophe edge cases, then Step 15c or 16
+- **Next session**: Step 15c (Knowledge Base/RAG), then Phase 3 (React Dashboard)
+
+## Phase 2.6: Langfuse Observability — DONE (Mar 23, 2026)
+**Full plan**: `/Users/lu/spr_full_stack_AI/langfuse_integration_plan.txt`
+**Purpose**: Enterprise-grade AI observability — trace every LLM call, score quality, measure prompt impact.
+**Result**: 47 new tests (371→418), all green. Live on us.cloud.langfuse.com. 7/7 pipeline test posts generated with full tracing.
+
+### Langfuse Credentials (saved in .env)
+- Project: "Lubo Publisher" on us.cloud.langfuse.com
+- Keys in `.env`: LANGFUSE_SECRET_KEY, LANGFUSE_PUBLIC_KEY, LANGFUSE_HOST
+
+### What to Instrument (7 layers) — ALL DONE
+1. `scheduler.py` → `Pipeline.generate_post()` — root trace ✅
+2. `scraper.py` → `scrape_topic()` — span ✅
+3. `duplicate_checker.py` → `check_article()` + `get_embedding()` — span + generation ✅
+4. `writer.py` → `write_post()` — generation (MOST IMPORTANT) ✅
+5. `post_processor.py` → `process_post()` — span + compliance scoring ✅
+6. `screenshotter.py` → `take_screenshot()` — span ✅
+7. `api.py` → `approve_post()`/`reject_post()` — human approval score ✅
+
+### 5 Quality Scores — ALL DONE
+1. **llm_compliance** (0-1): how many post-processor fixes were needed ✅
+2. **validation** (0/1): did validate_post() pass ✅
+3. **parse_quality** (0-1): how clean was LLM JSON output ✅
+4. **source_quality** (0-1): usable articles / total scraped ✅
+5. **human_approval** (0/1): Lubo approved or rejected ✅
+
+### DB Change ✅
+- `langfuse_trace_id = Column(String(100), nullable=True)` on PublisherPost
+
+### New Files ✅
+- `src/observability.py` — Langfuse init, re-exports @observe
+- `scripts/test_pipeline.py` — 7-day pipeline runner with full Langfuse tracing
+
+### Implementation Order (9 steps, RECR style — test first)
+1. Setup (pip install, observability.py, env vars, DB column) ✅
+2. Root trace + Writer generation ✅
+3. Post-processor scoring ✅
+4. Embedding + Dedup tracing ✅
+5. Scraper + Screenshot tracing ✅
+6. Human approval scoring ✅
+7. Prompt versioning (hash system prompt) ✅
+8. Validation + Parse scoring ✅
+9. Dashboard screenshot + LinkedIn post — **manual step (Lubo)**
+
+### Mock Rules for Langfuse Tests
+- **MOCK**: Langfuse API calls (don't send real traces in tests)
+- **REAL**: Score calculations, fix counting, prompt hashing

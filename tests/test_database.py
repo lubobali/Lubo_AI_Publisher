@@ -84,6 +84,7 @@ class TestTableCreation:
             "linkedin_post_urn",
             "posting_time_ct",
             "day_of_week",
+            "langfuse_trace_id",
             "created_at",
         }
         assert expected.issubset(columns)

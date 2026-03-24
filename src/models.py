@@ -26,6 +26,7 @@ class PublisherPost(Base):
     day_of_week = Column(String(10))
     status = Column(String(20), nullable=False, default="pending")
     post_embedding = Column(JSON, nullable=True)
+    langfuse_trace_id = Column(String(100), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
     analytics = relationship("PublisherAnalytics", back_populates="post")

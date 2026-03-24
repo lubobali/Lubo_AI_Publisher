@@ -14,6 +14,8 @@ import httpx
 import yaml
 from bs4 import BeautifulSoup
 
+from src.observability import get_client, observe
+
 logger = logging.getLogger(__name__)
 
 CONFIG_PATH = Path(__file__).parent.parent / "config" / "scraper_sources.yaml"
@@ -277,6 +279,7 @@ def rank_articles(
     return unique[:max_results]
 
 
+@observe()
 async def scrape_topic(category: str) -> list[ScrapedArticle]:
     """Scrape all sources for a topic category and return ranked articles."""
     sources = load_sources()
@@ -286,6 +289,9 @@ async def scrape_topic(category: str) -> list[ScrapedArticle]:
         return []
 
     all_articles: list[ScrapedArticle] = []
+    sources_attempted = len(sources[category])
+    sources_fetched = 0
+    sources_parse_failed = 0
 
     for source_idx, source in enumerate(sources[category]):
         source_name = source["name"]
@@ -307,6 +313,8 @@ async def scrape_topic(category: str) -> list[ScrapedArticle]:
             logger.warning("Failed to fetch %s (%s)", source_name, url)
             continue
 
+        sources_fetched += 1
+
         try:
             if source_type == "rss":
                 articles = parse_rss(content, source_name=source_name)
@@ -323,6 +331,24 @@ async def scrape_topic(category: str) -> list[ScrapedArticle]:
                 article.source_priority = source_idx
             all_articles.extend(articles)
         except Exception as e:
+            sources_parse_failed += 1
             logger.warning("Failed to parse %s: %s", source_name, e)
 
-    return rank_articles(all_articles)
+    result = rank_articles(all_articles)
+
+    # Report scraping metrics to Langfuse
+    try:
+        get_client().update_current_span(
+            metadata={
+                "category": category,
+                "sources_attempted": sources_attempted,
+                "sources_fetched": sources_fetched,
+                "sources_parse_failed": sources_parse_failed,
+                "articles_before_ranking": len(all_articles),
+                "articles_after_ranking": len(result),
+            }
+        )
+    except Exception:
+        logger.debug("Langfuse scraper reporting failed", exc_info=True)
+
+    return result

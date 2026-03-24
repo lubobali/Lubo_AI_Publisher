@@ -1,5 +1,6 @@
 """AI post writer — builds prompts and calls NVIDIA Nemotron Ultra 253B."""
 
+import hashlib
 import json
 import logging
 import os
@@ -10,6 +11,7 @@ from pathlib import Path
 import yaml
 from openai import AsyncOpenAI
 
+from src.observability import get_client, observe
 from src.scraper import ScrapedArticle
 
 logger = logging.getLogger(__name__)
@@ -226,6 +228,19 @@ def _try_parse_json(text: str) -> dict | None:
     return None
 
 
+def _score_parse_quality(score: float, method: str) -> None:
+    """Submit parse_quality score to Langfuse."""
+    try:
+        get_client().score_current_trace(
+            name="parse_quality",
+            value=score,
+            data_type="NUMERIC",
+            comment=f"Method: {method}",
+        )
+    except Exception:
+        logger.debug("Langfuse parse_quality scoring failed", exc_info=True)
+
+
 def parse_response(raw_text: str) -> WriterResult | None:
     """Parse LLM response into WriterResult. Returns None if unparseable."""
     text = raw_text.strip()
@@ -240,11 +255,14 @@ def parse_response(raw_text: str) -> WriterResult | None:
 
     if data is None:
         # Last resort: treat plain text as the post itself
-        return _parse_plain_text(text)
+        result = _parse_plain_text(text)
+        _score_parse_quality(0.3 if result else 0.0, "plain_text" if result else "failed")
+        return result
 
     post_text = _strip_trailing_hashtags(data.get("post_text", "").strip())
     if not post_text:
         logger.warning("LLM response has empty post_text")
+        _score_parse_quality(0.0, "empty_post_text")
         return None
 
     # Normalize screenshot_url: LLM often returns "null" string instead of null
@@ -252,6 +270,7 @@ def parse_response(raw_text: str) -> WriterResult | None:
     if isinstance(screenshot_url, str) and screenshot_url.strip().lower() in ("null", "none", ""):
         screenshot_url = None
 
+    _score_parse_quality(1.0, "json")
     return WriterResult(
         post_text=post_text,
         screenshot_url=screenshot_url,
@@ -279,6 +298,11 @@ def _parse_plain_text(text: str) -> WriterResult | None:
     return WriterResult(post_text=post_text, screenshot_url=None, hashtags=hashtags)
 
 
+def hash_prompt(text: str) -> str:
+    """Generate an 8-char hex hash of a prompt for version tracking."""
+    return hashlib.md5(text.encode()).hexdigest()[:8]
+
+
 def get_llm_client() -> AsyncOpenAI:
     """Create an AsyncOpenAI client configured for NVIDIA NIM API."""
     return AsyncOpenAI(
@@ -289,6 +313,7 @@ def get_llm_client() -> AsyncOpenAI:
     )
 
 
+@observe(as_type="generation")
 async def write_post(
     topic_name: str,
     topic_description: str,
@@ -319,6 +344,21 @@ async def write_post(
             temperature=0.8,
             max_tokens=2000,
         )
+
+        # Report generation metadata to Langfuse
+        try:
+            usage = response.usage
+            get_client().update_current_generation(
+                model=response.model or NVIDIA_MODEL,
+                model_parameters={"temperature": 0.8, "max_tokens": 2000},
+                usage_details={
+                    "input": usage.prompt_tokens if usage else 0,
+                    "output": usage.completion_tokens if usage else 0,
+                },
+                metadata={"topic": topic_name, "prompt_version": hash_prompt(system_prompt)},
+            )
+        except Exception:
+            logger.debug("Langfuse generation update failed", exc_info=True)
 
         msg = response.choices[0].message
         raw_text = msg.content

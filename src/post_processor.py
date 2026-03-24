@@ -4,7 +4,15 @@ Runs deterministic cleanup on generated posts before saving to DB.
 """
 
 import json
+import logging
 import re
+
+from src.observability import get_client, observe
+
+logger = logging.getLogger(__name__)
+
+# Number of fix categories tracked for compliance scoring
+_MAX_FIX_CATEGORIES = 6
 
 
 def strip_dashes(text: str) -> str:
@@ -212,31 +220,96 @@ def limit_hashtags(hashtags: list[str], max_count: int = 5) -> list[str]:
 def validate_post(text: str) -> tuple[bool, str]:
     """Check if a post meets quality rules. Returns (ok, reason)."""
     if len(text) < 400:
-        return False, f"Too short ({len(text)} chars, min 400)"
+        ok, reason = False, f"Too short ({len(text)} chars, min 400)"
+    elif len(text) > 1500:
+        ok, reason = False, f"Too long ({len(text)} chars, max 1500)"
+    elif "\u2014" in text or "\u2013" in text:
+        ok, reason = False, "Contains em dash or en dash"
+    elif text.strip().startswith("{") and '"post_text"' in text:
+        ok, reason = False, "Contains JSON fragments"
+    elif "?" not in text:
+        ok, reason = False, "No question mark — needs engagement question"
+    else:
+        ok, reason = True, "ok"
 
-    if len(text) > 1500:
-        return False, f"Too long ({len(text)} chars, max 1500)"
+    # Submit validation score to Langfuse
+    try:
+        get_client().score_current_trace(
+            name="validation",
+            value=1.0 if ok else 0.0,
+            data_type="NUMERIC",
+            comment=reason,
+        )
+    except Exception:
+        logger.debug("Langfuse validation scoring failed", exc_info=True)
 
-    if "\u2014" in text or "\u2013" in text:
-        return False, "Contains em dash or en dash"
-
-    if text.strip().startswith("{") and '"post_text"' in text:
-        return False, "Contains JSON fragments"
-
-    if "?" not in text:
-        return False, "No question mark — needs engagement question"
-
-    return True, "ok"
+    return ok, reason
 
 
+def calculate_compliance_score(total_fixes: int) -> float:
+    """Calculate LLM compliance score from number of fix categories triggered.
+
+    Returns 1.0 for a perfect post (no fixes), 0.0 when all 6 categories needed fixes.
+    Clamped to [0.0, 1.0].
+    """
+    if total_fixes <= 0:
+        return 1.0
+    return max(0.0, 1.0 - total_fixes / _MAX_FIX_CATEGORIES)
+
+
+@observe()
 def process_post(text: str, hashtags: list[str]) -> tuple[str, list[str]]:
-    """Full post-processing pipeline. Enforces all rules deterministically."""
+    """Full post-processing pipeline. Enforces all rules deterministically.
+
+    Tracks which fix categories were triggered and reports compliance score to Langfuse.
+    Return type is unchanged — (text, hashtags).
+    """
+    fixes: dict = {}
+
+    prev = text
     text = strip_json_wrapper(text)
+    fixes["json_wrapper_removed"] = text != prev
+
+    prev = text
     text = strip_dashes(text)
+    fixes["dashes_stripped"] = text != prev
+
+    prev = text
     text = strip_apostrophes(text)
+    fixes["apostrophes_fixed"] = text != prev
+
+    prev = text
     text = strip_filler_phrases(text)
+    fixes["filler_phrases_removed"] = text != prev
+
+    prev = text
     text = strip_news_anchor_openings(text)
+    fixes["news_anchor_removed"] = text != prev
+
+    prev = text
     text = enforce_line_breaks(text)
+    fixes["line_breaks_enforced"] = text != prev
+
     hashtags = deduplicate_hashtags(hashtags)
     hashtags = limit_hashtags(hashtags, max_count=5)
+
+    # Calculate compliance score
+    total = sum(1 for v in fixes.values() if v)
+    fixes["total_fixes"] = total
+    compliance = calculate_compliance_score(total)
+    fixes["compliance_score"] = compliance
+
+    # Report to Langfuse
+    try:
+        langfuse = get_client()
+        langfuse.update_current_span(metadata=fixes)
+        langfuse.score_current_trace(
+            name="llm_compliance",
+            value=compliance,
+            data_type="NUMERIC",
+            comment=f"Fixes: {total}/{_MAX_FIX_CATEGORIES} categories",
+        )
+    except Exception:
+        logger.debug("Langfuse compliance reporting failed", exc_info=True)
+
     return text, hashtags

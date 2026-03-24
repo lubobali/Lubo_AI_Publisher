@@ -11,6 +11,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src.models import PublisherPost, PublisherScrapedUrl
+from src.observability import get_client, observe
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +173,7 @@ class DuplicateChecker:
 
     # --- Embedding similarity ---
 
+    @observe(as_type="generation")
     async def get_embedding(self, text: str) -> list[float] | None:
         """Get embedding vector from NVIDIA NIM API.
 
@@ -187,7 +189,21 @@ class DuplicateChecker:
                 input=text,
                 extra_body={"input_type": "query"},
             )
-            return response.data[0].embedding
+            embedding = response.data[0].embedding
+
+            # Report embedding generation metadata to Langfuse
+            try:
+                get_client().update_current_generation(
+                    model=NVIDIA_EMBED_MODEL,
+                    metadata={
+                        "input_length": len(text),
+                        "embedding_dimensions": len(embedding),
+                    },
+                )
+            except Exception:
+                logger.debug("Langfuse embedding update failed", exc_info=True)
+
+            return embedding
         except Exception as e:
             logger.warning("Failed to get embedding: %s", e)
             return None
@@ -220,8 +236,35 @@ class DuplicateChecker:
 
         return DuplicateResult(is_duplicate=False)
 
+    # --- Langfuse metadata reporting ---
+
+    def _report_check_metadata(
+        self,
+        url: str,
+        title: str,
+        category: str,
+        is_duplicate: bool,
+        caught_by: str | None,
+        embedding_available: bool,
+    ) -> None:
+        """Report duplicate check results to Langfuse."""
+        try:
+            get_client().update_current_span(
+                metadata={
+                    "url": url,
+                    "title": title,
+                    "category": category,
+                    "is_duplicate": is_duplicate,
+                    "caught_by": caught_by,
+                    "embedding_available": embedding_available,
+                }
+            )
+        except Exception:
+            logger.debug("Langfuse check_article reporting failed", exc_info=True)
+
     # --- Full orchestration ---
 
+    @observe()
     async def check_article(
         self,
         url: str,
@@ -238,20 +281,27 @@ class DuplicateChecker:
         4. Category balance (DB aggregate)
         5. Embedding similarity (API call + DB)
         """
+        embedding_available = False
+
         # 1. URL dedup
         if self.is_url_seen(url):
-            return DuplicateResult(is_duplicate=True, reason=f"URL already seen: {url}")
+            result = DuplicateResult(is_duplicate=True, reason=f"URL already seen: {url}")
+            self._report_check_metadata(url, title, category, True, "url_dedup", embedding_available)
+            return result
 
         # 2. Recency
         if is_too_old(published_at, category):
-            return DuplicateResult(
+            result = DuplicateResult(
                 is_duplicate=True,
                 reason=f"Article too old for {category} (published {published_at})",
             )
+            self._report_check_metadata(url, title, category, True, "recency", embedding_available)
+            return result
 
         # 3. Title similarity
         title_result = self.check_title_against_recent(title)
         if title_result.is_duplicate:
+            self._report_check_metadata(url, title, category, True, "title_similarity", embedding_available)
             return title_result
 
         # 4. Category balance (warning, not blocking — logged for pipeline to decide)
@@ -261,8 +311,11 @@ class DuplicateChecker:
         # 5. Embedding similarity
         embedding = await self.get_embedding(title)
         if embedding is not None:
+            embedding_available = True
             embed_result = self.check_embedding_against_recent(embedding)
             if embed_result.is_duplicate:
+                self._report_check_metadata(url, title, category, True, "embedding_similarity", embedding_available)
                 return embed_result
 
+        self._report_check_metadata(url, title, category, False, None, embedding_available)
         return DuplicateResult(is_duplicate=False)

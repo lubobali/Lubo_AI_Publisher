@@ -1,5 +1,6 @@
 """FastAPI backend routes for LuBot Publisher dashboard."""
 
+import logging
 from datetime import UTC, datetime
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -8,6 +9,9 @@ from sqlalchemy.orm import Session
 
 from src.db import SessionLocal
 from src.models import PublisherPost, PublisherTopicPerformance
+from src.observability import get_client
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="LuBot Publisher API", version="1.0.0")
 
@@ -121,6 +125,22 @@ def create_post(body: CreatePostRequest, session: Session = Depends(get_db_sessi
     return post
 
 
+def _score_human_approval(trace_id: str | None, value: float, comment: str) -> None:
+    """Submit human_approval score to Langfuse for the pipeline trace."""
+    if not trace_id:
+        return
+    try:
+        get_client().create_score(
+            trace_id=trace_id,
+            name="human_approval",
+            value=value,
+            data_type="NUMERIC",
+            comment=comment,
+        )
+    except Exception:
+        logger.debug("Langfuse human_approval scoring failed", exc_info=True)
+
+
 @app.post("/api/posts/{post_id}/approve", response_model=PostOut)
 def approve_post(post_id: int, session: Session = Depends(get_db_session)):
     """Approve a pending post for publishing."""
@@ -132,6 +152,7 @@ def approve_post(post_id: int, session: Session = Depends(get_db_session)):
     post.status = "approved"
     session.commit()
     session.refresh(post)
+    _score_human_approval(post.langfuse_trace_id, 1.0, "approved")
     return post
 
 
@@ -146,6 +167,7 @@ def reject_post(post_id: int, session: Session = Depends(get_db_session)):
     post.status = "rejected"
     session.commit()
     session.refresh(post)
+    _score_human_approval(post.langfuse_trace_id, 0.0, "rejected")
     return post
 
 
