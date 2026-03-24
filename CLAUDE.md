@@ -152,7 +152,7 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 17. Deploy + First Real Post
 
 ## Current Status (Mar 24, 2026)
-- **448 tests**, all green, lint clean
+- **453 tests**, all green, lint clean
 - **Git Insights LIVE** — SSH to staging, parse commits, feed real work to writer
 - **Langfuse observability LIVE** — 7 pipeline stages traced, 5 quality scores, prompt versioning
 - **Model**: nvidia/llama-3.1-nemotron-ultra-253b-v1 (with reasoning_content fallback)
@@ -160,7 +160,7 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 - **Source priority ranking**: biohacker Dave Asprey > Saladino > Brecka, all categories respect YAML order
 - **Post-processor**: strips dashes, apostrophes (ESL), JSON wrappers, filler phrases, news-anchor openings, enforces line breaks + compliance scoring
 - **ESL voice cloning**: 20 real posts analyzed, no apostrophes, casual grammar, writing patterns
-- **Screenshots**: real article URLs only, error page detection (400-500), cookie removal, lubot.ai for My Agent
+- **Screenshots**: real article URLs, error page detection, cookie removal. my_agent→staging.lubot.ai, my_agent_git→terminal git screenshot
 - **Week generation**: always Sun-Sat (all 7 categories guaranteed every week)
 - **My Agent posts**: ONE feature per post, no ad copy, no feature dumps
 - **Bugs fixed**: JSON wrappers ✅, apostrophes ✅, dashes ✅, news-anchor openings ✅ (0/7 bugs on last run)
@@ -169,7 +169,8 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 - **Remaining**: apostrophe stripping can break sentences at boundaries ("Whats Not a car guy")
 - **Git Insights**: src/git_insights.py — SSHs to staging, parses git log, filters noise, groups by feature, returns ScrapedArticle
 - **My Agent Build**: replaced DE Work — 2x My Agent per week (one demo-style, one build-log from git)
-- **Staging screenshots**: my_agent + my_agent_git both screenshot staging.lubot.ai
+- **Staging screenshots**: my_agent→staging.lubot.ai, my_agent_git→terminal-style git screenshot (take_git_screenshot)
+- **Post-processor**: ensure_paragraph_spacing() adds blank lines between dense text blocks
 - **Next session**: Phase 2.8 (Knowledge Base/RAG), then Phase 2.9 (Post Quality Tuning)
 
 ## Phase 2.6: Langfuse Observability — DONE (Mar 23, 2026)

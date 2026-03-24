@@ -679,12 +679,13 @@ Completely separate from LuBot. Nothing shared.
     - Full plan: /Users/lu/spr_full_stack_AI/langfuse_integration_plan.txt
     - GitHub: https://github.com/lubobali/Lubo_AI_Publisher
 
-  --- PHASE 2.7: GIT INSIGHTS — REAL WORK POSTS (NEXT) ---
+  --- PHASE 2.7: GIT INSIGHTS — REAL WORK POSTS (DONE — Mar 24, 2026) ---
 
   My Agent posts should be grounded in real work, not random HackerNews articles.
   New module reads git log from staging server and feeds real commits to the writer.
+  Result: 453 tests, all green, lint clean. Terminal-style screenshots from real commits.
 
-  Step 15f: GIT INSIGHTS MODULE
+  Step 15f: GIT INSIGHTS MODULE ✅
     - New file: src/git_insights.py
     - SSH to Hetzner staging: root@100.115.173.71
     - Path: /srv/lubot-staging/services-agent-api
@@ -693,23 +694,27 @@ Completely separate from LuBot. Nothing shared.
     - Return ScrapedArticle format so pipeline stays compatible
     - One feature per post — pick the BIGGEST from recent commits
     - Langfuse traced like everything else
+    - best_commit exposed on GitInsights instance for screenshot generation
 
-  Step 15g: TOPIC ROTATION UPDATE
-    - DE Work (Tuesday) → My Agent (git insights)
-    - My Agent now runs 2x per week: Tuesday + Saturday
-    - Tuesday: "what I built this week" (technical, commits)
-    - Saturday: "feature in action" (user-facing, demo-style)
-    - Update topics.yaml to reflect new rotation
+  Step 15g: TOPIC ROTATION UPDATE ✅
+    - DE Work replaced with My Agent Build (sources_key: my_agent_git)
+    - My Agent now runs 2x per week via rotation (one demo-style, one build-log)
+    - Build-log posts use git insights, demo-style uses existing scraper
+    - Updated topics.yaml, scraper_sources.yaml, voice_rules.yaml
 
-  Step 15h: STAGING SCREENSHOTS
-    - Screenshot staging.lubot.ai instead of prod lubot.ai for My Agent
-    - Staging has new UI (frontend being rebuilt)
-    - Prod still has old version — dont screenshot until new UI deployed
+  Step 15h: STAGING SCREENSHOTS ✅
+    - my_agent: screenshots staging.lubot.ai (chat UI)
+    - my_agent_git: terminal-style git screenshot via take_git_screenshot()
+      (commit hash, diff bars green/red, file list with color coding)
+    - Generated with Playwright from HTML template, no external deps
+    - Prod lubot.ai no longer used for screenshots
 
-  Step 15i: WRITER CONTEXT FOR GIT POSTS
-    - Feed real commits to writer prompt as context
-    - Anti-hallucination: only use features from git log
-    - Real numbers from commits (lines changed, files modified)
+  Step 15i: WRITER CONTEXT FOR GIT POSTS ✅
+    - Git summary focuses on ONE best commit (not full commit dump)
+    - Anti-hallucination: ZERO TOLERANCE on invented numbers
+    - Only +lines/-lines, file count from git log allowed
+    - Formatting rules: paragraph breaks, dash lists, hook→stats→story→question
+    - ensure_paragraph_spacing() post-processor ensures readability
     - Later: add more repos (lubot-publisher, frontend)
 
   --- PHASE 2.8: KNOWLEDGE BASE + RAG ---
