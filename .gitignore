@@ -13,6 +13,8 @@ env/
 screenshots/
 *.png
 *.jpg
+# Allow docs screenshots for README
+!docs/screenshots/*.png
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
