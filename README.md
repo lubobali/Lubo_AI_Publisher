@@ -6,7 +6,7 @@
   <a href="https://www.linkedin.com/posts/lubo-bali_langfuse-aiobservability-dataengineering-activity-7442005170370244608-9b0T"><strong>LinkedIn Post</strong></a> &nbsp;|&nbsp;
   <a href="https://lubot.ai"><strong>LuBot.ai</strong></a> &nbsp;|&nbsp;
   <a href="https://us.cloud.langfuse.com"><strong>Langfuse Dashboard</strong></a> &nbsp;|&nbsp;
-  <a href="https://linkedin.com/in/lubo-bali"><strong>Lubo Bali</strong></a>
+  <a href="https://lubobali.com/"><strong>Lubo Bali</strong></a>
 </p>
 
 <p align="center"><i>I built this alone. Fully autonomous AI pipeline that writes LinkedIn posts daily — scrape, deduplicate, write, screenshot, post. Zero manual work.</i></p>
