@@ -80,7 +80,7 @@ class TestLoadSources:
             "my_agent",
             "biohacker",
             "big_tech",
-            "de_work",
+            "my_agent_git",
         }
         assert set(sources.keys()) == expected
 

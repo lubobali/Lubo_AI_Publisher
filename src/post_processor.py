@@ -163,6 +163,52 @@ def enforce_line_breaks(text: str) -> str:
     return "\n".join(result)
 
 
+def ensure_paragraph_spacing(text: str) -> str:
+    """Insert blank lines between groups of text to create readable paragraphs.
+
+    LinkedIn posts need visual breathing room. If there are more than 3
+    consecutive non-empty lines without a blank line, insert one after
+    every 2-3 lines. Preserves existing blank lines.
+    """
+    lines = text.split("\n")
+    result: list[str] = []
+    consecutive = 0
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            # Already a blank line — reset counter
+            result.append("")
+            consecutive = 0
+        else:
+            consecutive += 1
+            # After 3 consecutive non-empty lines, insert a blank line before this one
+            if consecutive > 3:
+                result.append("")
+                consecutive = 1
+            result.append(line)
+
+    # Clean up: collapse 3+ blank lines into 2 (one visual break)
+    cleaned: list[str] = []
+    blank_count = 0
+    for line in result:
+        if line.strip() == "":
+            blank_count += 1
+            if blank_count <= 1:
+                cleaned.append("")
+        else:
+            blank_count = 0
+            cleaned.append(line)
+
+    # Strip leading/trailing blank lines
+    while cleaned and cleaned[0].strip() == "":
+        cleaned.pop(0)
+    while cleaned and cleaned[-1].strip() == "":
+        cleaned.pop()
+
+    return "\n".join(cleaned)
+
+
 _FILLER_PATTERNS = [
     re.compile(r"As someone who[^.]*[.,]\s*", re.IGNORECASE),
     re.compile(r"Let me tell you[^.]*[.,]\s*", re.IGNORECASE),
@@ -289,6 +335,10 @@ def process_post(text: str, hashtags: list[str]) -> tuple[str, list[str]]:
     prev = text
     text = enforce_line_breaks(text)
     fixes["line_breaks_enforced"] = text != prev
+
+    prev = text
+    text = ensure_paragraph_spacing(text)
+    fixes["paragraph_spacing_added"] = text != prev
 
     hashtags = deduplicate_hashtags(hashtags)
     hashtags = limit_hashtags(hashtags, max_count=5)

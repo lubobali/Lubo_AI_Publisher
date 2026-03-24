@@ -112,7 +112,7 @@ class TestCosineSimilarity:
 # ---------------------------------------------------------------------------
 
 NEWS_CATEGORIES = {"ai_news", "ai_gadgets", "big_tech"}
-NON_NEWS_CATEGORIES = {"tech_talk", "my_agent", "biohacker", "de_work"}
+NON_NEWS_CATEGORIES = {"tech_talk", "my_agent", "biohacker", "my_agent_git"}
 
 
 class TestIsTooOld:
@@ -131,7 +131,7 @@ class TestIsTooOld:
         boundary = datetime.now(UTC) - timedelta(days=6, hours=23, minutes=59)
         assert is_too_old(boundary, "ai_news") is False
 
-    @pytest.mark.parametrize("category", ["tech_talk", "my_agent", "biohacker", "de_work"])
+    @pytest.mark.parametrize("category", ["tech_talk", "my_agent", "biohacker", "my_agent_git"])
     def test_non_news_categories_exempt(self, category):
         """Non-news categories don't have a recency requirement."""
         old = datetime.now(UTC) - timedelta(days=30)

@@ -82,6 +82,15 @@ topic_specific:
     - Do NOT invent experiments, lab results, supplement routines, or health data
     - Do NOT fabricate numbers (percentages, days, dosages)
     - Frame as commentary and curiosity, not personal storytelling
+  my_agent_build:
+    - This is a BUILD LOG post. ONE feature. ONE story. Thats it
+    - The summary gives you ONE specific feature with exact numbers. Use THOSE numbers, not others
+    - Do NOT list multiple features, do NOT summarize the week, do NOT dump commit logs
+    - Tell the story like youre texting a friend. What broke, what you tried, what finally worked
+    - Always "I" never "we" or "us" — Lubo builds alone
+    - NO cliches. No "blood and sweat". No "because AI is hard". No "one place to rule them all"
+    - Humor comes from the real situation not from forced jokes
+    - End with a genuine question about the specific technical problem you solved
   my_agent:
     - Pick ONE feature from the list below. ONE. Not two, not three. Tell the story of that one feature
     - Never dump a features list. Thats a landing page not a LinkedIn post

@@ -33,7 +33,7 @@ class TestLoadTopics:
         names = [c["name"] for c in categories]
         assert "AI News" in names
         assert "Biohacker" in names
-        assert "DE Work" in names
+        assert "My Agent Build" in names
 
 
 # ---------------------------------------------------------------------------

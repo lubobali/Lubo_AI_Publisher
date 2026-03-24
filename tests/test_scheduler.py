@@ -291,6 +291,195 @@ class TestScreenshotFallback:
         mock_gen.assert_called_once()
 
 
+class TestGitPipeline:
+    """my_agent_git category uses GitInsights instead of web scraper."""
+
+    @pytest.mark.asyncio
+    async def test_my_agent_git_uses_git_insights(self, db_session):
+        """Pipeline uses GitInsights for my_agent_git, not scrape_topic."""
+        git_article = ScrapedArticle(
+            title="Add stock fundamental analysis with 15 metrics",
+            url="https://git.lubot.ai/lubot/services-agent-api",
+            summary="Feature area: stock\nCommits: 3\nLines changed: +40/-5",
+            source="git:lubot-staging-services-agent-api",
+            published_at=None,
+            source_priority=0,
+        )
+        writer_result = _make_writer_result()
+
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "My Agent Build", "sources_key": "my_agent_git", "description": "test"},
+            ),
+            patch.object(Pipeline, "_get_git_article", return_value=git_article) as mock_git,
+            patch("src.scheduler.scrape_topic", new_callable=AsyncMock) as mock_scrape,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=writer_result),
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/s.png")),
+            patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_learner = MagicMock()
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner.generate_performance_report.return_value = mock_report
+            mock_learner_cls.return_value = mock_learner
+
+            pipeline = Pipeline(session=db_session)
+            result = await pipeline.generate_post(target_date=date(2026, 3, 23))
+
+        assert result.success is True
+        mock_git.assert_called_once()
+        mock_scrape.assert_not_called()  # scraper NOT used
+
+    @pytest.mark.asyncio
+    async def test_my_agent_git_fails_gracefully(self, db_session):
+        """Pipeline returns failure when git insights finds no commits."""
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "My Agent Build", "sources_key": "my_agent_git", "description": "test"},
+            ),
+            patch.object(Pipeline, "_get_git_article", return_value=None),
+        ):
+            pipeline = Pipeline(session=db_session)
+            result = await pipeline.generate_post(target_date=date(2026, 3, 23))
+
+        assert result.success is False
+        assert "git log" in result.error.lower() or "commit" in result.error.lower()
+
+
+class TestMyAgentScreenshots:
+    """My Agent posts (both variants) should screenshot staging.lubot.ai."""
+
+    @pytest.mark.asyncio
+    async def test_my_agent_screenshots_staging(self, db_session):
+        """my_agent screenshots staging.lubot.ai."""
+        articles = _make_articles()
+        writer_result = _make_writer_result()
+
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "My Agent", "sources_key": "my_agent", "description": "test"},
+            ),
+            patch("src.scheduler.scrape_topic", new_callable=AsyncMock, return_value=articles),
+            patch("src.scheduler.DuplicateChecker") as mock_dedup_cls,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=writer_result),
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock) as mock_screenshot,
+            patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_screenshot.return_value = MagicMock(path="/tmp/staging.png")
+
+            mock_dedup = MagicMock()
+            mock_dedup.check_article = AsyncMock(return_value=MagicMock(is_duplicate=False))
+            mock_dedup.record_url = MagicMock()
+            mock_dedup_cls.return_value = mock_dedup
+
+            mock_learner = MagicMock()
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner.generate_performance_report.return_value = mock_report
+            mock_learner_cls.return_value = mock_learner
+
+            pipeline = Pipeline(session=db_session)
+            await pipeline.generate_post(target_date=date(2026, 3, 23))
+
+        mock_screenshot.assert_called_once_with("https://staging.lubot.ai")
+
+    @pytest.mark.asyncio
+    async def test_my_agent_git_uses_git_screenshot(self, db_session):
+        """my_agent_git uses take_git_screenshot instead of staging URL."""
+        git_article = ScrapedArticle(
+            title="Add stock fundamental analysis",
+            url="https://git.lubot.ai/lubot/services-agent-api",
+            summary="Feature area: stock\nLines changed: +40/-5",
+            source="git:lubot-staging-services-agent-api",
+            published_at=None,
+            source_priority=0,
+        )
+        writer_result = _make_writer_result()
+
+        from src.git_insights import GitCommit
+
+        mock_commit = GitCommit(
+            hash="abc1234",
+            date=datetime(2026, 3, 22),
+            message="Add stock fundamental analysis",
+            files_changed=3,
+            lines_added=40,
+            lines_deleted=5,
+            changed_files=["src/stock/fundamental.py", "tests/test_fundamental.py"],
+        )
+
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "My Agent Build", "sources_key": "my_agent_git", "description": "test"},
+            ),
+            patch.object(Pipeline, "_get_git_article", return_value=git_article),
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=writer_result),
+            patch("src.scheduler.take_git_screenshot", new_callable=AsyncMock) as mock_git_shot,
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock) as mock_screenshot,
+            patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_git_shot.return_value = MagicMock(path="/tmp/git-commit.png")
+
+            mock_learner = MagicMock()
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner.generate_performance_report.return_value = mock_report
+            mock_learner_cls.return_value = mock_learner
+
+            pipeline = Pipeline(session=db_session)
+            # Set up the git insights with best_commit
+            pipeline._git_insights = MagicMock()
+            pipeline._git_insights.best_commit = mock_commit
+            await pipeline.generate_post(target_date=date(2026, 3, 23))
+
+        mock_git_shot.assert_called_once()
+        mock_screenshot.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_non_my_agent_screenshots_article_url(self, db_session):
+        """Non-my_agent categories should screenshot the article URL."""
+        articles = _make_articles()
+        writer_result = _make_writer_result()
+
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "AI News", "sources_key": "ai_news", "description": "test"},
+            ),
+            patch("src.scheduler.scrape_topic", new_callable=AsyncMock, return_value=articles),
+            patch("src.scheduler.DuplicateChecker") as mock_dedup_cls,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=writer_result),
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock) as mock_screenshot,
+            patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_screenshot.return_value = MagicMock(path="/tmp/article.png")
+
+            mock_dedup = MagicMock()
+            mock_dedup.check_article = AsyncMock(return_value=MagicMock(is_duplicate=False))
+            mock_dedup.record_url = MagicMock()
+            mock_dedup_cls.return_value = mock_dedup
+
+            mock_learner = MagicMock()
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner.generate_performance_report.return_value = mock_report
+            mock_learner_cls.return_value = mock_learner
+
+            pipeline = Pipeline(session=db_session)
+            await pipeline.generate_post(target_date=date(2026, 3, 23))
+
+        # Should use the article URL, not staging
+        mock_screenshot.assert_called_once_with("https://example.com/ai-chip")
+
+
 class TestApprovalWorkflow:
     def test_approve_post(self, db_session):
         post = PublisherPost(

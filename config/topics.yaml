@@ -26,9 +26,9 @@ categories:
     description: Short news from FAANG / major tech companies
     sources_key: big_tech
 
-  - name: DE Work
-    description: Data engineering work — pipelines, tools, real numbers
-    sources_key: de_work
+  - name: My Agent Build
+    description: What Lubo built this week — real commits, real code, technical deep dive
+    sources_key: my_agent_git
 
 # Rotation: shift by 1 each week. After 7 weeks, full cycle restarts.
 rotation:

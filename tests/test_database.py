@@ -187,7 +187,7 @@ class TestCRUD:
         """Delete a post."""
         post = PublisherPost(
             posted_at=datetime.now(UTC),
-            topic_category="DE Work",
+            topic_category="My Agent Build",
             topic_title="Airflow migration",
             post_text="Just finished the migration.",
         )

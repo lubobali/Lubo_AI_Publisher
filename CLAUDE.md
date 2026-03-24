@@ -136,11 +136,11 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 15d. Full E2E Validation — ESL voice cloning, post-processor, 4 bug fixes (IN PROGRESS)
 ### Phase 2.6: Langfuse Observability (DONE)
 15e. Langfuse integration — 7 pipeline stages traced, 5 quality scores, prompt versioning ✅
-### Phase 2.7: Git Insights — Real Work Posts (NEXT)
-15f. Git Insights module — SSH to staging, parse git log, extract meaningful features
-15g. Topic rotation update — DE Work → My Agent on Tuesday (2x My Agent per week: Tue + Sat)
-15h. Staging screenshots — screenshot staging.lubot.ai instead of prod for My Agent posts
-15i. Writer context — feed real commits to writer, one feature per post, grounded in git history
+### Phase 2.7: Git Insights — Real Work Posts (DONE)
+15f. Git Insights module — src/git_insights.py, SSH to staging, parse git log, filter noise, group by feature ✅
+15g. Topic rotation update — DE Work → My Agent Build (2x My Agent per week via rotation) ✅
+15h. Staging screenshots — screenshot staging.lubot.ai for my_agent + my_agent_git ✅
+15i. Writer context — git commits fed to writer, anti-hallucination rules, build log prompts ✅
 ### Phase 2.8: Knowledge Base + RAG
 15c. Knowledge Base — books→chunks→vectors→RAG in writer
 ### Phase 2.9: Post Quality Tuning
@@ -151,8 +151,9 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 16. React Dashboard (publisher.lubobali.com — React/Vite/Tailwind/shadcn, mobile-first)
 17. Deploy + First Real Post
 
-## Current Status (Mar 23, 2026)
-- **418 tests**, all green, lint clean
+## Current Status (Mar 24, 2026)
+- **448 tests**, all green, lint clean
+- **Git Insights LIVE** — SSH to staging, parse commits, feed real work to writer
 - **Langfuse observability LIVE** — 7 pipeline stages traced, 5 quality scores, prompt versioning
 - **Model**: nvidia/llama-3.1-nemotron-ultra-253b-v1 (with reasoning_content fallback)
 - **136 RSS sources** across 7 categories (no Reddit)
@@ -166,7 +167,10 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 - **Pipeline post-processing**: process_post() + validate_post() now run inside Pipeline.generate_post() for full Langfuse tracing
 - **Remaining**: posts still open with news facts instead of Lubo's reaction/insight (prompt tuning needed)
 - **Remaining**: apostrophe stripping can break sentences at boundaries ("Whats Not a car guy")
-- **Next session**: Phase 2.7 (Git Insights — real work posts from staging git log), then Phase 2.8 (Knowledge Base/RAG)
+- **Git Insights**: src/git_insights.py — SSHs to staging, parses git log, filters noise, groups by feature, returns ScrapedArticle
+- **My Agent Build**: replaced DE Work — 2x My Agent per week (one demo-style, one build-log from git)
+- **Staging screenshots**: my_agent + my_agent_git both screenshot staging.lubot.ai
+- **Next session**: Phase 2.8 (Knowledge Base/RAG), then Phase 2.9 (Post Quality Tuning)
 
 ## Phase 2.6: Langfuse Observability — DONE (Mar 23, 2026)
 **Full plan**: `/Users/lu/spr_full_stack_AI/langfuse_integration_plan.txt`

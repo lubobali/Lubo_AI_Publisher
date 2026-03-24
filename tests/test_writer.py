@@ -248,6 +248,34 @@ class TestBuildUserPrompt:
         assert "ONLY use features from this list" not in prompt
         assert "Multi-model orchestration" not in prompt
 
+    def test_my_agent_build_prompt_includes_git_context(self):
+        """My Agent Build posts include build log instructions."""
+        prompt = build_user_prompt(
+            topic_name="My Agent Build",
+            topic_description="What Lubo built this week",
+            articles=SAMPLE_ARTICLES,
+        )
+        assert "BUILD LOG" in prompt
+        assert "THIS WEEK I BUILT" in prompt
+        assert "EXACT numbers" in prompt
+
+    def test_my_agent_build_prompt_no_marketing_features(self):
+        """My Agent Build should NOT include the marketing features list."""
+        prompt = build_user_prompt(
+            topic_name="My Agent Build",
+            topic_description="What Lubo built this week",
+            articles=SAMPLE_ARTICLES,
+        )
+        assert "Multi-model orchestration" not in prompt
+        assert "ONLY use features from this list" not in prompt
+
+    def test_my_agent_build_includes_topic_specific_rules(self):
+        """My Agent Build has its own topic-specific rules in voice_rules.yaml."""
+        rules = load_voice_rules()
+        assert "my_agent_build" in rules["topic_specific"]
+        build_rules = rules["topic_specific"]["my_agent_build"]
+        assert any("BUILD LOG" in r for r in build_rules)
+
 
 # ---------------------------------------------------------------------------
 # Response parsing

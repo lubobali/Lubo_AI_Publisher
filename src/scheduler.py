@@ -7,13 +7,14 @@ from datetime import UTC, date, datetime
 from sqlalchemy.orm import Session
 
 from src.duplicate_checker import DuplicateChecker
+from src.git_insights import GitInsights
 from src.image_generator import generate_image
 from src.models import PublisherDestination, PublisherPost
 from src.observability import get_client, observe
 from src.post_processor import process_post, validate_post
 from src.publisher import get_publisher
 from src.scraper import ScrapedArticle, scrape_topic
-from src.screenshotter import take_screenshot
+from src.screenshotter import take_git_screenshot, take_screenshot
 from src.self_learner import SelfLearner
 from src.topic_rotator import get_todays_topic
 from src.writer import WriterResult, write_post
@@ -35,6 +36,7 @@ class Pipeline:
 
     def __init__(self, session: Session):
         self.session = session
+        self._git_insights: GitInsights | None = None
 
     @observe()
     async def generate_post(self, target_date: date) -> PipelineResult:
@@ -47,50 +49,28 @@ class Pipeline:
         category = topic["sources_key"]
         logger.info("Topic for %s: %s (%s)", target_date, topic["name"], category)
 
-        # 2. Scrape articles
-        articles = await scrape_topic(category)
-        if not articles:
-            return PipelineResult(success=False, error=f"No articles found for {category}")
+        # 2. Get content — git insights for my_agent_git, web scraper for everything else
+        if category == "my_agent_git":
+            selected_article = self._get_git_article()
+            if selected_article is None:
+                return PipelineResult(success=False, error="No meaningful commits found in staging git log")
+        else:
+            articles = await scrape_topic(category)
+            if not articles:
+                return PipelineResult(success=False, error=f"No articles found for {category}")
 
-        # 3. Find first non-duplicate article
-        checker = DuplicateChecker(self.session)
-        selected_article: ScrapedArticle | None = None
-        duplicates_skipped = 0
+            # 3. Find first non-duplicate article
+            checker = DuplicateChecker(self.session)
+            selected_article = await self._find_non_duplicate(checker, articles, category)
 
-        for article in articles:
-            result = await checker.check_article(
-                url=article.url,
-                title=article.title,
-                category=category,
-                published_at=article.published_at,
-            )
-            if not result.is_duplicate:
-                selected_article = article
-                break
-            duplicates_skipped += 1
-            logger.info("Skipping duplicate: %s (%s)", article.title, result.reason)
+            if selected_article is None:
+                return PipelineResult(
+                    success=False,
+                    error=f"All {len(articles)} articles are duplicates for {category}",
+                )
 
-        # Submit source_quality score
-        try:
-            total_scraped = len(articles)
-            source_quality = 1.0 - (duplicates_skipped / total_scraped) if total_scraped > 0 else 0.0
-            get_client().score_current_trace(
-                name="source_quality",
-                value=source_quality,
-                data_type="NUMERIC",
-                comment=f"{duplicates_skipped}/{total_scraped} duplicates for {category}",
-            )
-        except Exception:
-            logger.debug("Langfuse source_quality scoring failed", exc_info=True)
-
-        if selected_article is None:
-            return PipelineResult(
-                success=False,
-                error=f"All {len(articles)} articles are duplicates for {category}",
-            )
-
-        # Record URL as seen
-        checker.record_url(selected_article.url, used=True)
+            # Record URL as seen
+            checker.record_url(selected_article.url, used=True)
 
         # 4. Get performance feedback for writer
         learner = SelfLearner(self.session)
@@ -109,9 +89,7 @@ class Pipeline:
             return PipelineResult(success=False, error="Writer failed to generate post")
 
         # 5.5. Post-process + validate (inside trace for Langfuse scoring)
-        writer_result.post_text, writer_result.hashtags = process_post(
-            writer_result.post_text, writer_result.hashtags
-        )
+        writer_result.post_text, writer_result.hashtags = process_post(writer_result.post_text, writer_result.hashtags)
         ok, reason = validate_post(writer_result.post_text)
         if not ok:
             logger.warning("Post failed validation: %s", reason)
@@ -119,11 +97,25 @@ class Pipeline:
         # 6. Take screenshot — my_agent uses lubot.ai, everything else uses article URL
         image_path = None
 
-        if category == "my_agent":
-            screenshot = await take_screenshot("https://lubot.ai")
+        if category == "my_agent_git" and self._git_insights and self._git_insights.best_commit:
+            bc = self._git_insights.best_commit
+            screenshot = await take_git_screenshot(
+                commit_message=bc.message,
+                lines_added=bc.lines_added,
+                lines_deleted=bc.lines_deleted,
+                files_changed=bc.files_changed,
+                changed_files=bc.changed_files,
+                commit_hash=bc.hash,
+                commit_date=bc.date.strftime("%B %d, %Y"),
+            )
             if screenshot:
                 image_path = screenshot.path
-                logger.info("Screenshot from lubot.ai: %s", image_path)
+                logger.info("Git screenshot: %s", image_path)
+        elif category == "my_agent":
+            screenshot = await take_screenshot("https://staging.lubot.ai")
+            if screenshot:
+                image_path = screenshot.path
+                logger.info("Screenshot from staging: %s", image_path)
         elif selected_article.url:
             screenshot = await take_screenshot(selected_article.url)
             if screenshot:
@@ -163,6 +155,46 @@ class Pipeline:
 
         logger.info("Post saved as PENDING: #%d — %s", post.id, selected_article.title)
         return PipelineResult(success=True, post_id=post.id)
+
+    def _get_git_article(self) -> ScrapedArticle | None:
+        """Fetch latest feature from staging git log."""
+        self._git_insights = GitInsights()
+        return self._git_insights.get_latest_feature()
+
+    async def _find_non_duplicate(
+        self, checker: DuplicateChecker, articles: list[ScrapedArticle], category: str
+    ) -> ScrapedArticle | None:
+        """Find first non-duplicate article from a list. Scores source quality."""
+        selected: ScrapedArticle | None = None
+        duplicates_skipped = 0
+
+        for article in articles:
+            result = await checker.check_article(
+                url=article.url,
+                title=article.title,
+                category=category,
+                published_at=article.published_at,
+            )
+            if not result.is_duplicate:
+                selected = article
+                break
+            duplicates_skipped += 1
+            logger.info("Skipping duplicate: %s (%s)", article.title, result.reason)
+
+        # Submit source_quality score
+        try:
+            total_scraped = len(articles)
+            source_quality = 1.0 - (duplicates_skipped / total_scraped) if total_scraped > 0 else 0.0
+            get_client().score_current_trace(
+                name="source_quality",
+                value=source_quality,
+                data_type="NUMERIC",
+                comment=f"{duplicates_skipped}/{total_scraped} duplicates for {category}",
+            )
+        except Exception:
+            logger.debug("Langfuse source_quality scoring failed", exc_info=True)
+
+        return selected
 
 
 def approve_post(session: Session, post_id: int) -> bool:

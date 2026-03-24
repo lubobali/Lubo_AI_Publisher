@@ -38,7 +38,7 @@ def build_image_prompt(topic_category: str, topic_title: str, post_text: str = "
         "my_agent": "AI chatbot interface with data visualizations, dark theme dashboard, modern UI",
         "biohacker": "scientific laboratory with supplements and data charts, modern health tech aesthetic",
         "big_tech": "corporate tech campus with digital overlay, modern architecture, blue tones",
-        "de_work": "data pipeline visualization, flowing data streams, dark background with colored nodes",
+        "my_agent_git": "code diff visualization, git commit history, terminal with green text on dark background",
     }
 
     style = category_styles.get(topic_category, "modern technology concept, professional, minimal")

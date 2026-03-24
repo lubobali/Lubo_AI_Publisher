@@ -139,6 +139,38 @@ def build_user_prompt(
                 f"Use real numbers and real examples from the feature list above."
             )
 
+    # Git-based My Agent Build posts — grounded in real commits
+    if topic_key == "my_agent_build":
+        prompt_parts.append(
+            "\nThis is a BUILD LOG post. The summary below has ONE specific feature from Lubos git log.\n\n"
+            "RULES:\n"
+            "- Write ONLY about the ONE feature listed under 'THIS WEEK I BUILT'\n"
+            "- Use the EXACT numbers from the summary (+lines/-lines, file count)\n"
+            "- Do NOT mention other commits or features — they are just context for you\n"
+            "- Tell the story: what was the problem, what did Lubo do, what was the result\n"
+            "- Always say 'I', never 'we' or 'us' — Lubo is solo\n"
+            "- Include a real struggle or surprise from the build process\n"
+            "- NO cliches like 'blood and sweat', 'one place to rule them all', 'because AI is hard'\n"
+            "- This should sound like a developer texting a friend about their week, not a blog post\n\n"
+            "FORMATTING (critical for LinkedIn readability):\n"
+            "- Use BLANK LINES between paragraphs. Every 2-3 lines of text, add a blank line\n"
+            "- When listing items, put each on its own line starting with '- ' (short dash)\n"
+            "- The hook (first 2 lines) must stand alone, then a blank line\n"
+            "- Numbers/stats get their own short paragraph\n"
+            "- The closing question gets its own paragraph at the end\n"
+            "- Think: hook → stats → problem → solution → surprise → question. Each section separated by blank line\n\n"
+            "ANTI-HALLUCINATION (critical):\n"
+            "- The ONLY numbers you may use are: the +lines/-lines and file count from the summary\n"
+            "- Do NOT invent performance metrics (ms, seconds, latency, speed improvements)\n"
+            "- Do NOT invent percentages, dollar amounts, or user counts\n"
+            "- Do NOT fabricate what specific code does — just describe what the commit message says\n"
+            "- Do NOT attribute advice or quotes to anyone\n"
+            "- If you dont know the details, keep it vague ('it was slow' not 'it took 1.2 seconds')\n"
+            "- ZERO TOLERANCE: if a number is not in the summary above, you CANNOT use it in the post. "
+            "No '80%', no '10x', no 'X seconds'. The ONLY numbers allowed are lines added, lines deleted, "
+            "net lines, and file count from the summary. Everything else must be described in words, not numbers."
+        )
+
     # Add scraped articles as context
     if articles:
         prompt_parts.append("\nHere are today's top articles for inspiration:")

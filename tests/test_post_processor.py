@@ -3,6 +3,7 @@
 from src.post_processor import (
     deduplicate_hashtags,
     enforce_line_breaks,
+    ensure_paragraph_spacing,
     limit_hashtags,
     process_post,
     strip_apostrophes,
@@ -114,6 +115,34 @@ class TestEnforceLineBreaks:
 # ---------------------------------------------------------------------------
 # strip_filler_phrases
 # ---------------------------------------------------------------------------
+
+
+class TestEnsureParagraphSpacing:
+    def test_inserts_blank_lines_in_wall_of_text(self):
+        text = "Line 1.\nLine 2.\nLine 3.\nLine 4.\nLine 5.\nLine 6."
+        result = ensure_paragraph_spacing(text)
+        assert "\n\n" in result
+
+    def test_preserves_existing_blank_lines(self):
+        text = "Para 1 line 1.\nPara 1 line 2.\n\nPara 2 line 1.\nPara 2 line 2."
+        result = ensure_paragraph_spacing(text)
+        assert result == text
+
+    def test_no_triple_blank_lines(self):
+        text = "Line 1.\n\n\n\nLine 2."
+        result = ensure_paragraph_spacing(text)
+        assert "\n\n\n" not in result
+
+    def test_short_text_unchanged(self):
+        text = "Line 1.\nLine 2.\nLine 3."
+        result = ensure_paragraph_spacing(text)
+        assert result == text
+
+    def test_dash_lists_stay_together(self):
+        text = "Intro.\n\n- item 1\n- item 2\n- item 3\n\nClosing."
+        result = ensure_paragraph_spacing(text)
+        # Items should still be together (3 consecutive = OK)
+        assert "- item 1\n- item 2\n- item 3" in result
 
 
 class TestStripFillerPhrases:

@@ -247,10 +247,10 @@ class TestBestPostingHour:
         _seed_topic_performance(
             db_session,
             [
-                {"topic_category": "de_work", "total_posts": 2, "best_posting_hour": None},
+                {"topic_category": "my_agent_git", "total_posts": 2, "best_posting_hour": None},
             ],
         )
 
         learner = SelfLearner(db_session)
-        hour = learner.get_best_posting_hour("de_work")
+        hour = learner.get_best_posting_hour("my_agent_git")
         assert hour is None

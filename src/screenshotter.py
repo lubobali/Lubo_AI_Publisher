@@ -1,8 +1,10 @@
 """Playwright screenshot engine — captures web pages at LinkedIn-optimal size."""
 
 import contextlib
+import html as html_lib
 import logging
 import re
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -233,3 +235,154 @@ async def take_lubot_screenshot() -> ScreenshotResult | None:
             return None
         finally:
             await browser.close()
+
+
+async def take_git_screenshot(
+    commit_message: str,
+    lines_added: int,
+    lines_deleted: int,
+    files_changed: int,
+    changed_files: list[str],
+    commit_hash: str = "",
+    commit_date: str = "",
+) -> ScreenshotResult | None:
+    """Generate a terminal-style screenshot from real git commit data.
+
+    Renders an HTML page styled like a dark terminal showing git log + diff stats,
+    then screenshots it with Playwright.
+    """
+    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Build file lines with color by type
+    file_lines = ""
+    for f in changed_files[:15]:
+        short = f.split("/", 1)[-1] if "/" in f else f
+        color = "#6a9955" if "/test" in f else "#dcdcaa"
+        file_lines += f'<div class="file"><span style="color:{color}">{html_lib.escape(short)}</span></div>\n'
+    if len(changed_files) > 15:
+        file_lines += f'<div class="file dim">... and {len(changed_files) - 15} more files</div>\n'
+
+    net = lines_added - lines_deleted
+    net_str = f"+{net}" if net > 0 else str(net)
+
+    page_html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+body {{
+    margin: 0; padding: 0;
+    background: #1e1e2e;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    color: #cdd6f4; font-size: 14px;
+}}
+.window {{
+    margin: 24px; background: #11111b; border-radius: 12px;
+    overflow: hidden; border: 1px solid #313244;
+}}
+.titlebar {{
+    background: #181825; padding: 10px 16px;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid #313244;
+}}
+.dot {{ width: 12px; height: 12px; border-radius: 50%; }}
+.red {{ background: #f38ba8; }}
+.yellow {{ background: #f9e2af; }}
+.green {{ background: #a6e3a1; }}
+.title {{ color: #6c7086; font-size: 12px; margin-left: 12px; }}
+.content {{ padding: 20px 24px; line-height: 1.7; }}
+.prompt {{ color: #89b4fa; }}
+.cmd {{ color: #cdd6f4; }}
+.hash {{ color: #f9e2af; }}
+.msg {{ color: #cdd6f4; font-weight: 600; }}
+.date {{ color: #6c7086; }}
+.stats {{ margin: 16px 0; padding: 12px 0; border-top: 1px solid #313244; }}
+.added {{ color: #a6e3a1; font-weight: 700; }}
+.deleted {{ color: #f38ba8; font-weight: 700; }}
+.net {{ color: #89b4fa; }}
+.file {{ color: #bac2de; padding: 1px 0; font-size: 13px; }}
+.dim {{ color: #585b70; }}
+.bar {{ display: inline-block; height: 10px; border-radius: 2px; }}
+.bar-add {{ background: #a6e3a1; }}
+.bar-del {{ background: #f38ba8; }}
+.section {{ color: #6c7086; font-size: 12px; text-transform: uppercase;
+    letter-spacing: 1px; margin: 16px 0 8px; }}
+</style></head><body>
+<div class="window">
+    <div class="titlebar">
+        <div class="dot red"></div>
+        <div class="dot yellow"></div>
+        <div class="dot green"></div>
+        <div class="title">lubot-staging ~/services-agent-api</div>
+    </div>
+    <div class="content">
+        <div>
+            <span class="prompt">$</span>
+            <span class="cmd"> git log --oneline -1</span>
+        </div>
+        <div style="margin: 8px 0 4px;">
+            <span class="hash">{html_lib.escape(commit_hash or 'HEAD')}</span>
+            <span class="msg"> {html_lib.escape(commit_message)}</span>
+        </div>
+        <div class="date">{html_lib.escape(commit_date)}</div>
+
+        <div class="stats">
+            <div>
+                <span class="prompt">$</span>
+                <span class="cmd"> git diff --stat</span>
+            </div>
+            <div style="margin: 8px 0;">
+                <span class="added">+{lines_added}</span>
+                <span class="dim"> additions  </span>
+                <span class="deleted">-{lines_deleted}</span>
+                <span class="dim"> deletions  </span>
+                <span class="net">({net_str} net)</span>
+                <span class="dim">  across </span>
+                <span style="color:#cdd6f4">{files_changed} files</span>
+            </div>
+            <div style="margin: 4px 0;">
+                <span class="bar bar-add" style="width:{min(lines_added // 8, 200)}px"></span>
+                <span class="bar bar-del" style="width:{min(lines_deleted // 8, 200)}px"></span>
+            </div>
+        </div>
+
+        <div class="section">files changed</div>
+        {file_lines}
+    </div>
+</div>
+</body></html>"""
+
+    with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
+        f.write(page_html)
+        tmp_path = f.name
+
+    try:
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            try:
+                context = await browser.new_context(
+                    viewport={"width": SCREENSHOT_WIDTH, "height": SCREENSHOT_HEIGHT},
+                    device_scale_factor=1.5,
+                )
+                page = await context.new_page()
+                await page.goto(f"file://{tmp_path}", wait_until="domcontentloaded")
+                await page.wait_for_timeout(500)
+
+                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                filename = f"{timestamp}-git-commit.png"
+                filepath = SCREENSHOT_DIR / filename
+
+                screenshot_bytes = await page.screenshot(full_page=False)
+                filepath.write_bytes(screenshot_bytes)
+
+                logger.info("Git screenshot saved: %s", filepath)
+                return ScreenshotResult(
+                    path=str(filepath),
+                    url=f"git:{commit_hash}",
+                    width=SCREENSHOT_WIDTH,
+                    height=SCREENSHOT_HEIGHT,
+                )
+            finally:
+                await browser.close()
+    except Exception as e:
+        logger.warning("Git screenshot failed: %s", e)
+        return None
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
