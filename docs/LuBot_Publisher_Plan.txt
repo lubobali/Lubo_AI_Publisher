@@ -666,6 +666,54 @@ Completely separate from LuBot. Nothing shared.
     - 1.5x device scale factor for sharper images
     - AI image generation fallback via NVIDIA Stable Diffusion XL
 
+  --- PHASE 2.6: LANGFUSE OBSERVABILITY ✅ DONE (Mar 23, 2026) ---
+
+  Step 15e: LANGFUSE INTEGRATION ✅ DONE
+    - 7 pipeline stages instrumented with @observe() decorators
+    - 5 quality scores on every trace: llm_compliance, parse_quality,
+      source_quality, validation, human_approval
+    - Prompt versioning via MD5 hash — compare compliance across iterations
+    - 47 new tests (371 → 418), all green, lint clean
+    - All Langfuse calls wrapped in try/except — never breaks pipeline
+    - Live on us.cloud.langfuse.com, project "Lubo Publisher"
+    - Full plan: /Users/lu/spr_full_stack_AI/langfuse_integration_plan.txt
+    - GitHub: https://github.com/lubobali/Lubo_AI_Publisher
+
+  --- PHASE 2.7: GIT INSIGHTS — REAL WORK POSTS (NEXT) ---
+
+  My Agent posts should be grounded in real work, not random HackerNews articles.
+  New module reads git log from staging server and feeds real commits to the writer.
+
+  Step 15f: GIT INSIGHTS MODULE
+    - New file: src/git_insights.py
+    - SSH to Hetzner staging: root@100.115.173.71
+    - Path: /srv/lubot-staging/services-agent-api
+    - Parse git log, filter noise (skip "fix typo", "wip", "merge branch")
+    - Group commits by feature area, extract meaningful story
+    - Return ScrapedArticle format so pipeline stays compatible
+    - One feature per post — pick the BIGGEST from recent commits
+    - Langfuse traced like everything else
+
+  Step 15g: TOPIC ROTATION UPDATE
+    - DE Work (Tuesday) → My Agent (git insights)
+    - My Agent now runs 2x per week: Tuesday + Saturday
+    - Tuesday: "what I built this week" (technical, commits)
+    - Saturday: "feature in action" (user-facing, demo-style)
+    - Update topics.yaml to reflect new rotation
+
+  Step 15h: STAGING SCREENSHOTS
+    - Screenshot staging.lubot.ai instead of prod lubot.ai for My Agent
+    - Staging has new UI (frontend being rebuilt)
+    - Prod still has old version — dont screenshot until new UI deployed
+
+  Step 15i: WRITER CONTEXT FOR GIT POSTS
+    - Feed real commits to writer prompt as context
+    - Anti-hallucination: only use features from git log
+    - Real numbers from commits (lines changed, files modified)
+    - Later: add more repos (lubot-publisher, frontend)
+
+  --- PHASE 2.8: KNOWLEDGE BASE + RAG ---
+
   Step 15c: KNOWLEDGE BASE (Books → Vectors → RAG) — NOT STARTED
     - Download free DE/AI/ML books (DDIA, ML Yearning, Fundamentals of DE, etc.)
     - PyPDF2 extracts full text from PDFs
