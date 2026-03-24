@@ -18,8 +18,6 @@ Not a demo. Not a prototype. Real posts for a real LinkedIn profile with 2,200+ 
 
 ![Week Preview — Top Row](docs/screenshots/05-week-preview-top.png)
 
-![Week Preview — Bottom Row](docs/screenshots/04-week-preview-bottom.png)
-
 ---
 
 ## **HOW IT WORKS**
@@ -37,6 +35,8 @@ The pipeline runs daily. Pick topic, scrape articles, check duplicates, write po
 ```
 
 Every step is traced. Every step is scored. Nothing runs blind.
+
+![Week Preview — Bottom Row](docs/screenshots/04-week-preview-bottom.png)
 
 ---
 
@@ -56,6 +56,8 @@ generate_post (root trace, 25s)
   |-- take_screenshot (4.5s, success, 129KB)
 ```
 
+![Langfuse Trace Tree — full pipeline in one view](docs/screenshots/01-langfuse-trace-tree.png)
+
 ### 5 Quality Scores on Every Trace
 
 | Score | Range | What It Measures |
@@ -66,6 +68,8 @@ generate_post (root trace, 25s)
 | **validation** | 0 or 1 | Did the post pass length and format checks |
 | **human_approval** | 0 or 1 | Lubo approved or rejected from the dashboard |
 
+![Langfuse Quality Scores — 4 scores on one trace](docs/screenshots/02-langfuse-scores.png)
+
 ### Prompt Versioning
 
 Every generation is tagged with an 8-char MD5 hash of the system prompt. Filter by `prompt_version` in Langfuse and compare compliance scores across prompt iterations. Data-driven prompt engineering.
@@ -74,11 +78,7 @@ Every generation is tagged with an 8-char MD5 hash of the system prompt. Filter 
 
 All Langfuse calls wrapped in `try/except`. If Langfuse goes down, the pipeline keeps running. Observability should never break production.
 
-![Langfuse Trace Tree](docs/screenshots/01-langfuse-trace-tree.png)
-
-![Langfuse Quality Scores](docs/screenshots/02-langfuse-scores.png)
-
-![Langfuse Check Article Metadata](docs/screenshots/03-langfuse-check-article.png)
+![Langfuse Check Article — dedup metadata](docs/screenshots/03-langfuse-check-article.png)
 
 ---
 
