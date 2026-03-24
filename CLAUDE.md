@@ -133,10 +133,16 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 ### Phase 2.5: Content Quality (IN PROGRESS)
 15a. Scraper Source Overhaul — 136 verified RSS feeds, no Reddit ✅
 15b. Screenshot + Image Fixes — error detection, cookie removal, lubot.ai SPA, 1.5x scale ✅
-15c. Knowledge Base — books→chunks→vectors→RAG in writer (NEXT)
 15d. Full E2E Validation — ESL voice cloning, post-processor, 4 bug fixes (IN PROGRESS)
 ### Phase 2.6: Langfuse Observability (DONE)
 15e. Langfuse integration — 7 pipeline stages traced, 5 quality scores, prompt versioning ✅
+### Phase 2.7: Git Insights — Real Work Posts (NEXT)
+15f. Git Insights module — SSH to staging, parse git log, extract meaningful features
+15g. Topic rotation update — DE Work → My Agent on Tuesday (2x My Agent per week: Tue + Sat)
+15h. Staging screenshots — screenshot staging.lubot.ai instead of prod for My Agent posts
+15i. Writer context — feed real commits to writer, one feature per post, grounded in git history
+### Phase 2.8: Knowledge Base + RAG
+15c. Knowledge Base — books→chunks→vectors→RAG in writer
 ### Phase 3: Frontend + Deploy
 16. React Dashboard (publisher.lubobali.com — React/Vite/Tailwind/shadcn, mobile-first)
 17. Deploy + First Real Post
@@ -156,7 +162,7 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 - **Pipeline post-processing**: process_post() + validate_post() now run inside Pipeline.generate_post() for full Langfuse tracing
 - **Remaining**: posts still open with news facts instead of Lubo's reaction/insight (prompt tuning needed)
 - **Remaining**: apostrophe stripping can break sentences at boundaries ("Whats Not a car guy")
-- **Next session**: Step 15c (Knowledge Base/RAG), then Phase 3 (React Dashboard)
+- **Next session**: Phase 2.7 (Git Insights — real work posts from staging git log), then Phase 2.8 (Knowledge Base/RAG)
 
 ## Phase 2.6: Langfuse Observability — DONE (Mar 23, 2026)
 **Full plan**: `/Users/lu/spr_full_stack_AI/langfuse_integration_plan.txt`
