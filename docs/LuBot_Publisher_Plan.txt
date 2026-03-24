@@ -749,6 +749,28 @@ Completely separate from LuBot. Nothing shared.
       - Apostrophe stripping breaks sentences at boundaries ("Whats Not a car guy")
       - Same articles selected on each run (dedup table empty = deterministic)
 
+  --- PHASE 2.9: POST QUALITY TUNING ---
+
+  All tools are in place: Langfuse measures quality, git insights provide real context,
+  RAG adds book knowledge. Now tune the prompts with data, not vibes.
+
+  Step 15j: PROMPT TUNING WITH LANGFUSE DATA
+    - Compare prompt_version hashes in Langfuse dashboard
+    - Identify which prompt versions score highest on llm_compliance
+    - Iterate: change prompt → run pipeline → check scores → repeat
+    - Target: avg llm_compliance > 0.9 across all categories
+
+  Step 15k: FIX KNOWN QUALITY ISSUES
+    - Posts lead with news FACTS instead of Lubos REACTION — fix prompt to force opinion first
+    - Apostrophe stripping breaks at sentence boundaries ("Whats Not a car guy") — smarter regex
+    - Posts too generic for some categories — add category-specific prompt rules
+
+  Step 15l: VOICE QUALITY GATE
+    - Run 7-day test pipeline, review all posts manually
+    - Score each post human_approval via API (populates Langfuse)
+    - Analyze: which categories score worst? Which prompt rules help most?
+    - Final pass: tune until 6/7 posts pass human approval without edits
+
   --- PHASE 3: REACT FRONTEND + DEPLOY (Steps 16-17) ---
 
   Step 16: REACT DASHBOARD FRONTEND (publisher.lubobali.com)

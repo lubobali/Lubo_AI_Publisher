@@ -143,6 +143,10 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 15i. Writer context — feed real commits to writer, one feature per post, grounded in git history
 ### Phase 2.8: Knowledge Base + RAG
 15c. Knowledge Base — books→chunks→vectors→RAG in writer
+### Phase 2.9: Post Quality Tuning
+15j. Prompt tuning with Langfuse data — compare prompt_version scores, target compliance > 0.9
+15k. Fix known issues — reaction vs facts, apostrophe boundary bug, category-specific rules
+15l. Voice quality gate — 7-day test, human approval scoring, final pass
 ### Phase 3: Frontend + Deploy
 16. React Dashboard (publisher.lubobali.com — React/Vite/Tailwind/shadcn, mobile-first)
 17. Deploy + First Real Post
