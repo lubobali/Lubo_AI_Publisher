@@ -769,6 +769,9 @@ Completely separate from LuBot. Nothing shared.
     - Posts lead with news FACTS instead of Lubos REACTION — fix prompt to force opinion first
     - Apostrophe stripping breaks at sentence boundaries ("Whats Not a car guy") — smarter regex
     - Posts too generic for some categories — add category-specific prompt rules
+    - Cloudflare captcha pages not detected by screenshotter — add "Verify you are human" to error signals
+    - Plain-text parser leaks raw screenshot_url into post body — strip it in post-processor
+    - Plain-text fallback duplicates hashtags in post_text AND hashtags array — dedup on parse
 
   Step 15l: VOICE QUALITY GATE
     - Run 7-day test pipeline, review all posts manually

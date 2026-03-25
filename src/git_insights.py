@@ -17,7 +17,7 @@ from src.scraper import ScrapedArticle
 logger = logging.getLogger(__name__)
 
 # Default SSH target
-DEFAULT_HOST = "root@100.115.173.71"
+DEFAULT_HOST = "root@178.156.214.8"
 DEFAULT_REPO = "/srv/lubot-staging/services-agent-api"
 DEFAULT_DAYS_BACK = 7
 
