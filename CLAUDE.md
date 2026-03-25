@@ -171,7 +171,11 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 - **My Agent Build**: replaced DE Work — 2x My Agent per week (one demo-style, one build-log from git)
 - **Staging screenshots**: my_agent→staging.lubot.ai, my_agent_git→terminal-style git screenshot (take_git_screenshot)
 - **Post-processor**: ensure_paragraph_spacing() adds blank lines between dense text blocks
-- **Next session**: Phase 2.8 (Knowledge Base/RAG), then Phase 2.9 (Post Quality Tuning)
+- **SSH host**: 178.156.214.8 (public IP, not Tailscale — Docker compatible)
+- **E2E test**: 7/7 posts generated successfully (Mar 24). 3 bugs logged for Phase 2.9
+- **11 books downloaded** for Phase 2.8 RAG: DDIA, Fundamentals of DE, Metadata Mgmt, Python Guide, Effective Testing, ML Yearning, Dive into DL, SLP3 (Jurafsky), LLM Foundations, DE Cookbook, AOSA Vol 1+2
+- **Books location**: `/Users/lu/Library/Mobile Documents/com~apple~CloudDocs/Data/` (Mac). Copy to server `/srv/lubot-publisher/books/` before processing
+- **Next session**: Phase 2.8 (Knowledge Base/RAG — PDF extract → chunk → embed → PostgreSQL → wire into writer)
 
 ## Phase 2.6: Langfuse Observability — DONE (Mar 23, 2026)
 **Full plan**: `/Users/lu/spr_full_stack_AI/langfuse_integration_plan.txt`

@@ -719,8 +719,14 @@ Completely separate from LuBot. Nothing shared.
 
   --- PHASE 2.8: KNOWLEDGE BASE + RAG ---
 
-  Step 15c: KNOWLEDGE BASE (Books → Vectors → RAG) — NOT STARTED
-    - Download free DE/AI/ML books (DDIA, ML Yearning, Fundamentals of DE, etc.)
+  Step 15c: KNOWLEDGE BASE (Books → Vectors → RAG) — BOOKS READY, BUILD NEXT
+    - 11 books downloaded (Mar 24): DDIA, Fundamentals of DE, Metadata Mgmt,
+      Python Guide (Harrison), Effective Testing (Harrison), ML Yearning (Ng),
+      Dive into Deep Learning (d2l.ai), Speech & Language Processing 3e (Jurafsky),
+      Foundations of LLMs (Xiao 2025), Data Engineering Cookbook (Kretz),
+      Architecture of Open Source Apps Vol 1+2
+    - Mac: /Users/lu/Library/Mobile Documents/com~apple~CloudDocs/Data/
+    - Server: copy to /srv/lubot-publisher/books/ → process → delete raw PDFs
     - PyPDF2 extracts full text from PDFs
     - Chunk into ~500 word sections (one concept per chunk)
     - Generate embeddings via NVIDIA NIM API (same as dedup)
