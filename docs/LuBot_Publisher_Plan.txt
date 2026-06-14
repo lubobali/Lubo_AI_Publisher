@@ -717,6 +717,60 @@ Completely separate from LuBot. Nothing shared.
     - ensure_paragraph_spacing() post-processor ensures readability
     - Later: add more repos (lubot-publisher, frontend)
 
+  --- PHASE 2.75: WAKATIME INSIGHTS — BUILDING-IN-PUBLIC STATS (before RAG) ---
+
+  Second "real work" source after Git Insights. WakaTime tracks coding time via
+  Claude Code heartbeats and archives one JSON file per day. We feed the weekly
+  numbers (hours, languages, projects, AI usage) into the writer so posts can show
+  the EFFORT behind the work, not just the commits. Pairs with Git Insights:
+  "here is what I shipped AND the hours / AI effort behind it."
+
+  DATA SOURCE (already live, built outside this repo):
+    - Daily archives: /srv/lubot-staging/.wakatime-archive/wakatime-YYYY-MM-DD.json
+      (cron 30 5 * * * via /usr/local/bin/wakatime-archive.sh — kept forever)
+    - Hand-written weekly notes: /srv/lubot-staging/.wakatime-archive/notes/<YYYY-Wnn>.md
+    - Per-day shape: data[0].grand_total (hours/mins, ai_input/output_tokens,
+      ai_sessions, ai_agent_total_cost, prompt counts), .projects, .languages,
+      .editors, .categories
+    - Example (Jun 13): 7h22m, 73% Python, editor=Claude Code, project=LuBot 6h33m,
+      category="AI Coding", 132M input tokens, 3 AI sessions, 139 prompts
+
+  ACCESS NOTE: publisher runs in Docker. Use SSH to 178.156.214.8 to read the
+  archive files (same proven pattern as git_insights.py — NOT Tailscale, which
+  failed from inside Docker). Alternative: volume-mount the archive dir.
+
+  Step 15m: WAKATIME INSIGHTS MODULE
+    - New file: src/wakatime_insights.py (mirror src/git_insights.py)
+    - SSH to 178.156.214.8, read last 7 daily archive JSON files
+    - Tolerate missing days (free plan gaps) — skip, do not crash
+    - Parse grand_total + projects + languages + editors + categories
+    - Pull weekly notes/<YYYY-Wnn>.md if present (human color for the post)
+    - Return ScrapedArticle so the pipeline stays compatible
+    - Langfuse traced like every other source
+    - TEST FIRST (RECR): mock archive JSON on disk, assert parsing + ScrapedArticle shape
+
+  Step 15n: WEEKLY AGGREGATION + METRICS (pure python, test-first)
+    - WeeklyStats dataclass: total_seconds, by_language, by_project,
+      ai_input_tokens, ai_sessions, ai_prompt_events, ai_cost, days_active
+    - Week-over-week delta vs prior 7 days (momentum hook: "up 18% on last week")
+    - PRIVACY TOGGLE: include_costs flag — strip ai_cost when False (brand decision)
+    - NO LLM calls, pure math, fully unit-tested (this is the part we keep REAL)
+
+  Step 15o: TOPIC / ROTATION WIRING
+    - Post usage (DECIDE before build): enrich My Agent Build posts AND a dedicated
+      weekly "building in public" stats post (recommended), or one of the two
+    - topics.yaml: add building-in-public slot (or feed stats into my_agent_git)
+    - voice_rules.yaml: building-in-public tone — real numbers only, no hype/ad copy
+    - Writer context: feed WeeklyStats, anti-hallucination = ONLY numbers from archives
+
+  Step 15p: SCREENSHOT (optional)
+    - Terminal/stat-card style image of the week (hours, top langs, AI sessions)
+    - Reuse the take_git_screenshot() HTML-template + Playwright approach, no new deps
+
+  OPEN DECISIONS (confirm before coding):
+    - Post the AI cost numbers ($/day, tokens) publicly, or keep cost private?
+    - Enrich existing posts, dedicated weekly stats post, or both?
+
   --- PHASE 2.8: KNOWLEDGE BASE + RAG ---
 
   Step 15c: KNOWLEDGE BASE (Books → Vectors → RAG) — BOOKS READY, BUILD NEXT
