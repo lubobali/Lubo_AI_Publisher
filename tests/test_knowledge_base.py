@@ -8,9 +8,15 @@ from unittest.mock import MagicMock, patch
 
 from src.knowledge_base import (
     _drop_repeated_lines,
+    chunk_text,
     clean_text,
     extract_book_text,
 )
+
+
+def _sentences_text(n):
+    """n distinct ~10-word sentences."""
+    return " ".join(f"This is sentence number {i} with some filler words here." for i in range(n))
 
 
 def _mock_reader(page_texts):
@@ -103,3 +109,46 @@ class TestDropRepeatedLines:
         pages = [f"{long_line}\nbody {i}" for i in range(6)]
         out = _drop_repeated_lines(pages)
         assert any(long_line in p for p in out)
+
+
+class TestChunkText:
+    def test_empty_returns_empty(self):
+        assert chunk_text("") == []
+        assert chunk_text("   \n\n  ") == []
+
+    def test_short_text_single_chunk(self):
+        chunks = chunk_text(_sentences_text(5), target_words=400)
+        assert len(chunks) == 1
+        assert "sentence number 0" in chunks[0]
+        assert "sentence number 4" in chunks[0]
+
+    def test_long_text_multiple_chunks(self):
+        chunks = chunk_text(_sentences_text(200), target_words=400, overlap_words=50)
+        assert len(chunks) > 1
+
+    def test_no_empty_chunks(self):
+        chunks = chunk_text(_sentences_text(200), target_words=100, overlap_words=20)
+        assert all(c.strip() for c in chunks)
+
+    def test_chunks_respect_target_size(self):
+        target, overlap = 100, 20
+        chunks = chunk_text(_sentences_text(300), target_words=target, overlap_words=overlap)
+        # never split a sentence -> a chunk may overrun by overlap + at most one sentence (~10 words)
+        assert all(len(c.split()) <= target + overlap + 30 for c in chunks)
+
+    def test_overlap_between_consecutive_chunks(self):
+        chunks = chunk_text(_sentences_text(200), target_words=50, overlap_words=15)
+        assert len(chunks) >= 2
+        # tail of chunk N appears at the start of chunk N+1
+        tail = " ".join(chunks[0].split()[-8:])
+        assert tail in chunks[1]
+
+    def test_never_splits_mid_sentence(self):
+        chunks = chunk_text(_sentences_text(200), target_words=50, overlap_words=15)
+        # a specific sentence survives intact in some chunk
+        assert any("This is sentence number 137 with some filler words here." in c for c in chunks)
+
+    def test_single_oversized_sentence_is_its_own_chunk(self):
+        big = "word " * 600  # one 600-word "sentence", no terminators
+        chunks = chunk_text(big.strip(), target_words=400)
+        assert len(chunks) == 1

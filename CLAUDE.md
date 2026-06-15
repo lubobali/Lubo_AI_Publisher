@@ -149,7 +149,7 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 ### Phase 2.8: Knowledge Base + RAG (plan finalized Jun 15 — full detail in docs/LuBot_Publisher_Plan.txt)
 Model: nvidia/llama-nemotron-embed-vl-1b-v2 (2048-dim, 8192-tok, VERIFIED vs NVIDIA docs; same as lubot staging PDF RAG v2). Flat ~400-word chunks. JSON embeddings + numpy cosine (no pgvector/FAISS). Grounding ONLY tech_talk/my_agent_git/ai_news. NEVER name the book in posts. Keep raw PDFs.
 15c-1. PDF extraction (src/knowledge_base.py, pypdf) — text per book, skip empty pages, drop page-numbers + running headers/footers (incl. page-numbered footers via digit-normalized repeat detection) ✅
-15c-2. Chunker — ~400-word chunks, 50 overlap, sentence-boundary aware (pure, tested)
+15c-2. Chunker — ~400-word chunks, 50 overlap, sentence-boundary aware (pure, tested) ✅ (real: ML Yearning -> 65 chunks, mean 445 words, overlap verified)
 15c-3. Embedding client — NVIDIA NIM POST, modality=text, passage/query, L2-normalized
 15c-4. DB model + migration — publisher_knowledge_base table, idempotent store
 15c-5. Retrieval — cached numpy matrix, cosine top-k, min-score threshold
@@ -165,8 +165,8 @@ Model: nvidia/llama-nemotron-embed-vl-1b-v2 (2048-dim, 8192-tok, VERIFIED vs NVI
 17. Deploy + First Real Post
 
 ## Current Status (Jun 15, 2026)
-- **509 tests**, all green, lint clean
-- **Phase 2.8 RAG STARTED** — 15c-1 done: src/knowledge_base.py extracts clean text from book PDFs (pypdf mocked in tests; verified on real DDIA + ML Yearning, footers stripped). pypdf==6.13.2 in requirements. Next: 15c-2 chunker.
+- **517 tests**, all green, lint clean
+- **Phase 2.8 RAG STARTED** — 15c-1 (PDF extraction) + 15c-2 (chunker) done in src/knowledge_base.py. pypdf==6.13.2 in requirements. Verified on real DDIA + ML Yearning (footers stripped, 65 clean ~445-word chunks). Next: 15c-3 embedding client (NVIDIA NIM POST).
 - **WakaTime Insights (Phase 2.75) COMPLETE** — src/wakatime_insights.py: SSH read 2 weeks of daily archives → WeeklyStats → ScrapedArticle. Verified on real data (58h/wk, Python 55%, LuBot 99%, AI tokens/cost, "up 345% vs last week" momentum). include_costs toggle (costs posted publicly). 15m–15p ALL DONE.
 - **Stat-card screenshot (15p)**: take_wakatime_screenshot() + pure _build_wakatime_html() render a polished dark LinkedIn-ready PNG (big hours number, gradient language/project bars, AI sessions/prompts/tokens/cost, directional momentum badge). build_screenshot_fields() adapts WeeklyStats→kwargs. Wired into scheduler; verified by rendering a real PNG from live archives.
 - **Rotation change (Option A)**: "Big Tech" slot REPLACED by "Building in Public" (sources_key: wakatime). Scheduler dispatches wakatime → WakaTimeInsights (like my_agent_git → GitInsights). my_agent_git posts ENRICHED with WakaTime stats (passed as 2nd article to writer). Writer has building_in_public prompt block (exact numbers, anti-hallucination). wakatime image style added; dashboard URL never screenshotted (login-walled) → generated-image fallback until 15p.

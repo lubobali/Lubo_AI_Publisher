@@ -90,3 +90,69 @@ def extract_book_text(path: str | Path) -> str:
     cleaned = clean_text("\n\n".join(pages))
     logger.info("Extracted %d chars from %s", len(cleaned), path)
     return cleaned
+
+
+# ---------------------------------------------------------------------------
+# Chunking (Phase 2.8 / 15c-2)
+# ---------------------------------------------------------------------------
+
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _split_sentences(text: str) -> list[str]:
+    """Split text into sentence units, respecting paragraph breaks first."""
+    units: list[str] = []
+    for para in re.split(r"\n\s*\n", text):
+        para = para.strip()
+        if not para:
+            continue
+        for sent in _SENTENCE_SPLIT_RE.split(para):
+            sent = sent.strip()
+            if sent:
+                units.append(sent)
+    return units
+
+
+def _wc(s: str) -> int:
+    return len(s.split())
+
+
+def chunk_text(text: str, target_words: int = 400, overlap_words: int = 50) -> list[str]:
+    """Split text into ~target_words chunks with ~overlap_words of carry-over.
+
+    Splits only on sentence boundaries — a sentence is never cut in half. A lone
+    sentence longer than target_words becomes its own chunk. Each chunk (after the
+    first) is prefixed with the trailing sentences of the previous chunk for overlap.
+    """
+    sentences = _split_sentences(text)
+    if not sentences:
+        return []
+
+    n = len(sentences)
+
+    # Pack sentences into base groups, each <= target_words (except a lone oversized sentence).
+    groups: list[tuple[int, int]] = []
+    i = 0
+    while i < n:
+        j, words = i, 0
+        while j < n:
+            w = _wc(sentences[j])
+            if j > i and words + w > target_words:
+                break
+            words += w
+            j += 1
+        groups.append((i, j))
+        i = j
+
+    # Add backward overlap: each group after the first starts ~overlap_words earlier.
+    chunks: list[str] = []
+    for k, (start, end) in enumerate(groups):
+        s = start
+        if k > 0:
+            ow, b = 0, start
+            while b > 0 and ow < overlap_words:
+                b -= 1
+                ow += _wc(sentences[b])
+            s = b
+        chunks.append(" ".join(sentences[s:end]))
+    return chunks
