@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from src.duplicate_checker import DuplicateChecker
 from src.git_insights import GitInsights
 from src.image_generator import generate_image
+from src.knowledge_base import KnowledgeBase
 from src.models import PublisherDestination, PublisherPost
 from src.observability import get_client, observe
 from src.post_processor import process_post, validate_post
@@ -21,6 +22,9 @@ from src.wakatime_insights import WakaTimeInsights, build_screenshot_fields
 from src.writer import WriterResult, write_post
 
 logger = logging.getLogger(__name__)
+
+# Only technical posts get book-knowledge grounding (Phase 2.8 decision).
+GROUNDED_CATEGORIES = {"tech_talk", "my_agent_git", "ai_news"}
 
 
 @dataclass
@@ -88,12 +92,16 @@ class Pipeline:
         report = learner.generate_performance_report()
         feedback = report.format_for_writer()
 
+        # 4.5. RAG — book concepts for technical categories only (invisible background)
+        book_concepts = self._get_book_concepts(category, topic, selected_article)
+
         # 5. Write post
         writer_result: WriterResult | None = await write_post(
             topic_name=topic["name"],
             topic_description=topic.get("description", ""),
             articles=[selected_article, *extra_articles],
             performance_context=feedback,
+            book_concepts=book_concepts,
         )
 
         if writer_result is None:
@@ -184,6 +192,21 @@ class Pipeline:
         """Fetch this week's coding stats from WakaTime archives on staging."""
         self._wakatime = WakaTimeInsights()
         return self._wakatime.get_weekly_stats()
+
+    def _get_book_concepts(self, category: str, topic: dict, article: ScrapedArticle) -> list[str]:
+        """Retrieve 2-3 book concepts to ground a technical post. Never fatal.
+
+        Only the technical categories get grounding; everything else returns [].
+        A KB/embedding failure logs and returns [] so it never breaks a post.
+        """
+        if category not in GROUNDED_CATEGORIES:
+            return []
+        try:
+            query = f"{topic['name']} {article.title} {article.summary[:200]}"
+            return [c.text for c in KnowledgeBase(self.session).search(query)]
+        except Exception:
+            logger.warning("Knowledge-base search failed for %s — skipping grounding", category, exc_info=True)
+            return []
 
     async def _find_non_duplicate(
         self, checker: DuplicateChecker, articles: list[ScrapedArticle], category: str

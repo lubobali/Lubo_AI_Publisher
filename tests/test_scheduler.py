@@ -35,14 +35,14 @@ def db_session(test_engine):
 
 @pytest.fixture(autouse=True)
 def _default_topic():
-    """Pin the daily topic to a scraper-based category so pipeline-flow tests are
-    deterministic regardless of which category the real rotation lands on for a
-    given date. Tests exercising git/wakatime/my_agent patch get_todays_topic
+    """Pin the daily topic to a NON-grounded scraper category (ai_gadgets) so
+    pipeline-flow tests are deterministic AND never invoke RAG/embeddings. Tests
+    exercising git/wakatime/my_agent/grounded categories patch get_todays_topic
     themselves inside their own `with`, which takes precedence over this default.
     """
     with patch(
         "src.scheduler.get_todays_topic",
-        return_value={"name": "AI News", "sources_key": "ai_news", "description": "test"},
+        return_value={"name": "AI Gadgets", "sources_key": "ai_gadgets", "description": "test"},
     ):
         yield
 
@@ -758,3 +758,90 @@ class TestPublishApproved:
 
         count = await publish_approved_posts(db_session, access_token="test")
         assert count == 0
+
+
+class TestBookGrounding:
+    """RAG: grounded categories get book concepts; others do not (Phase 2.8 / 15c-6)."""
+
+    def _common_mocks(self, stack):
+        articles = _make_articles()
+        stack.enter_context(patch("src.scheduler.scrape_topic", new_callable=AsyncMock, return_value=articles))
+        dedup = MagicMock()
+        dedup.check_article = AsyncMock(return_value=MagicMock(is_duplicate=False))
+        dedup.record_url = MagicMock()
+        stack.enter_context(patch("src.scheduler.DuplicateChecker", return_value=dedup))
+        stack.enter_context(
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/s.png"))
+        )
+        stack.enter_context(patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=None))
+        learner = stack.enter_context(patch("src.scheduler.SelfLearner")).return_value
+        report = MagicMock()
+        report.format_for_writer.return_value = ""
+        learner.generate_performance_report.return_value = report
+
+    @pytest.mark.asyncio
+    async def test_grounded_category_injects_concepts(self, db_session):
+        from contextlib import ExitStack
+
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch(
+                    "src.scheduler.get_todays_topic",
+                    return_value={"name": "Tech Talk", "sources_key": "tech_talk", "description": "x"},
+                )
+            )
+            self._common_mocks(stack)
+            kb = stack.enter_context(patch("src.scheduler.KnowledgeBase")).return_value
+            kb.search.return_value = [MagicMock(text="Partitioning splits data across nodes.")]
+            mock_write = stack.enter_context(
+                patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result())
+            )
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 16))
+
+        assert result.success is True
+        kb.search.assert_called_once()
+        assert mock_write.call_args.kwargs["book_concepts"] == ["Partitioning splits data across nodes."]
+
+    @pytest.mark.asyncio
+    async def test_ungrounded_category_no_kb(self, db_session):
+        from contextlib import ExitStack
+
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch(
+                    "src.scheduler.get_todays_topic",
+                    return_value={"name": "Biohacker", "sources_key": "biohacker", "description": "x"},
+                )
+            )
+            self._common_mocks(stack)
+            mock_kb = stack.enter_context(patch("src.scheduler.KnowledgeBase"))
+            mock_write = stack.enter_context(
+                patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result())
+            )
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 16))
+
+        assert result.success is True
+        mock_kb.assert_not_called()  # biohacker never touches the knowledge base
+        assert mock_write.call_args.kwargs["book_concepts"] == []
+
+    @pytest.mark.asyncio
+    async def test_kb_failure_is_non_fatal(self, db_session):
+        from contextlib import ExitStack
+
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch(
+                    "src.scheduler.get_todays_topic",
+                    return_value={"name": "AI News", "sources_key": "ai_news", "description": "x"},
+                )
+            )
+            self._common_mocks(stack)
+            kb = stack.enter_context(patch("src.scheduler.KnowledgeBase")).return_value
+            kb.search.side_effect = RuntimeError("NIM down")
+            mock_write = stack.enter_context(
+                patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result())
+            )
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 16))
+
+        assert result.success is True  # KB hiccup must not break the post
+        assert mock_write.call_args.kwargs["book_concepts"] == []

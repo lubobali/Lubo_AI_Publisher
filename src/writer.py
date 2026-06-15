@@ -109,6 +109,7 @@ def build_user_prompt(
     topic_description: str,
     articles: list[ScrapedArticle],
     performance_context: str | None = None,
+    book_concepts: list[str] | None = None,
 ) -> str:
     """Build the user message with today's topic + scraped articles."""
     rules = load_voice_rules()
@@ -219,6 +220,22 @@ def build_user_prompt(
     # Add performance feedback if available
     if performance_context:
         prompt_parts.append(f"\nPERFORMANCE DATA:\n{performance_context}")
+
+    # Book knowledge (RAG) — LOWEST priority. Background only, never the topic.
+    # Guardrails per docs/LuBot_Publisher_Plan.txt VOICE & POSITIONING GUARDRAILS.
+    if book_concepts:
+        concepts_text = "\n".join(f"- {c}" for c in book_concepts)
+        prompt_parts.append(
+            "\nBACKGROUND YOU HAPPEN TO KNOW (use ONLY to sharpen your own opinion, "
+            "in your own words — this is NOT the topic):\n"
+            f"{concepts_text}\n"
+            "RULES for this background:\n"
+            "- Do NOT name or cite any book, author, or title\n"
+            "- Do NOT paraphrase or summarize it — no textbook voice\n"
+            "- Do NOT claim you built, applied, or benchmarked something unless you actually did\n"
+            "- Open with YOUR reaction, never with this background\n"
+            "- If it does not fit naturally, ignore it completely"
+        )
 
     prompt_parts.append(
         "\nSuggest a screenshot_url — a webpage that would make "
@@ -373,6 +390,7 @@ async def write_post(
     topic_description: str,
     articles: list[ScrapedArticle],
     performance_context: str | None = None,
+    book_concepts: list[str] | None = None,
 ) -> WriterResult | None:
     """Generate a LinkedIn post using NVIDIA Nemotron.
 
@@ -384,6 +402,7 @@ async def write_post(
         topic_description=topic_description,
         articles=articles,
         performance_context=performance_context,
+        book_concepts=book_concepts,
     )
 
     client = get_llm_client()

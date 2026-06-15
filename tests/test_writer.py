@@ -157,6 +157,50 @@ SAMPLE_ARTICLES = [
 ]
 
 
+class TestBookConcepts:
+    """RAG book concepts injected as low-priority background (Phase 2.8 / 15c-6)."""
+
+    _CONCEPTS = ["Partitioning splits data across nodes so writes scale horizontally."]
+
+    def test_injected_when_present(self):
+        prompt = build_user_prompt(
+            topic_name="Tech Talk",
+            topic_description="something Lubo built",
+            articles=SAMPLE_ARTICLES,
+            book_concepts=self._CONCEPTS,
+        )
+        assert "Partitioning splits data across nodes" in prompt
+
+    def test_guardrails_present_with_concepts(self):
+        prompt = build_user_prompt(
+            topic_name="Tech Talk",
+            topic_description="x",
+            articles=SAMPLE_ARTICLES,
+            book_concepts=self._CONCEPTS,
+        ).lower()
+        # never name the book, never claim false experience, may ignore it
+        assert "do not name" in prompt or "not name or cite" in prompt
+        assert "unless you actually did" in prompt
+        assert "ignore it" in prompt
+
+    def test_no_block_without_concepts(self):
+        prompt = build_user_prompt(
+            topic_name="Tech Talk",
+            topic_description="x",
+            articles=SAMPLE_ARTICLES,
+        ).lower()
+        assert "unless you actually did" not in prompt
+
+    def test_empty_concepts_no_block(self):
+        prompt = build_user_prompt(
+            topic_name="Tech Talk",
+            topic_description="x",
+            articles=SAMPLE_ARTICLES,
+            book_concepts=[],
+        ).lower()
+        assert "unless you actually did" not in prompt
+
+
 class TestBuildUserPrompt:
     def test_contains_topic(self):
         prompt = build_user_prompt(
