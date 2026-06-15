@@ -75,10 +75,18 @@ class WeeklyStats:
     ai_cost: float = 0.0
     start_date: str = ""
     end_date: str = ""
+    prev_total_seconds: float = 0.0  # prior week's total, for the momentum delta
 
     @property
     def total_hours(self) -> float:
         return self.total_seconds / 3600
+
+    @property
+    def total_delta_pct(self) -> float | None:
+        """Percent change in coding time vs the prior week. None if no prior data."""
+        if self.prev_total_seconds <= 0:
+            return None
+        return (self.total_seconds - self.prev_total_seconds) / self.prev_total_seconds * 100
 
     @property
     def top_language(self) -> str | None:
@@ -153,6 +161,12 @@ def _aggregate_week(days: list[DayStats]) -> WeeklyStats:
     return stats
 
 
+def _split_weeks(days: list[DayStats], days_back: int) -> tuple[list[DayStats], list[DayStats]]:
+    """Partition days into (current_week, prior_week) by recency, most recent first."""
+    ordered = sorted(days, key=lambda d: d.date, reverse=True)
+    return ordered[:days_back], ordered[days_back : days_back * 2]
+
+
 def _split_archives(raw: str) -> list[dict]:
     """Split raw SSH stdout (FILE_MARKER-delimited) into archive dicts. Skips malformed."""
     out: list[dict] = []
@@ -184,9 +198,12 @@ def _build_summary(stats: WeeklyStats, include_costs: bool = True, notes: str = 
     parts = [
         f"MY CODING WEEK ({stats.start_date} to {stats.end_date}):",
         f"Total time coding: {_fmt_duration(stats.total_seconds)} across {stats.days_active} active days",
-        "",
-        "TOP LANGUAGES:",
     ]
+    delta = stats.total_delta_pct
+    if delta is not None:
+        direction = "up" if delta >= 0 else "down"
+        parts.append(f"Momentum: {direction} {abs(delta):.0f}% vs the week before")
+    parts += ["", "TOP LANGUAGES:"]
     for name, secs, pct in _top_n(stats.by_language, stats.total_seconds):
         parts.append(f"  - {name}: {_fmt_duration(secs)} ({pct:.0f}%)")
 
@@ -251,10 +268,12 @@ class WakaTimeInsights:
             logger.info("No WakaTime archives found in last %d days", self.days_back)
             return None
 
-        stats = _aggregate_week(days)
+        current_days, prior_days = _split_weeks(days, self.days_back)
+        stats = _aggregate_week(current_days)
         if stats.total_seconds <= 0:
             logger.info("WakaTime week had zero coding time")
             return None
+        stats.prev_total_seconds = _aggregate_week(prior_days).total_seconds
         self.weekly_stats = stats
 
         title = _build_title(stats)
@@ -281,15 +300,16 @@ class WakaTimeInsights:
         )
 
     def _fetch_archives(self) -> str:
-        """SSH to staging, cat the last N daily archives + latest weekly notes.
+        """SSH to staging, cat the last 2*N daily archives + latest weekly notes.
 
+        Pulls two weeks so we can compute the week-over-week momentum delta.
         Output: FILE_MARKER + json per archive, then NOTES_MARKER + notes text.
         Trailing `true` keeps the remote exit code 0 when the host is reachable,
         so a missing notes file never looks like an SSH failure.
         """
         remote = (
             f"cd {self.archive_dir} && "
-            f"for f in $(ls -t wakatime-*.json 2>/dev/null | head -{self.days_back}); do "
+            f"for f in $(ls -t wakatime-*.json 2>/dev/null | head -{self.days_back * 2}); do "
             f'echo "{FILE_MARKER}"; cat "$f"; done; '
             f'echo "{NOTES_MARKER}"; '
             f"notes=$(ls -t notes/*.md 2>/dev/null | head -1); "

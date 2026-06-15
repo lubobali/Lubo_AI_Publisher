@@ -12,6 +12,7 @@ from src.wakatime_insights import (
     _aggregate_week,
     _parse_day,
     _split_archives,
+    _split_weeks,
 )
 
 # ---------------------------------------------------------------------------
@@ -193,9 +194,10 @@ class TestWakaTimeInsightsToArticle:
         assert WakaTimeInsights().get_weekly_stats() is None
 
     @patch("src.wakatime_insights.subprocess.run")
-    def test_custom_days_back_in_command(self, mock_run):
+    def test_fetches_two_weeks_for_delta(self, mock_run):
+        # days_back=7 must pull 14 files (this week + last week) for the delta
         mock_run.return_value = MagicMock(stdout=_ssh_output([DAY1]), returncode=0)
-        WakaTimeInsights(days_back=14).get_weekly_stats()
+        WakaTimeInsights(days_back=7).get_weekly_stats()
         sent_cmd = mock_run.call_args[0][0]
         assert "head -14" in sent_cmd
 
@@ -206,3 +208,44 @@ class TestWakaTimeInsightsToArticle:
         insights.get_weekly_stats()
         assert isinstance(insights.weekly_stats, WeeklyStats)
         assert insights.weekly_stats.days_active == 2
+
+
+def _simple_day(date, seconds):
+    """Minimal one-day archive — just a total, for week-over-week tests."""
+    ai = {"input": 1, "output": 1, "sessions": 1, "prompts": 1, "cost": 1}
+    return _archive(date, seconds, {"Python": seconds}, {"LuBot": seconds}, ai)
+
+
+# Prior week (Jun 1-7) at 1h/day, current week (Jun 8-14) at 2h/day → +100%
+PRIOR_WEEK = [_simple_day(f"2026-06-{d:02d}", 3600) for d in range(1, 8)]
+CURRENT_WEEK = [_simple_day(f"2026-06-{d:02d}", 7200) for d in range(8, 15)]
+
+
+class TestWeekOverWeek:
+    """Split 14 days into this-week / last-week and compute the momentum delta."""
+
+    def test_split_weeks_partitions_by_recency(self):
+        days = [_parse_day(a) for a in PRIOR_WEEK + CURRENT_WEEK]
+        current, prior = _split_weeks(days, 7)
+        assert len(current) == 7 and len(prior) == 7
+        # current week is the most recent dates
+        assert min(d.date for d in current) == "2026-06-08"
+        assert max(d.date for d in prior) == "2026-06-07"
+
+    def test_delta_pct_positive_when_up(self):
+        stats = _aggregate_week([_parse_day(a) for a in CURRENT_WEEK])
+        stats.prev_total_seconds = 7 * 3600  # last week was half
+        assert stats.total_delta_pct == 100.0
+
+    def test_delta_none_without_prior(self):
+        stats = _aggregate_week([_parse_day(a) for a in CURRENT_WEEK])
+        assert stats.total_delta_pct is None
+
+    @patch("src.wakatime_insights.subprocess.run")
+    def test_summary_includes_momentum(self, mock_run):
+        mock_run.return_value = MagicMock(stdout=_ssh_output(CURRENT_WEEK + PRIOR_WEEK), returncode=0)
+        insights = WakaTimeInsights()
+        article = insights.get_weekly_stats()
+        assert insights.weekly_stats.total_delta_pct == 100.0
+        assert "100%" in article.summary
+        assert "up" in article.summary.lower()
