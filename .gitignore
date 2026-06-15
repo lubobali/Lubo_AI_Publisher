@@ -20,3 +20,10 @@ screenshots/
 .mypy_cache/
 htmlcov/
 .coverage
+
+# Phase 2.8 RAG — raw books are large + transient (extracted to DB, then deleted)
+books/
+*.pdf
+*.epub
+# Allow generated report PDFs that some tooling expects under docs/
+!docs/**/*.pdf
