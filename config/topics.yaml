@@ -22,9 +22,9 @@ categories:
     description: Biohacking, supplements, longevity science
     sources_key: biohacker
 
-  - name: Big Tech
-    description: Short news from FAANG / major tech companies
-    sources_key: big_tech
+  - name: Building in Public
+    description: Lubo's real coding week — hours, top languages, AI usage, week-over-week momentum. Honest building-in-public stats from WakaTime.
+    sources_key: wakatime
 
   - name: My Agent Build
     description: What Lubo built this week — real commits, real code, technical deep dive

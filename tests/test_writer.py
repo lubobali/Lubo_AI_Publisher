@@ -269,6 +269,17 @@ class TestBuildUserPrompt:
         assert "Multi-model orchestration" not in prompt
         assert "ONLY use features from this list" not in prompt
 
+    def test_building_in_public_prompt_includes_stats_rules(self):
+        """Building in Public posts get WakaTime-stats build-in-public instructions."""
+        prompt = build_user_prompt(
+            topic_name="Building in Public",
+            topic_description="Lubo's real coding week",
+            articles=SAMPLE_ARTICLES,
+        )
+        assert "BUILDING IN PUBLIC" in prompt
+        assert "EXACT numbers" in prompt
+        assert "WakaTime" in prompt
+
     def test_my_agent_build_includes_topic_specific_rules(self):
         """My Agent Build has its own topic-specific rules in voice_rules.yaml."""
         rules = load_voice_rules()

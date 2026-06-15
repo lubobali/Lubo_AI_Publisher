@@ -87,6 +87,17 @@ def db_session(test_engine):
     session.close()
 
 
+@pytest.fixture(autouse=True)
+def _default_topic():
+    """Pin the daily topic to a scraper-based category so pipeline tracing tests are
+    deterministic regardless of which category the real rotation lands on for a date."""
+    with patch(
+        "src.scheduler.get_todays_topic",
+        return_value={"name": "AI News", "sources_key": "ai_news", "description": "test"},
+    ):
+        yield
+
+
 def _make_articles():
     return [
         ScrapedArticle(

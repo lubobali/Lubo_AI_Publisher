@@ -171,6 +171,28 @@ def build_user_prompt(
             "net lines, and file count from the summary. Everything else must be described in words, not numbers."
         )
 
+    # Building-in-public weekly stats — grounded in real WakaTime numbers
+    if topic_key == "building_in_public":
+        prompt_parts.append(
+            "\nThis is a BUILDING IN PUBLIC post about Lubos real coding week. "
+            "The summary below has REAL stats from his WakaTime tracker.\n\n"
+            "RULES:\n"
+            "- Open with YOUR reaction to the week, not the raw numbers\n"
+            "- Use the EXACT numbers from the summary (hours, percentages, sessions, tokens, cost)\n"
+            "- Lead with the most striking specific number — people love specifics\n"
+            "- Be honest: heavy week or light week, say it straight\n"
+            "- Always say 'I', never 'we' — Lubo is solo\n"
+            "- This is about building WITH AI coding agents — own that angle, its the edge\n"
+            "- NO hype, NO ad copy, NO 'grind' or 'blood and sweat' cliches\n\n"
+            "FORMATTING (LinkedIn readability):\n"
+            "- BLANK LINES between paragraphs\n"
+            "- Stats get their own short lines\n"
+            "- The closing reflection/question gets its own paragraph\n\n"
+            "ANTI-HALLUCINATION:\n"
+            "- The ONLY numbers allowed are the ones in the WakaTime summary above\n"
+            "- Do NOT invent metrics, percentages, comparisons, or costs not in the data"
+        )
+
     # Add scraped articles as context
     if articles:
         prompt_parts.append("\nHere are today's top articles for inspiration:")

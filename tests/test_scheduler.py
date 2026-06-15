@@ -33,6 +33,20 @@ def db_session(test_engine):
     session.close()
 
 
+@pytest.fixture(autouse=True)
+def _default_topic():
+    """Pin the daily topic to a scraper-based category so pipeline-flow tests are
+    deterministic regardless of which category the real rotation lands on for a
+    given date. Tests exercising git/wakatime/my_agent patch get_todays_topic
+    themselves inside their own `with`, which takes precedence over this default.
+    """
+    with patch(
+        "src.scheduler.get_todays_topic",
+        return_value={"name": "AI News", "sources_key": "ai_news", "description": "test"},
+    ):
+        yield
+
+
 def _make_articles():
     return [
         ScrapedArticle(
@@ -347,6 +361,123 @@ class TestGitPipeline:
 
         assert result.success is False
         assert "git log" in result.error.lower() or "commit" in result.error.lower()
+
+
+def _waka_article():
+    return ScrapedArticle(
+        title="Building in public: 58h 33m coded this week, mostly Python",
+        url="https://wakatime.com/dashboard",
+        summary="MY CODING WEEK (2026-06-07 to 2026-06-13):\nTotal time coding: 58h 33m",
+        source="wakatime:lubot",
+        published_at=None,
+        source_priority=0,
+    )
+
+
+class TestWakatimePipeline:
+    """wakatime category uses WakaTimeInsights instead of the web scraper (Phase 2.75 / 15o)."""
+
+    @pytest.mark.asyncio
+    async def test_wakatime_uses_insights(self, db_session):
+        """Pipeline uses WakaTimeInsights for the wakatime category, not scrape_topic."""
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "Building in Public", "sources_key": "wakatime", "description": "test"},
+            ),
+            patch.object(Pipeline, "_get_wakatime_article", return_value=_waka_article()) as mock_waka,
+            patch("src.scheduler.scrape_topic", new_callable=AsyncMock) as mock_scrape,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()),
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/g.png")),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
+
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 14))
+
+        assert result.success is True
+        mock_waka.assert_called_once()
+        mock_scrape.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_wakatime_fails_gracefully(self, db_session):
+        """Returns failure when no WakaTime archives are found."""
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "Building in Public", "sources_key": "wakatime", "description": "test"},
+            ),
+            patch.object(Pipeline, "_get_wakatime_article", return_value=None),
+        ):
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 14))
+
+        assert result.success is False
+        assert "wakatime" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_wakatime_does_not_screenshot_login_url(self, db_session):
+        """The dashboard URL is login-walled — never screenshot it; fall back to a generated image."""
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "Building in Public", "sources_key": "wakatime", "description": "test"},
+            ),
+            patch.object(Pipeline, "_get_wakatime_article", return_value=_waka_article()),
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()),
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock) as mock_shot,
+            patch(
+                "src.scheduler.generate_image", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/g.png")
+            ) as mock_gen,
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
+
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 14))
+
+        assert result.success is True
+        mock_shot.assert_not_called()  # must NOT hit the login-walled URL
+        mock_gen.assert_called_once()  # used the generated-image fallback
+
+    @pytest.mark.asyncio
+    async def test_my_agent_git_enriched_with_wakatime(self, db_session):
+        """Build-log post also feeds this week's WakaTime stats to the writer (both articles)."""
+        git_article = ScrapedArticle(
+            title="Add stock fundamental analysis",
+            url="https://git.lubot.ai/lubot/services-agent-api",
+            summary="Feature area: stock",
+            source="git:lubot-staging-services-agent-api",
+            published_at=None,
+            source_priority=0,
+        )
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "My Agent Build", "sources_key": "my_agent_git", "description": "test"},
+            ),
+            patch.object(Pipeline, "_get_git_article", return_value=git_article),
+            patch("src.scheduler.WakaTimeInsights") as mock_waka_cls,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()) as mock_write,
+            patch("src.scheduler.take_git_screenshot", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/g.png")),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_waka_cls.return_value.get_weekly_stats.return_value = _waka_article()
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
+
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 14))
+
+        assert result.success is True
+        sources = {a.source for a in mock_write.call_args.kwargs["articles"]}
+        assert "wakatime:lubot" in sources  # enriched with coding stats
+        assert any(s.startswith("git:") for s in sources)  # plus the real commit
 
 
 class TestMyAgentScreenshots:

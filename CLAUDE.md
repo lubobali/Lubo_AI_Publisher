@@ -144,7 +144,7 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 ### Phase 2.75: WakaTime Insights — Building-in-Public Stats (before RAG)
 15m. WakaTime Insights module — SSH read daily archives, parse, return ScrapedArticle (mirror git_insights.py) ✅
 15n. Weekly aggregation + metrics — WeeklyStats dataclass, week-over-week momentum delta, include_costs toggle ✅
-15o. Topic/rotation wiring — building-in-public slot, voice rules, feed WeeklyStats to writer
+15o. Topic/rotation wiring — Building in Public slot (replaced Big Tech), scheduler dispatch, enrich my_agent_git, writer block ✅
 15p. Screenshot (optional) — terminal/stat-card image of the week, reuse take_git_screenshot()
 ### Phase 2.8: Knowledge Base + RAG
 15c. Knowledge Base — books→chunks→vectors→RAG in writer
@@ -157,8 +157,11 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 17. Deploy + First Real Post
 
 ## Current Status (Jun 15, 2026)
-- **478 tests**, all green, lint clean
-- **WakaTime Insights (Phase 2.75) module LIVE** — src/wakatime_insights.py: SSH read 2 weeks of daily archives → WeeklyStats → ScrapedArticle. Verified on real data (58h/wk, Python 55%, LuBot 99%, AI tokens/cost, "up 345% vs last week" momentum). include_costs toggle (costs posted publicly). 15m+15n DONE. Still TODO: rotation wiring (15o), screenshot (15p)
+- **483 tests**, all green, lint clean
+- **WakaTime Insights (Phase 2.75) WIRED INTO PIPELINE** — src/wakatime_insights.py: SSH read 2 weeks of daily archives → WeeklyStats → ScrapedArticle. Verified on real data (58h/wk, Python 55%, LuBot 99%, AI tokens/cost, "up 345% vs last week" momentum). include_costs toggle (costs posted publicly). 15m+15n+15o DONE.
+- **Rotation change (Option A)**: "Big Tech" slot REPLACED by "Building in Public" (sources_key: wakatime). Scheduler dispatches wakatime → WakaTimeInsights (like my_agent_git → GitInsights). my_agent_git posts ENRICHED with WakaTime stats (passed as 2nd article to writer). Writer has building_in_public prompt block (exact numbers, anti-hallucination). wakatime image style added; dashboard URL never screenshotted (login-walled) → generated-image fallback until 15p.
+- **Test note**: added autouse _default_topic fixture in test_scheduler.py + test_observability.py — pins get_todays_topic to ai_news so pipeline-flow tests don't depend on which category the rotation lands on (removed pre-existing hidden coupling).
+- **Still TODO Phase 2.75**: stat-card screenshot (15p)
 - **Git Insights LIVE** — SSH to staging, parse commits, feed real work to writer
 - **Langfuse observability LIVE** — 7 pipeline stages traced, 5 quality scores, prompt versioning
 - **Model**: nvidia/llama-3.1-nemotron-ultra-253b-v1 (with reasoning_content fallback)

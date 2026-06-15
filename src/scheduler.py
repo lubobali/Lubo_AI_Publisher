@@ -17,6 +17,7 @@ from src.scraper import ScrapedArticle, scrape_topic
 from src.screenshotter import take_git_screenshot, take_screenshot
 from src.self_learner import SelfLearner
 from src.topic_rotator import get_todays_topic
+from src.wakatime_insights import WakaTimeInsights
 from src.writer import WriterResult, write_post
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ class Pipeline:
     def __init__(self, session: Session):
         self.session = session
         self._git_insights: GitInsights | None = None
+        self._wakatime: WakaTimeInsights | None = None
 
     @observe()
     async def generate_post(self, target_date: date) -> PipelineResult:
@@ -49,11 +51,20 @@ class Pipeline:
         category = topic["sources_key"]
         logger.info("Topic for %s: %s (%s)", target_date, topic["name"], category)
 
-        # 2. Get content — git insights for my_agent_git, web scraper for everything else
+        # 2. Get content — git insights, wakatime stats, or web scraper depending on category
+        extra_articles: list[ScrapedArticle] = []
         if category == "my_agent_git":
             selected_article = self._get_git_article()
             if selected_article is None:
                 return PipelineResult(success=False, error="No meaningful commits found in staging git log")
+            # Enrich the build-log post with this week's real coding stats (Phase 2.75 "both")
+            waka_article = WakaTimeInsights().get_weekly_stats()
+            if waka_article is not None:
+                extra_articles.append(waka_article)
+        elif category == "wakatime":
+            selected_article = self._get_wakatime_article()
+            if selected_article is None:
+                return PipelineResult(success=False, error="No WakaTime archives found for weekly stats")
         else:
             articles = await scrape_topic(category)
             if not articles:
@@ -81,7 +92,7 @@ class Pipeline:
         writer_result: WriterResult | None = await write_post(
             topic_name=topic["name"],
             topic_description=topic.get("description", ""),
-            articles=[selected_article],
+            articles=[selected_article, *extra_articles],
             performance_context=feedback,
         )
 
@@ -116,6 +127,10 @@ class Pipeline:
             if screenshot:
                 image_path = screenshot.path
                 logger.info("Screenshot from staging: %s", image_path)
+        elif category == "wakatime":
+            # Dashboard URL is login-walled; the stat-card screenshot lands in 15p.
+            # For now fall through to the generated-image fallback below.
+            pass
         elif selected_article.url:
             screenshot = await take_screenshot(selected_article.url)
             if screenshot:
@@ -160,6 +175,11 @@ class Pipeline:
         """Fetch latest feature from staging git log."""
         self._git_insights = GitInsights()
         return self._git_insights.get_latest_feature()
+
+    def _get_wakatime_article(self) -> ScrapedArticle | None:
+        """Fetch this week's coding stats from WakaTime archives on staging."""
+        self._wakatime = WakaTimeInsights()
+        return self._wakatime.get_weekly_stats()
 
     async def _find_non_duplicate(
         self, checker: DuplicateChecker, articles: list[ScrapedArticle], category: str
