@@ -775,9 +775,14 @@ Completely separate from LuBot. Nothing shared.
 
   --- PHASE 2.8: KNOWLEDGE BASE + RAG ---
 
-  GOAL: Ground technical posts in real book knowledge. Retrieve 2-3 relevant
-  concepts from 11 technical books and feed them to the writer so posts sound
-  like someone who actually reads, not someone summarizing headlines.
+  GOAL: Ground technical posts in real book knowledge so they show SENIOR-LEVEL
+  judgment — not so they summarize books.
+
+  NORTH STAR (why this exists): The audience is recruiters, hiring managers, and
+  CEOs. Every grounded post must make them think "this is a senior DE/AI engineer
+  worth $300k/yr" — someone with real opinions and a biohacking edge, not someone
+  reciting a textbook. The book is INVISIBLE sharpening; Lubos voice + experience
+  is the post. RAG is a means to seniority-signal, not the content itself.
 
   ============================================================================
   VERIFIED FACTS (Jun 15, 2026 — before any code)
@@ -818,6 +823,30 @@ Completely separate from LuBot. Nothing shared.
     show-offy tone AND removes any risk of fabricated citations.)
   - RAW PDFs: KEEP them on the server after ingest (gitignored, only 115 MB).
     Lets us re-chunk / re-embed later without re-copying from the Mac.
+
+  ============================================================================
+  VOICE & POSITIONING GUARDRAILS (this is what makes or breaks the goal)
+  ============================================================================
+  These OUTRANK the retrieval logic. A clean authentic post with NO book concept
+  beats a post stuffed with a half-relevant one. Order of priority when writing:
+    1. Lubos voice (ESL, imperfect grammar, opinionated, truthful) — see voice_rules.yaml
+    2. Insight-first: post opens with Lubos REACTION/OPINION, never a fact or a
+       book idea (existing rule — book concept must NOT become the hook)
+    3. Value to the audience (a senior takeaway they can use)
+    4. THEN — and only if it fits — the book concept as invisible background
+  - SENIOR NOT STUDENT: the concept informs Lubos OPINION; it is never the subject.
+    A senior says "I learned the hard way that X" — the experience leads, the book
+    only validates. Never paraphrase the book. Never sound like a textbook.
+  - TRUTH GUARD (non-negotiable): book knowledge = things Lubo KNOWS, never things
+    he DID. NEVER claim he built/applied/benchmarked something he didn't. If a
+    concept can only be used by inventing experience, DROP it. No fake war stories.
+  - BETTER NOTHING THAN FORCED: if retrieval is below threshold, inject nothing and
+    write the normal authentic post. Silence > generic.
+  - NO BOOK NAMES (Lubo's call): never cite/title/author. Removes show-off tone AND
+    kills fabricated-citation risk.
+  - ai_news is the WEAKEST fit of the 3 grounded categories (news is current, books
+    are foundational). Rely on the threshold; if E2E (15c-8) shows forced grounding
+    on news, drop ai_news and keep only tech_talk + my_agent_git.
 
   ============================================================================
   TABLE: publisher_knowledge_base (new, in models.py + migration in db.py)
@@ -872,11 +901,18 @@ Completely separate from LuBot. Nothing shared.
     - Scheduler: for category in {tech_talk, my_agent_git, ai_news}, build the
       query (topic name + selected article title/summary), KnowledgeBase.search(),
       pass concepts to write_post(book_concepts=[...])
-    - Writer: inject concepts block — "Background knowledge you can draw on
-      (your own words, DO NOT name or cite any book):" + the chunk texts.
-      Anti-hallucination: use only as background, never quote/attribute.
-    - TEST: build_user_prompt includes concepts for the 3 categories, EXCLUDES
-      them for others, and the prompt forbids naming the book.
+    - Writer: inject concepts as the LOWEST-priority input, with a hard guardrail
+      block (wording per VOICE & POSITIONING GUARDRAILS above):
+        "Background you happen to know — use ONLY to sharpen your own opinion, in
+         your own words. This is NOT the topic. RULES: do NOT name or cite any
+         book/author. Do NOT paraphrase or summarize it. Do NOT claim you built or
+         applied it unless you actually did. Open with YOUR reaction, not this.
+         If it does not fit naturally, ignore it completely."
+    - Voice rules + insight-first STILL run and take precedence; concept never
+      changes the hook→take→story→question structure.
+    - TEST: build_user_prompt includes concepts for the 3 categories, EXCLUDES them
+      for the other 4; the prompt forbids naming the book, forbids claiming false
+      experience, and tells the model it may ignore the concept.
 
   15c-7: INGEST SCRIPT (scripts/ingest_books.py) — one-time, re-runnable
     - Loop books/*.pdf -> extract -> chunk -> embed (batched) -> store
@@ -884,10 +920,15 @@ Completely separate from LuBot. Nothing shared.
     - Run on server, verify row counts + a sample search manually (like screenshots)
     - KEEP raw PDFs afterwards (do NOT delete)
 
-  15c-8: LANGFUSE + E2E
+  15c-8: LANGFUSE + E2E (voice-first acceptance — the real test)
     - Trace KnowledgeBase.search() as a span; score retrieval (top score, #hits)
-    - Generate one real post per grounded category, eyeball that book knowledge
-      shows up WITHOUT naming the book
+    - Generate one real post per grounded category. ACCEPTANCE BAR (in order):
+        1. Would a hiring manager read it and think "senior, hire-worthy"?
+        2. Does it sound like LUBO (ESL, opinion, truth) — not a textbook, not generic AI?
+        3. Is everything TRUE (no invented experience/benchmarks)?
+        4. Book made it sharper but stayed invisible (no name, no summary)?
+      If it reads like a book summary or generic AI -> RAISE threshold / inject less,
+      or drop the weakest category (ai_news). Voice loses to nothing.
 
   ============================================================================
   TEST STRATEGY (CI-safe)
