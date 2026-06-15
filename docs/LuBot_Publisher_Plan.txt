@@ -767,9 +767,11 @@ Completely separate from LuBot. Nothing shared.
     - Terminal/stat-card style image of the week (hours, top langs, AI sessions)
     - Reuse the take_git_screenshot() HTML-template + Playwright approach, no new deps
 
-  OPEN DECISIONS (confirm before coding):
-    - Post the AI cost numbers ($/day, tokens) publicly, or keep cost private?
-    - Enrich existing posts, dedicated weekly stats post, or both?
+  DECISIONS (confirmed Jun 15, 2026):
+    - AI cost numbers ($/day, tokens) → POST PUBLICLY. People love numbers.
+      include_costs defaults True. (Privacy toggle still built for flexibility.)
+    - Post usage → BOTH: enrich My Agent Build posts AND a dedicated weekly
+      "building in public" stats post.
 
   --- PHASE 2.8: KNOWLEDGE BASE + RAG ---
 

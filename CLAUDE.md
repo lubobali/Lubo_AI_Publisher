@@ -142,8 +142,8 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 15h. Staging screenshots — screenshot staging.lubot.ai for my_agent + my_agent_git ✅
 15i. Writer context — git commits fed to writer, anti-hallucination rules, build log prompts ✅
 ### Phase 2.75: WakaTime Insights — Building-in-Public Stats (before RAG)
-15m. WakaTime Insights module — SSH read daily archives, parse, return ScrapedArticle (mirror git_insights.py)
-15n. Weekly aggregation + metrics — WeeklyStats dataclass, week-over-week delta, include_costs privacy toggle (pure math, test-first)
+15m. WakaTime Insights module — SSH read daily archives, parse, return ScrapedArticle (mirror git_insights.py) ✅
+15n. Weekly aggregation + metrics — WeeklyStats dataclass + include_costs toggle ✅ (week-over-week delta still pending)
 15o. Topic/rotation wiring — building-in-public slot, voice rules, feed WeeklyStats to writer
 15p. Screenshot (optional) — terminal/stat-card image of the week, reuse take_git_screenshot()
 ### Phase 2.8: Knowledge Base + RAG
@@ -156,8 +156,9 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 16. React Dashboard (publisher.lubobali.com — React/Vite/Tailwind/shadcn, mobile-first)
 17. Deploy + First Real Post
 
-## Current Status (Mar 24, 2026)
-- **453 tests**, all green, lint clean
+## Current Status (Jun 15, 2026)
+- **474 tests**, all green, lint clean
+- **WakaTime Insights (Phase 2.75) module LIVE** — src/wakatime_insights.py: SSH read daily archives → WeeklyStats → ScrapedArticle. Verified on real data (58h/wk, languages, projects, AI tokens/cost). include_costs toggle (costs posted publicly). Still TODO: week-over-week delta (15n), rotation wiring (15o), screenshot (15p)
 - **Git Insights LIVE** — SSH to staging, parse commits, feed real work to writer
 - **Langfuse observability LIVE** — 7 pipeline stages traced, 5 quality scores, prompt versioning
 - **Model**: nvidia/llama-3.1-nemotron-ultra-253b-v1 (with reasoning_content fallback)
