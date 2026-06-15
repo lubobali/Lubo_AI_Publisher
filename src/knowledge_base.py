@@ -14,6 +14,9 @@ from pathlib import Path
 
 import httpx
 from pypdf import PdfReader
+from sqlalchemy.orm import Session
+
+from src.models import PublisherKnowledgeBase
 
 logger = logging.getLogger(__name__)
 
@@ -229,3 +232,39 @@ def embed_texts(
 def embed_query(text: str, *, api_key: str | None = None) -> list[float]:
     """Embed a single search query (input_type='query')."""
     return embed_texts([text], input_type="query", api_key=api_key)[0]
+
+
+# ---------------------------------------------------------------------------
+# Storage (Phase 2.8 / 15c-4)
+# ---------------------------------------------------------------------------
+
+
+def store_chunks(
+    session: Session,
+    book_title: str,
+    book_slug: str,
+    chunks: list[str],
+    embeddings: list[list[float]],
+) -> int:
+    """Replace all rows for book_slug with these chunks + embeddings (idempotent re-ingest).
+
+    Caller commits. Returns the number of chunks stored.
+    """
+    if len(chunks) != len(embeddings):
+        raise ValueError(f"chunks ({len(chunks)}) and embeddings ({len(embeddings)}) length mismatch")
+
+    session.query(PublisherKnowledgeBase).filter_by(book_slug=book_slug).delete(synchronize_session=False)
+    for idx, (chunk, emb) in enumerate(zip(chunks, embeddings, strict=True)):
+        session.add(
+            PublisherKnowledgeBase(
+                book_title=book_title,
+                book_slug=book_slug,
+                chunk_index=idx,
+                text=chunk,
+                word_count=len(chunk.split()),
+                embedding=emb,
+            )
+        )
+    session.flush()
+    logger.info("Stored %d chunks for %s", len(chunks), book_slug)
+    return len(chunks)

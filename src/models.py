@@ -1,4 +1,4 @@
-"""SQLAlchemy models for LuBot Publisher — 5 tables."""
+"""SQLAlchemy models for LuBot Publisher — 6 tables."""
 
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -86,3 +86,18 @@ class PublisherScrapedUrl(Base):
     url = Column(Text, unique=True, nullable=False)
     scraped_at = Column(DateTime, server_default=func.now())
     used = Column(Boolean, default=False)
+
+
+class PublisherKnowledgeBase(Base):
+    """Book chunks + embeddings for RAG grounding (Phase 2.8)."""
+
+    __tablename__ = "publisher_knowledge_base"
+
+    id = Column(Integer, primary_key=True)
+    book_title = Column(String(300), nullable=False)
+    book_slug = Column(String(200), nullable=False, index=True)  # filename stem, for idempotent re-ingest
+    chunk_index = Column(Integer, nullable=False)
+    text = Column(Text, nullable=False)
+    word_count = Column(Integer, nullable=False, default=0)
+    embedding = Column(JSON, nullable=False)  # list[float], 2048-dim, L2-normalized
+    created_at = Column(DateTime, server_default=func.now())

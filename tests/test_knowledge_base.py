@@ -4,7 +4,12 @@ pypdf is MOCKED at the boundary — tests never read books/ (gitignored, absent 
 clean_text and repeated-line dropping are pure logic, tested on plain strings.
 """
 
+import os
 from unittest.mock import MagicMock, patch
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from src.knowledge_base import (
     _drop_repeated_lines,
@@ -13,7 +18,32 @@ from src.knowledge_base import (
     embed_query,
     embed_texts,
     extract_book_text,
+    store_chunks,
 )
+from src.models import Base, PublisherKnowledgeBase
+
+TEST_DB_URL = os.getenv("DATABASE_URL", "postgresql://publisher:publisher_dev@localhost:5433/publisher")
+
+
+@pytest.fixture(scope="module")
+def test_engine():
+    engine = create_engine(TEST_DB_URL)
+    Base.metadata.create_all(bind=engine)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture()
+def db_session(test_engine):
+    session = sessionmaker(bind=test_engine)()
+    # clean slate so tests don't see each other's rows
+    session.query(PublisherKnowledgeBase).delete()
+    session.commit()
+    yield session
+    session.rollback()
+    session.query(PublisherKnowledgeBase).delete()
+    session.commit()
+    session.close()
 
 
 def _sentences_text(n):
@@ -232,3 +262,50 @@ class TestEmbedding:
             raise AssertionError("expected RuntimeError")
         except RuntimeError:
             pass
+
+
+class TestStoreChunks:
+    def test_inserts_rows(self, db_session):
+        n = store_chunks(
+            db_session,
+            "Designing Data-Intensive Applications",
+            "ddia",
+            ["chunk a", "chunk b two"],
+            [[1.0, 0.0], [0.0, 1.0]],
+        )
+        db_session.commit()
+        assert n == 2
+        rows = (
+            db_session.query(PublisherKnowledgeBase)
+            .filter_by(book_slug="ddia")
+            .order_by(PublisherKnowledgeBase.chunk_index)
+            .all()
+        )
+        assert [r.chunk_index for r in rows] == [0, 1]
+        assert rows[0].book_title == "Designing Data-Intensive Applications"
+        assert rows[1].text == "chunk b two"
+        assert rows[1].word_count == 3
+        assert rows[0].embedding == [1.0, 0.0]  # JSON round-trips
+
+    def test_reingest_replaces_old_rows(self, db_session):
+        store_chunks(db_session, "DDIA", "ddia", ["a", "b", "c"], [[1.0]] * 3)
+        db_session.commit()
+        store_chunks(db_session, "DDIA", "ddia", ["x", "y"], [[2.0]] * 2)
+        db_session.commit()
+        rows = db_session.query(PublisherKnowledgeBase).filter_by(book_slug="ddia").all()
+        assert len(rows) == 2
+        assert {r.text for r in rows} == {"x", "y"}
+
+    def test_isolates_by_slug(self, db_session):
+        store_chunks(db_session, "Book A", "a", ["a1", "a2"], [[1.0]] * 2)
+        store_chunks(db_session, "Book B", "b", ["b1", "b2", "b3"], [[1.0]] * 3)
+        db_session.commit()
+        # re-ingesting B must not touch A
+        store_chunks(db_session, "Book B", "b", ["b1new"], [[1.0]])
+        db_session.commit()
+        assert db_session.query(PublisherKnowledgeBase).filter_by(book_slug="a").count() == 2
+        assert db_session.query(PublisherKnowledgeBase).filter_by(book_slug="b").count() == 1
+
+    def test_length_mismatch_raises(self, db_session):
+        with pytest.raises(ValueError, match="mismatch"):
+            store_chunks(db_session, "DDIA", "ddia", ["a", "b"], [[1.0]])
