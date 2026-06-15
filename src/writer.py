@@ -1,4 +1,4 @@
-"""AI post writer — builds prompts and calls NVIDIA Nemotron Ultra 253B."""
+"""AI post writer — builds prompts and calls an NVIDIA Nemotron model."""
 
 import hashlib
 import json
@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 CONFIG_DIR = Path(__file__).parent.parent / "config"
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
-NVIDIA_MODEL = "nvidia/llama-3.1-nemotron-ultra-253b-v1"
+# Env-overridable so vendor rotations are a 1-line .env change (the old 253B was
+# retired ~May 6, 2026). Default is a current, available Nemotron model.
+NVIDIA_MODEL = os.getenv("NVIDIA_LLM_MODEL", "nvidia/llama-3.3-nemotron-super-49b-v1")
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
 
