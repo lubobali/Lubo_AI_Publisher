@@ -775,22 +775,128 @@ Completely separate from LuBot. Nothing shared.
 
   --- PHASE 2.8: KNOWLEDGE BASE + RAG ---
 
-  Step 15c: KNOWLEDGE BASE (Books → Vectors → RAG) — BOOKS READY, BUILD NEXT
-    - 11 books downloaded (Mar 24): DDIA, Fundamentals of DE, Metadata Mgmt,
-      Python Guide (Harrison), Effective Testing (Harrison), ML Yearning (Ng),
-      Dive into Deep Learning (d2l.ai), Speech & Language Processing 3e (Jurafsky),
-      Foundations of LLMs (Xiao 2025), Data Engineering Cookbook (Kretz),
-      Architecture of Open Source Apps Vol 1+2
-    - Mac: /Users/lu/Library/Mobile Documents/com~apple~CloudDocs/Data/
-    - Server: copy to /srv/lubot-publisher/books/ → process → delete raw PDFs
-    - PyPDF2 extracts full text from PDFs
-    - Chunk into ~500 word sections (one concept per chunk)
-    - Generate embeddings via NVIDIA NIM API (same as dedup)
-    - Store in PostgreSQL: publisher_knowledge_base table (chunk text + vector)
-    - Writer queries vector DB for chunks relevant to today's topic
-    - Injects best 2-3 concepts into prompt as "things Lubo learned/applied"
-    - DE Work category mixes fresh articles + book concepts
-    - Makes posts more authoritative ("just applied this DDIA pattern...")
+  GOAL: Ground technical posts in real book knowledge. Retrieve 2-3 relevant
+  concepts from 11 technical books and feed them to the writer so posts sound
+  like someone who actually reads, not someone summarizing headlines.
+
+  ============================================================================
+  VERIFIED FACTS (Jun 15, 2026 — before any code)
+  ============================================================================
+  - 11 PDFs on server at /srv/lubot-publisher/books/ (~115 MB, ~4,900 pages)
+  - ALL 11 valid + have extractable TEXT layers (no OCR needed) — pypdf works
+    (metadata book has figure pages but real text confirmed across the book)
+  - books/ is gitignored (raw PDFs + *.pdf + *.epub) — never committed, never in CI
+
+  ============================================================================
+  LOCKED DECISIONS
+  ============================================================================
+  - EMBEDDING MODEL: nvidia/llama-nemotron-embed-vl-1b-v2 (NVIDIA NeMo Retriever
+    multimodal VLM). 2048-dim, max 8192 tokens. VERIFIED against NVIDIA live docs
+    (build.nvidia.com modelcard + docs.api.nvidia.com NIM reference). This is the
+    SAME model Lubo shipped in lubot-staging PDF RAG v2 (385 tests) — proven,
+    NVIDIA-recommended pattern. Bigger token window than dedup's nv-embedqa-e5-v5
+    (1024-dim/512-tok) so our chunks embed with zero truncation.
+    - Endpoint: POST https://integrate.api.nvidia.com/v1/embeddings
+    - Payload: {input:[...], model, input_type, modality:"text"}
+    - input_type="passage" for book chunks, "query" for the search query
+    - modality ALWAYS "text" (publisher is text-only — no image embedding)
+    - L2-normalize, float32. Model ID via env NVIDIA_VLM_EMBED_MODEL (vendor
+      rotations = 1-line .env change). Auth via existing NVIDIA_API_KEY.
+    - REPLICATE staging's pattern (tools/nvidia_embeddings.py MultimodalEmbedder),
+      do NOT import it — publisher is a separate repo/DB/container.
+  - CHUNKING: flat ~400-word chunks, ~50-word overlap, split on paragraph/sentence
+    boundaries (never mid-sentence). NOT staging's parent-child — simpler, and
+    grounding a post needs less than full document Q&A.
+  - STORAGE: PostgreSQL table publisher_knowledge_base (no pgvector). Embedding
+    stored as JSON. At query time load all rows once into an in-memory numpy
+    matrix (module cache) → one matrix-vector dot product. No FAISS.
+  - WHICH POSTS GET BOOK GROUNDING (Lubo, Jun 15): ONLY the technical categories —
+    tech_talk, my_agent_git (My Agent Build), ai_news. NOT biohacker, ai_gadgets,
+    my_agent, or wakatime (books do not help those).
+  - BOOK CITATIONS (Lubo, Jun 15): NEVER name the book in a post. Use the idea in
+    Lubo's own words. No "as DDIA says", no titles, no author names. (Avoids
+    show-offy tone AND removes any risk of fabricated citations.)
+  - RAW PDFs: KEEP them on the server after ingest (gitignored, only 115 MB).
+    Lets us re-chunk / re-embed later without re-copying from the Mac.
+
+  ============================================================================
+  TABLE: publisher_knowledge_base (new, in models.py + migration in db.py)
+  ============================================================================
+    id              SERIAL PK
+    book_title      VARCHAR   (clean title, e.g. "Designing Data-Intensive Applications")
+    book_slug       VARCHAR   (source filename stem, for dedup/re-ingest)
+    chunk_index     INTEGER   (order within the book)
+    text            TEXT      (the ~400-word chunk)
+    word_count      INTEGER
+    embedding       JSON      (list[float], 2048 dims, L2-normalized)
+    created_at      TIMESTAMP
+    (index on book_slug for idempotent re-ingest)
+
+  ============================================================================
+  SUBSTEPS (RECR — test first, one at a time)
+  ============================================================================
+  15c-1: PDF EXTRACTION (src/knowledge_base.py)
+    - extract_book_text(path) -> str : pypdf, concat page text, skip empty pages
+    - clean_text(): collapse whitespace, drop page numbers / repeated headers/footers
+    - Add pypdf to requirements.txt (CI rule)
+    - TEST: mock pypdf.PdfReader (fake pages) — assert concat + empty-page skip.
+      Do NOT depend on books/ (absent in CI).
+
+  15c-2: CHUNKER (pure, fully tested)
+    - chunk_text(text, target_words=400, overlap_words=50) -> list[str]
+    - Split on paragraph boundaries first, pack to ~target, carry overlap, never
+      split mid-sentence. TEST with plain strings: size bounds, overlap present,
+      no empty chunks, short text -> single chunk.
+
+  15c-3: EMBEDDING CLIENT (src/knowledge_base.py)
+    - embed_texts(texts, input_type) -> list[list[float]] : NVIDIA NIM POST,
+      batch 50, modality="text", truncate END, L2-normalize
+    - embed_query(text) -> list[float] (input_type="query")
+    - TEST: mock the HTTP POST — assert payload (model/input_type/modality),
+      batching, normalization. NO real API in tests.
+
+  15c-4: DB MODEL + MIGRATION
+    - PublisherKnowledgeBase model in models.py; migration in db.py
+    - store_chunks(book_title, book_slug, chunks, embeddings) — delete existing
+      rows for that slug first (idempotent re-ingest)
+    - TEST: real DB (per CLAUDE.md — DB ops stay real), insert + read back + re-ingest
+
+  15c-5: RETRIEVAL (src/knowledge_base.py)
+    - KnowledgeBase.search(query, top_k=3, min_score=THRESHOLD) -> list[Chunk]
+    - Load all embeddings into a cached numpy matrix once; cosine; filter by
+      min_score so irrelevant chunks are NEVER injected; return top_k
+    - Pick THRESHOLD empirically after ingest (start ~0.35, tune on real queries)
+    - TEST: seed in-memory chunks with known vectors, assert ranking + threshold cutoff
+
+  15c-6: WRITER WIRING (src/writer.py + scheduler.py)
+    - Scheduler: for category in {tech_talk, my_agent_git, ai_news}, build the
+      query (topic name + selected article title/summary), KnowledgeBase.search(),
+      pass concepts to write_post(book_concepts=[...])
+    - Writer: inject concepts block — "Background knowledge you can draw on
+      (your own words, DO NOT name or cite any book):" + the chunk texts.
+      Anti-hallucination: use only as background, never quote/attribute.
+    - TEST: build_user_prompt includes concepts for the 3 categories, EXCLUDES
+      them for others, and the prompt forbids naming the book.
+
+  15c-7: INGEST SCRIPT (scripts/ingest_books.py) — one-time, re-runnable
+    - Loop books/*.pdf -> extract -> chunk -> embed (batched) -> store
+    - Idempotent (clears a book's rows before re-insert), logs chunk counts
+    - Run on server, verify row counts + a sample search manually (like screenshots)
+    - KEEP raw PDFs afterwards (do NOT delete)
+
+  15c-8: LANGFUSE + E2E
+    - Trace KnowledgeBase.search() as a span; score retrieval (top score, #hits)
+    - Generate one real post per grounded category, eyeball that book knowledge
+      shows up WITHOUT naming the book
+
+  ============================================================================
+  TEST STRATEGY (CI-safe)
+  ============================================================================
+  - MOCK: pypdf reader, NVIDIA embedding HTTP calls (external boundaries)
+  - REAL: chunking, cosine/ranking, threshold, DB ops, prompt assembly
+  - CI NEVER reads books/ (gitignored). Real-book ingest is a manual server step,
+    verified by hand — same approach as the screenshot verification in 2.75.
+  - New deps in requirements.txt: pypdf (+ numpy if not already transitive)
 
   Step 15d: FULL E2E VALIDATION — IN PROGRESS (Mar 22-23, 2026)
     - 371 tests green, lint clean, CI green (commit b5ccf99)

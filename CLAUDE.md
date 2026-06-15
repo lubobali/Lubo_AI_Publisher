@@ -146,8 +146,16 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 15n. Weekly aggregation + metrics — WeeklyStats dataclass, week-over-week momentum delta, include_costs toggle ✅
 15o. Topic/rotation wiring — Building in Public slot (replaced Big Tech), scheduler dispatch, enrich my_agent_git, writer block ✅
 15p. Stat-card screenshot — take_wakatime_screenshot() renders a building-in-public PNG (hours, language bars, projects, AI stats, cost, momentum badge); wired into scheduler ✅ — PHASE 2.75 COMPLETE
-### Phase 2.8: Knowledge Base + RAG
-15c. Knowledge Base — books→chunks→vectors→RAG in writer
+### Phase 2.8: Knowledge Base + RAG (plan finalized Jun 15 — full detail in docs/LuBot_Publisher_Plan.txt)
+Model: nvidia/llama-nemotron-embed-vl-1b-v2 (2048-dim, 8192-tok, VERIFIED vs NVIDIA docs; same as lubot staging PDF RAG v2). Flat ~400-word chunks. JSON embeddings + numpy cosine (no pgvector/FAISS). Grounding ONLY tech_talk/my_agent_git/ai_news. NEVER name the book in posts. Keep raw PDFs.
+15c-1. PDF extraction (src/knowledge_base.py, pypdf) — text per book, skip empty pages
+15c-2. Chunker — ~400-word chunks, 50 overlap, sentence-boundary aware (pure, tested)
+15c-3. Embedding client — NVIDIA NIM POST, modality=text, passage/query, L2-normalized
+15c-4. DB model + migration — publisher_knowledge_base table, idempotent store
+15c-5. Retrieval — cached numpy matrix, cosine top-k, min-score threshold
+15c-6. Writer wiring — inject 2-3 concepts for the 3 techie categories, never cite book
+15c-7. Ingest script — run on 11 books, verify manually, keep PDFs
+15c-8. Langfuse trace + E2E eyeball
 ### Phase 2.9: Post Quality Tuning
 15j. Prompt tuning with Langfuse data — compare prompt_version scores, target compliance > 0.9
 15k. Fix known issues — reaction vs facts, apostrophe boundary bug, category-specific rules, Cloudflare captcha detection in screenshotter, screenshot_url leak in plain-text parser, hashtag duplication in plain-text fallback
