@@ -479,6 +479,56 @@ class TestWakatimePipeline:
         assert "wakatime:lubot" in sources  # enriched with coding stats
         assert any(s.startswith("git:") for s in sources)  # plus the real commit
 
+    @pytest.mark.asyncio
+    async def test_wakatime_renders_stat_card(self, db_session):
+        """wakatime category renders its own stat-card screenshot, not the login URL."""
+        from src.wakatime_insights import WeeklyStats
+
+        stats = WeeklyStats(
+            days_active=7,
+            total_seconds=210600,
+            by_language={"Python": 116340},
+            by_project={"LuBot": 207840},
+            ai_sessions=9,
+            ai_prompt_events=580,
+            ai_input_tokens=924597335,
+            ai_cost=2650.57,
+            start_date="2026-06-07",
+            end_date="2026-06-13",
+        )
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "Building in Public", "sources_key": "wakatime", "description": "test"},
+            ),
+            patch("src.scheduler.WakaTimeInsights") as mock_waka_cls,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()),
+            patch(
+                "src.scheduler.take_wakatime_screenshot",
+                new_callable=AsyncMock,
+                return_value=MagicMock(path="/tmp/wakatime-card.png"),
+            ) as mock_card,
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock) as mock_url_shot,
+            patch("src.scheduler.generate_image", new_callable=AsyncMock) as mock_gen,
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_waka = mock_waka_cls.return_value
+            mock_waka.get_weekly_stats.return_value = _waka_article()
+            mock_waka.weekly_stats = stats
+            mock_waka.include_costs = True
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
+
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 14))
+
+        assert result.success is True
+        mock_card.assert_called_once()  # rendered the stat card
+        mock_url_shot.assert_not_called()  # never hit the login-walled URL
+        mock_gen.assert_not_called()  # no need for the AI-image fallback
+        post = db_session.query(PublisherPost).filter_by(id=result.post_id).first()
+        assert post.image_path == "/tmp/wakatime-card.png"
+
 
 class TestMyAgentScreenshots:
     """My Agent posts (both variants) should screenshot staging.lubot.ai."""

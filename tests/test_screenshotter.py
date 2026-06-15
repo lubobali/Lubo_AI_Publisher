@@ -11,9 +11,15 @@ from src.screenshotter import (
     SCREENSHOT_HEIGHT,
     SCREENSHOT_WIDTH,
     ScreenshotResult,
+    _build_wakatime_html,
     build_filename,
     take_screenshot,
+    take_wakatime_screenshot,
 )
+
+# Sample WakaTime stat-card inputs reused across tests
+_LANGS = [("Python", "32h 19m", 55.0), ("TypeScript", "15h 57m", 27.0)]
+_PROJECTS = [("LuBot", "57h 44m", 99.0)]
 
 # ---------------------------------------------------------------------------
 # ScreenshotResult dataclass
@@ -436,3 +442,167 @@ class TestTakeScreenshot:
 
     def test_min_screenshot_bytes_constant(self):
         assert MIN_SCREENSHOT_BYTES == 10_000
+
+
+# ---------------------------------------------------------------------------
+# WakaTime stat-card screenshot (Phase 2.75 / 15p)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildWakatimeHtml:
+    """Pure HTML builder for the building-in-public stat card."""
+
+    def test_includes_headline_numbers(self):
+        html = _build_wakatime_html(
+            total_time="58h 33m",
+            days_active=7,
+            languages=_LANGS,
+            projects=_PROJECTS,
+            ai_sessions=9,
+            ai_prompts=580,
+            ai_tokens=924597335,
+            ai_cost=2650.57,
+            momentum="up 345%",
+            date_range="Jun 07 – Jun 13",
+        )
+        assert "58h 33m" in html
+        assert "Python" in html and "TypeScript" in html
+        assert "LuBot" in html
+        assert "580" in html  # prompts
+        assert "Jun 07 – Jun 13" in html
+
+    def test_shows_cost_when_provided(self):
+        html = _build_wakatime_html(
+            total_time="58h 33m",
+            days_active=7,
+            languages=_LANGS,
+            projects=_PROJECTS,
+            ai_sessions=9,
+            ai_prompts=580,
+            ai_tokens=1000,
+            ai_cost=2650.57,
+            momentum="",
+            date_range="",
+        )
+        assert "$" in html
+        assert "2,65" in html  # cost rendered with a thousands separator (rounded dollars)
+
+    def test_hides_cost_when_none(self):
+        html = _build_wakatime_html(
+            total_time="58h 33m",
+            days_active=7,
+            languages=_LANGS,
+            projects=_PROJECTS,
+            ai_sessions=9,
+            ai_prompts=580,
+            ai_tokens=1000,
+            ai_cost=None,
+            momentum="",
+            date_range="",
+        )
+        assert "$" not in html
+
+    def test_momentum_shown_only_when_present(self):
+        with_m = _build_wakatime_html(
+            total_time="1h",
+            days_active=1,
+            languages=_LANGS,
+            projects=_PROJECTS,
+            ai_sessions=1,
+            ai_prompts=1,
+            ai_tokens=1,
+            ai_cost=None,
+            momentum="up 345%",
+            date_range="",
+        )
+        without_m = _build_wakatime_html(
+            total_time="1h",
+            days_active=1,
+            languages=_LANGS,
+            projects=_PROJECTS,
+            ai_sessions=1,
+            ai_prompts=1,
+            ai_tokens=1,
+            ai_cost=None,
+            momentum="",
+            date_range="",
+        )
+        assert "up 345%" in with_m
+        assert "345%" not in without_m
+
+    def test_escapes_language_names(self):
+        html = _build_wakatime_html(
+            total_time="1h",
+            days_active=1,
+            languages=[("<script>", "1h", 100.0)],
+            projects=_PROJECTS,
+            ai_sessions=1,
+            ai_prompts=1,
+            ai_tokens=1,
+            ai_cost=None,
+            momentum="",
+            date_range="",
+        )
+        assert "<script>" not in html
+        assert "&lt;script&gt;" in html
+
+
+def _mock_playwright():
+    """Build a fully-mocked async_playwright context returning a page that screenshots bytes."""
+    mock_page = AsyncMock()
+    mock_page.screenshot = AsyncMock(return_value=b"x" * 50000)
+    mock_browser = AsyncMock()
+    mock_context = AsyncMock()
+    mock_context.new_page = AsyncMock(return_value=mock_page)
+    mock_browser.new_context = AsyncMock(return_value=mock_context)
+    mock_pw = AsyncMock()
+    mock_pw.chromium.launch = AsyncMock(return_value=mock_browser)
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=mock_pw)
+    mock_cm.__aexit__ = AsyncMock(return_value=False)
+    return mock_cm
+
+
+class TestTakeWakatimeScreenshot:
+    """Thin Playwright wrapper around the stat-card HTML."""
+
+    @pytest.mark.asyncio
+    async def test_returns_screenshot_result(self):
+        with (
+            patch("src.screenshotter.async_playwright") as mock_apw,
+            patch("src.screenshotter.SCREENSHOT_DIR", Path("/tmp/pub-screenshots-test")),
+        ):
+            mock_apw.return_value = _mock_playwright()
+            result = await take_wakatime_screenshot(
+                total_time="58h 33m",
+                days_active=7,
+                languages=_LANGS,
+                projects=_PROJECTS,
+                ai_sessions=9,
+                ai_prompts=580,
+                ai_tokens=924597335,
+                ai_cost=2650.57,
+                momentum="up 345%",
+                date_range="Jun 07 – Jun 13",
+            )
+        assert isinstance(result, ScreenshotResult)
+        assert result.path.endswith(".png")
+        assert result.width == SCREENSHOT_WIDTH
+        assert result.height == SCREENSHOT_HEIGHT
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_playwright_error(self):
+        with patch("src.screenshotter.async_playwright", side_effect=RuntimeError("no browser")):
+            result = await take_wakatime_screenshot(
+                total_time="1h",
+                days_active=1,
+                languages=_LANGS,
+                projects=_PROJECTS,
+                ai_sessions=1,
+                ai_prompts=1,
+                ai_tokens=1,
+                ai_cost=None,
+                momentum="",
+                date_range="",
+            )
+        assert result is None

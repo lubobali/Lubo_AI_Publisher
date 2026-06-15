@@ -14,10 +14,10 @@ from src.observability import get_client, observe
 from src.post_processor import process_post, validate_post
 from src.publisher import get_publisher
 from src.scraper import ScrapedArticle, scrape_topic
-from src.screenshotter import take_git_screenshot, take_screenshot
+from src.screenshotter import take_git_screenshot, take_screenshot, take_wakatime_screenshot
 from src.self_learner import SelfLearner
 from src.topic_rotator import get_todays_topic
-from src.wakatime_insights import WakaTimeInsights
+from src.wakatime_insights import WakaTimeInsights, build_screenshot_fields
 from src.writer import WriterResult, write_post
 
 logger = logging.getLogger(__name__)
@@ -128,9 +128,13 @@ class Pipeline:
                 image_path = screenshot.path
                 logger.info("Screenshot from staging: %s", image_path)
         elif category == "wakatime":
-            # Dashboard URL is login-walled; the stat-card screenshot lands in 15p.
-            # For now fall through to the generated-image fallback below.
-            pass
+            # Dashboard URL is login-walled — render our own stat card (never screenshot the URL).
+            if self._wakatime and self._wakatime.weekly_stats:
+                fields = build_screenshot_fields(self._wakatime.weekly_stats, self._wakatime.include_costs)
+                screenshot = await take_wakatime_screenshot(**fields)
+                if screenshot:
+                    image_path = screenshot.path
+                    logger.info("WakaTime stat-card screenshot: %s", image_path)
         elif selected_article.url:
             screenshot = await take_screenshot(selected_article.url)
             if screenshot:

@@ -386,3 +386,168 @@ body {{
         return None
     finally:
         Path(tmp_path).unlink(missing_ok=True)
+
+
+def _build_wakatime_html(
+    total_time: str,
+    days_active: int,
+    languages: list[tuple[str, str, float]],
+    projects: list[tuple[str, str, float]],
+    ai_sessions: int,
+    ai_prompts: int,
+    ai_tokens: int,
+    ai_cost: float | None,
+    momentum: str,
+    date_range: str,
+) -> str:
+    """Build the building-in-public stat-card HTML. Pure — no I/O, no Playwright."""
+
+    def _rows(items: list[tuple[str, str, float]]) -> str:
+        out = ""
+        for name, detail, pct in items:
+            width = max(2.0, min(100.0, pct))
+            out += (
+                '<div class="row">'
+                f'<div class="rlabel">{html_lib.escape(name)}</div>'
+                '<div class="track"><div class="fill" '
+                f'style="width:{width:.0f}%"></div></div>'
+                f'<div class="rdetail">{html_lib.escape(detail)} · {pct:.0f}%</div>'
+                "</div>\n"
+            )
+        return out
+
+    if momentum:
+        up = momentum.strip().lower().startswith("up")
+        arrow = "↑" if up else "↓"
+        badge_color = "#a6e3a1" if up else "#f38ba8"
+        momentum_badge = (
+            f'<span class="badge" style="background:{badge_color}">'
+            f"{arrow} {html_lib.escape(momentum)} vs last week</span>"
+        )
+    else:
+        momentum_badge = ""
+    cost_stat = (
+        f'<div class="stat"><div class="snum">${ai_cost:,.0f}</div>' '<div class="slabel">AI agent cost</div></div>'
+        if ai_cost is not None
+        else ""
+    )
+
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+body {{ margin:0; padding:0; background:#1e1e2e;
+    font-family:'Inter','Segoe UI','Helvetica Neue',sans-serif; color:#cdd6f4; }}
+.card {{ margin:24px; padding:32px 36px; background:#11111b;
+    border:1px solid #313244; border-radius:16px; }}
+.head {{ display:flex; align-items:center; justify-content:space-between; }}
+.kicker {{ color:#89b4fa; font-size:13px; font-weight:700; letter-spacing:2px;
+    text-transform:uppercase; }}
+.range {{ color:#6c7086; font-size:13px; margin-top:2px; }}
+.badge {{ background:#a6e3a1; color:#11111b; font-weight:700; font-size:13px;
+    padding:6px 12px; border-radius:999px; }}
+.hero {{ margin:20px 0 8px; }}
+.htime {{ font-size:52px; font-weight:800; color:#f9e2af; line-height:1; }}
+.hsub {{ color:#a6adc8; font-size:15px; margin-top:6px; }}
+.section {{ color:#6c7086; font-size:12px; text-transform:uppercase;
+    letter-spacing:1px; margin:22px 0 10px; }}
+.row {{ display:flex; align-items:center; gap:12px; margin:7px 0; }}
+.rlabel {{ width:120px; font-size:14px; color:#cdd6f4; font-weight:600; }}
+.track {{ flex:1; height:12px; background:#181825; border-radius:6px; overflow:hidden; }}
+.fill {{ height:100%; background:linear-gradient(90deg,#89b4fa,#cba6f7); }}
+.rdetail {{ width:150px; text-align:right; font-size:13px; color:#a6adc8; }}
+.stats {{ display:flex; gap:28px; margin-top:14px;
+    padding-top:18px; border-top:1px solid #313244; }}
+.stat {{ }}
+.snum {{ font-size:24px; font-weight:800; color:#cba6f7; }}
+.slabel {{ font-size:12px; color:#6c7086; margin-top:2px; }}
+</style></head><body>
+<div class="card">
+    <div class="head">
+        <div>
+            <div class="kicker">Building in Public</div>
+            <div class="range">{html_lib.escape(date_range)}</div>
+        </div>
+        {momentum_badge}
+    </div>
+    <div class="hero">
+        <div class="htime">{html_lib.escape(total_time)}</div>
+        <div class="hsub">coded this week · {days_active} active days · built with AI agents</div>
+    </div>
+    <div class="section">Languages</div>
+    {_rows(languages)}
+    <div class="section">Projects</div>
+    {_rows(projects)}
+    <div class="stats">
+        <div class="stat"><div class="snum">{ai_sessions}</div>
+            <div class="slabel">AI sessions</div></div>
+        <div class="stat"><div class="snum">{ai_prompts}</div>
+            <div class="slabel">prompts</div></div>
+        <div class="stat"><div class="snum">{ai_tokens:,}</div>
+            <div class="slabel">input tokens</div></div>
+        {cost_stat}
+    </div>
+</div>
+</body></html>"""
+
+
+async def take_wakatime_screenshot(
+    total_time: str,
+    days_active: int,
+    languages: list[tuple[str, str, float]],
+    projects: list[tuple[str, str, float]],
+    ai_sessions: int,
+    ai_prompts: int,
+    ai_tokens: int,
+    ai_cost: float | None = None,
+    momentum: str = "",
+    date_range: str = "",
+) -> ScreenshotResult | None:
+    """Render the building-in-public stat card to a PNG with Playwright."""
+    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+
+    page_html = _build_wakatime_html(
+        total_time=total_time,
+        days_active=days_active,
+        languages=languages,
+        projects=projects,
+        ai_sessions=ai_sessions,
+        ai_prompts=ai_prompts,
+        ai_tokens=ai_tokens,
+        ai_cost=ai_cost,
+        momentum=momentum,
+        date_range=date_range,
+    )
+
+    with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
+        f.write(page_html)
+        tmp_path = f.name
+
+    try:
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            try:
+                context = await browser.new_context(
+                    viewport={"width": SCREENSHOT_WIDTH, "height": SCREENSHOT_HEIGHT},
+                    device_scale_factor=1.5,
+                )
+                page = await context.new_page()
+                await page.goto(f"file://{tmp_path}", wait_until="domcontentloaded")
+                await page.wait_for_timeout(500)
+
+                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                filepath = SCREENSHOT_DIR / f"{timestamp}-wakatime-week.png"
+                filepath.write_bytes(await page.screenshot(full_page=False))
+
+                logger.info("WakaTime screenshot saved: %s", filepath)
+                return ScreenshotResult(
+                    path=str(filepath),
+                    url="wakatime:week",
+                    width=SCREENSHOT_WIDTH,
+                    height=SCREENSHOT_HEIGHT,
+                )
+            finally:
+                await browser.close()
+    except Exception as e:
+        logger.warning("WakaTime screenshot failed: %s", e)
+        return None
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)

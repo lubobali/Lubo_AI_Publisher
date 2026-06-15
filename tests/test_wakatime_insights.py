@@ -13,6 +13,7 @@ from src.wakatime_insights import (
     _parse_day,
     _split_archives,
     _split_weeks,
+    build_screenshot_fields,
 )
 
 # ---------------------------------------------------------------------------
@@ -208,6 +209,51 @@ class TestWakaTimeInsightsToArticle:
         insights.get_weekly_stats()
         assert isinstance(insights.weekly_stats, WeeklyStats)
         assert insights.weekly_stats.days_active == 2
+
+
+class TestBuildScreenshotFields:
+    """Adapter from WeeklyStats to take_wakatime_screenshot kwargs."""
+
+    def _stats(self):
+        return _aggregate_week([_parse_day(DAY1), _parse_day(DAY2)])
+
+    def test_returns_expected_keys(self):
+        fields = build_screenshot_fields(self._stats())
+        assert set(fields) == {
+            "total_time",
+            "days_active",
+            "languages",
+            "projects",
+            "ai_sessions",
+            "ai_prompts",
+            "ai_tokens",
+            "ai_cost",
+            "momentum",
+            "date_range",
+        }
+
+    def test_languages_are_name_detail_pct_tuples(self):
+        fields = build_screenshot_fields(self._stats())
+        name, detail, pct = fields["languages"][0]
+        assert name == "Python"
+        assert "h" in detail and "m" in detail  # formatted duration
+        assert isinstance(pct, float)
+
+    def test_cost_hidden_when_disabled(self):
+        assert build_screenshot_fields(self._stats(), include_costs=False)["ai_cost"] is None
+        assert build_screenshot_fields(self._stats(), include_costs=True)["ai_cost"] is not None
+
+    def test_momentum_up_and_down(self):
+        up = self._stats()
+        up.prev_total_seconds = 1.0  # tiny prior → big increase
+        assert build_screenshot_fields(up)["momentum"].startswith("up")
+
+        down = self._stats()
+        down.prev_total_seconds = down.total_seconds * 10  # prior much larger
+        assert build_screenshot_fields(down)["momentum"].startswith("down")
+
+    def test_momentum_empty_without_prior(self):
+        assert build_screenshot_fields(self._stats())["momentum"] == ""
 
 
 def _simple_day(date, seconds):

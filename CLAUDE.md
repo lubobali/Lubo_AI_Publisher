@@ -145,7 +145,7 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 15m. WakaTime Insights module — SSH read daily archives, parse, return ScrapedArticle (mirror git_insights.py) ✅
 15n. Weekly aggregation + metrics — WeeklyStats dataclass, week-over-week momentum delta, include_costs toggle ✅
 15o. Topic/rotation wiring — Building in Public slot (replaced Big Tech), scheduler dispatch, enrich my_agent_git, writer block ✅
-15p. Screenshot (optional) — terminal/stat-card image of the week, reuse take_git_screenshot()
+15p. Stat-card screenshot — take_wakatime_screenshot() renders a building-in-public PNG (hours, language bars, projects, AI stats, cost, momentum badge); wired into scheduler ✅ — PHASE 2.75 COMPLETE
 ### Phase 2.8: Knowledge Base + RAG
 15c. Knowledge Base — books→chunks→vectors→RAG in writer
 ### Phase 2.9: Post Quality Tuning
@@ -157,8 +157,9 @@ CI mirrors production. If CI passes, the code works in prod. No shortcuts.
 17. Deploy + First Real Post
 
 ## Current Status (Jun 15, 2026)
-- **483 tests**, all green, lint clean
-- **WakaTime Insights (Phase 2.75) WIRED INTO PIPELINE** — src/wakatime_insights.py: SSH read 2 weeks of daily archives → WeeklyStats → ScrapedArticle. Verified on real data (58h/wk, Python 55%, LuBot 99%, AI tokens/cost, "up 345% vs last week" momentum). include_costs toggle (costs posted publicly). 15m+15n+15o DONE.
+- **496 tests**, all green, lint clean
+- **WakaTime Insights (Phase 2.75) COMPLETE** — src/wakatime_insights.py: SSH read 2 weeks of daily archives → WeeklyStats → ScrapedArticle. Verified on real data (58h/wk, Python 55%, LuBot 99%, AI tokens/cost, "up 345% vs last week" momentum). include_costs toggle (costs posted publicly). 15m–15p ALL DONE.
+- **Stat-card screenshot (15p)**: take_wakatime_screenshot() + pure _build_wakatime_html() render a polished dark LinkedIn-ready PNG (big hours number, gradient language/project bars, AI sessions/prompts/tokens/cost, directional momentum badge). build_screenshot_fields() adapts WeeklyStats→kwargs. Wired into scheduler; verified by rendering a real PNG from live archives.
 - **Rotation change (Option A)**: "Big Tech" slot REPLACED by "Building in Public" (sources_key: wakatime). Scheduler dispatches wakatime → WakaTimeInsights (like my_agent_git → GitInsights). my_agent_git posts ENRICHED with WakaTime stats (passed as 2nd article to writer). Writer has building_in_public prompt block (exact numbers, anti-hallucination). wakatime image style added; dashboard URL never screenshotted (login-walled) → generated-image fallback until 15p.
 - **Test note**: added autouse _default_topic fixture in test_scheduler.py + test_observability.py — pins get_todays_topic to ai_news so pipeline-flow tests don't depend on which category the rotation lands on (removed pre-existing hidden coupling).
 - **Still TODO Phase 2.75**: stat-card screenshot (15p)

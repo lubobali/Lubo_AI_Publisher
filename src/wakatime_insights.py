@@ -234,6 +234,33 @@ def _build_summary(stats: WeeklyStats, include_costs: bool = True, notes: str = 
     return "\n".join(parts)
 
 
+def build_screenshot_fields(stats: WeeklyStats, include_costs: bool = True) -> dict:
+    """Adapt a WeeklyStats into kwargs for take_wakatime_screenshot (keeps formatting DRY)."""
+    languages = [(n, _fmt_duration(s), p) for n, s, p in _top_n(stats.by_language, stats.total_seconds)]
+    projects = [(n, _fmt_duration(s), p) for n, s, p in _top_n(stats.by_project, stats.total_seconds)]
+
+    delta = stats.total_delta_pct
+    if delta is None:
+        momentum = ""
+    elif delta >= 0:
+        momentum = f"up {delta:.0f}%"
+    else:
+        momentum = f"down {abs(delta):.0f}%"
+
+    return {
+        "total_time": _fmt_duration(stats.total_seconds),
+        "days_active": stats.days_active,
+        "languages": languages,
+        "projects": projects,
+        "ai_sessions": stats.ai_sessions,
+        "ai_prompts": stats.ai_prompt_events,
+        "ai_tokens": stats.ai_input_tokens,
+        "ai_cost": stats.ai_cost if include_costs else None,
+        "momentum": momentum,
+        "date_range": f"{stats.start_date} to {stats.end_date}",
+    }
+
+
 class WakaTimeInsights:
     """Reads WakaTime daily archives from staging and builds a weekly stats article."""
 
