@@ -152,7 +152,7 @@ Model: nvidia/llama-nemotron-embed-vl-1b-v2 (2048-dim, 8192-tok, VERIFIED vs NVI
 15c-2. Chunker — ~400-word chunks, 50 overlap, sentence-boundary aware (pure, tested) ✅ (real: ML Yearning -> 65 chunks, mean 445 words, overlap verified)
 15c-3. Embedding client — NVIDIA NIM POST, modality=text, passage/query, L2-normalized ✅ (LIVE-validated: 2048-dim, norm=1.0, related query/passage cosine 0.435 → threshold ~0.35 confirmed)
 15c-4. DB model + migration — publisher_knowledge_base table (book_title/slug/chunk_index/text/word_count/embedding JSON), store_chunks() idempotent per slug ✅ (create_all picks up new table; 4 real-DB tests)
-15c-5. Retrieval — cached numpy matrix, cosine top-k, min-score threshold
+15c-5. Retrieval — KnowledgeBase.search(): cached numpy matrix, cosine top-k, min-score 0.35 ✅ (real e2e on ML Yearning: exact-topic match 0.48, absent topic -> nothing. "better nothing than forced" works)
 15c-6. Writer wiring — inject 2-3 concepts for the 3 techie categories, never cite book
 15c-7. Ingest script — run on 11 books, verify manually, keep PDFs
 15c-8. Langfuse trace + E2E eyeball
@@ -165,8 +165,8 @@ Model: nvidia/llama-nemotron-embed-vl-1b-v2 (2048-dim, 8192-tok, VERIFIED vs NVI
 17. Deploy + First Real Post
 
 ## Current Status (Jun 15, 2026)
-- **528 tests**, all green, lint clean
-- **Phase 2.8 RAG in progress** — src/knowledge_base.py: 15c-1 extraction + 15c-2 chunker + 15c-3 NVIDIA embed (live-validated) + 15c-4 DB store all DONE. New table publisher_knowledge_base (models.py, 6 tables now). store_chunks() idempotent per book_slug. Next: 15c-5 retrieval (cached numpy matrix, cosine top-k, min-score threshold ~0.35).
+- **534 tests**, all green, lint clean
+- **Phase 2.8 RAG in progress** — src/knowledge_base.py: 15c-1..15c-5 DONE (extract, chunk, embed, store, retrieve). Full chain real-e2e verified on ML Yearning (relevant retrieval, threshold filters junk). numpy==2.4.6 added. Next: 15c-6 writer wiring (inject 2-3 concepts for tech_talk/my_agent_git/ai_news, never name book, guardrails from plan).
 - **WakaTime Insights (Phase 2.75) COMPLETE** — src/wakatime_insights.py: SSH read 2 weeks of daily archives → WeeklyStats → ScrapedArticle. Verified on real data (58h/wk, Python 55%, LuBot 99%, AI tokens/cost, "up 345% vs last week" momentum). include_costs toggle (costs posted publicly). 15m–15p ALL DONE.
 - **Stat-card screenshot (15p)**: take_wakatime_screenshot() + pure _build_wakatime_html() render a polished dark LinkedIn-ready PNG (big hours number, gradient language/project bars, AI sessions/prompts/tokens/cost, directional momentum badge). build_screenshot_fields() adapts WeeklyStats→kwargs. Wired into scheduler; verified by rendering a real PNG from live archives.
 - **Rotation change (Option A)**: "Big Tech" slot REPLACED by "Building in Public" (sources_key: wakatime). Scheduler dispatches wakatime → WakaTimeInsights (like my_agent_git → GitInsights). my_agent_git posts ENRICHED with WakaTime stats (passed as 2nd article to writer). Writer has building_in_public prompt block (exact numbers, anti-hallucination). wakatime image style added; dashboard URL never screenshotted (login-walled) → generated-image fallback until 15p.

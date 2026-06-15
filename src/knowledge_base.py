@@ -10,15 +10,20 @@ import math
 import os
 import re
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
+import numpy as np
 from pypdf import PdfReader
 from sqlalchemy.orm import Session
 
 from src.models import PublisherKnowledgeBase
 
 logger = logging.getLogger(__name__)
+
+# Min cosine for a chunk to be worth injecting (related query/passage ~0.43 in live test).
+DEFAULT_MIN_SCORE = 0.35
 
 # NVIDIA NeMo Retriever multimodal embedder (Phase 2.8). 2048-dim, 8192-token.
 # Same model + pattern as lubot staging PDF RAG v2 (verified vs NVIDIA live docs).
@@ -268,3 +273,75 @@ def store_chunks(
     session.flush()
     logger.info("Stored %d chunks for %s", len(chunks), book_slug)
     return len(chunks)
+
+
+# ---------------------------------------------------------------------------
+# Retrieval (Phase 2.8 / 15c-5)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RetrievedChunk:
+    """One book chunk returned by a knowledge-base search."""
+
+    text: str
+    book_title: str
+    score: float
+
+
+def _rank_by_cosine(matrix: np.ndarray, query: np.ndarray, top_k: int) -> list[tuple[int, float]]:
+    """Return (row_index, score) for the top_k rows, highest cosine first.
+
+    Both matrix rows and query are L2-normalized in production, so the dot
+    product IS the cosine similarity.
+    """
+    if matrix.shape[0] == 0:
+        return []
+    scores = matrix @ query
+    order = np.argsort(scores)[::-1][:top_k]
+    return [(int(i), float(scores[i])) for i in order]
+
+
+class KnowledgeBase:
+    """Searches stored book chunks by embedding similarity (cached numpy matrix)."""
+
+    def __init__(self, session: Session, min_score: float = DEFAULT_MIN_SCORE):
+        self.session = session
+        self.min_score = min_score
+        self._matrix: np.ndarray | None = None
+        self._meta: list[tuple[str, str]] | None = None  # (text, book_title) per row
+
+    def _load(self) -> None:
+        """Load all chunk embeddings into an in-memory matrix once."""
+        if self._matrix is not None:
+            return
+        rows = self.session.query(PublisherKnowledgeBase).all()
+        self._meta = [(r.text, r.book_title) for r in rows]
+        self._matrix = (
+            np.array([r.embedding for r in rows], dtype=np.float32)
+            if rows
+            else np.zeros((0, EMBED_DIM), dtype=np.float32)
+        )
+
+    def search(
+        self,
+        query: str,
+        top_k: int = 3,
+        min_score: float | None = None,
+        *,
+        api_key: str | None = None,
+    ) -> list[RetrievedChunk]:
+        """Embed the query and return up to top_k chunks scoring >= min_score."""
+        threshold = self.min_score if min_score is None else min_score
+        self._load()
+        if not self._meta:  # empty KB — skip the API call
+            return []
+
+        q = np.asarray(embed_query(query, api_key=api_key), dtype=np.float32)
+        results: list[RetrievedChunk] = []
+        for i, score in _rank_by_cosine(self._matrix, q, top_k):
+            if score < threshold:
+                continue
+            text, title = self._meta[i]
+            results.append(RetrievedChunk(text=text, book_title=title, score=score))
+        return results

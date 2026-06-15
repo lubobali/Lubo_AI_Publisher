@@ -309,3 +309,70 @@ class TestStoreChunks:
     def test_length_mismatch_raises(self, db_session):
         with pytest.raises(ValueError, match="mismatch"):
             store_chunks(db_session, "DDIA", "ddia", ["a", "b"], [[1.0]])
+
+
+def _unit(v):
+    import numpy as np
+
+    a = np.array(v, dtype=np.float32)
+    return (a / np.linalg.norm(a)).tolist()
+
+
+class TestRankByCosine:
+    def test_ranks_closest_first(self):
+        import numpy as np
+
+        from src.knowledge_base import _rank_by_cosine
+
+        m = np.array([_unit([1, 0, 0]), _unit([0, 1, 0]), _unit([1, 1, 0])], dtype=np.float32)
+        q = np.array(_unit([1, 0.1, 0]), dtype=np.float32)
+        ranked = _rank_by_cosine(m, q, top_k=3)
+        assert ranked[0][0] == 0  # closest to [1,0,0]
+        assert ranked[0][1] >= ranked[1][1] >= ranked[2][1]  # scores descending
+
+    def test_empty_matrix(self):
+        import numpy as np
+
+        from src.knowledge_base import _rank_by_cosine
+
+        out = _rank_by_cosine(np.zeros((0, 3), dtype=np.float32), np.array([1, 0, 0], dtype=np.float32), 3)
+        assert out == []
+
+    def test_respects_top_k(self):
+        import numpy as np
+
+        from src.knowledge_base import _rank_by_cosine
+
+        m = np.array([_unit([1, 0]), _unit([0, 1]), _unit([1, 1])], dtype=np.float32)
+        assert len(_rank_by_cosine(m, np.array(_unit([1, 0]), dtype=np.float32), top_k=2)) == 2
+
+
+class TestKnowledgeBaseSearch:
+    @patch("src.knowledge_base.embed_query")
+    def test_returns_most_relevant_chunk(self, mock_eq, db_session):
+        from src.knowledge_base import KnowledgeBase
+
+        embs = [_unit([1, 0, 0]), _unit([0, 1, 0]), _unit([0, 0, 1])]
+        store_chunks(db_session, "Book", "b", ["about cats", "about dogs", "about birds"], embs)
+        db_session.commit()
+        mock_eq.return_value = _unit([0, 1, 0.05])  # closest to "about dogs"
+        results = KnowledgeBase(db_session, min_score=0.3).search("anything", top_k=2)
+        assert results[0].text == "about dogs"
+        assert results[0].book_title == "Book"
+        assert results[0].score > 0.9
+
+    @patch("src.knowledge_base.embed_query")
+    def test_threshold_filters_irrelevant(self, mock_eq, db_session):
+        from src.knowledge_base import KnowledgeBase
+
+        store_chunks(db_session, "Book", "b", ["a", "b"], [_unit([1, 0, 0]), _unit([0, 1, 0])])
+        db_session.commit()
+        mock_eq.return_value = _unit([0, 0, 1])  # orthogonal -> score ~0, below threshold
+        assert KnowledgeBase(db_session, min_score=0.35).search("q") == []
+
+    @patch("src.knowledge_base.embed_query")
+    def test_empty_kb_returns_empty_without_embedding(self, mock_eq, db_session):
+        from src.knowledge_base import KnowledgeBase
+
+        assert KnowledgeBase(db_session).search("q") == []
+        mock_eq.assert_not_called()  # don't waste an API call on an empty KB
