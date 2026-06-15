@@ -18,6 +18,9 @@ openai==1.59.5
 # Observability
 langfuse==4.0.1
 
+# Knowledge base / RAG (Phase 2.8)
+pypdf==6.13.2
+
 # Web scraping
 beautifulsoup4==4.12.3
 lxml==6.0.2
