@@ -6,13 +6,24 @@ here is pure text processing (so it is unit-tested without touching books/).
 """
 
 import logging
+import math
+import os
 import re
 from collections import Counter
 from pathlib import Path
 
+import httpx
 from pypdf import PdfReader
 
 logger = logging.getLogger(__name__)
+
+# NVIDIA NeMo Retriever multimodal embedder (Phase 2.8). 2048-dim, 8192-token.
+# Same model + pattern as lubot staging PDF RAG v2 (verified vs NVIDIA live docs).
+NVIDIA_EMBED_URL = "https://integrate.api.nvidia.com/v1/embeddings"
+DEFAULT_EMBED_MODEL = "nvidia/llama-nemotron-embed-vl-1b-v2"
+EMBED_DIM = 2048
+EMBED_BATCH_SIZE = 50
+EMBED_TIMEOUT_S = 60
 
 _PAGE_NUMBER_RE = re.compile(r"^\s*\d{1,4}\s*$")  # a line that is only a page number
 _INLINE_WS_RE = re.compile(r"[ \t]+")
@@ -156,3 +167,65 @@ def chunk_text(text: str, target_words: int = 400, overlap_words: int = 50) -> l
             s = b
         chunks.append(" ".join(sentences[s:end]))
     return chunks
+
+
+# ---------------------------------------------------------------------------
+# Embedding client — NVIDIA NIM (Phase 2.8 / 15c-3)
+# ---------------------------------------------------------------------------
+
+
+def _embed_model() -> str:
+    """Model id — env-overridable so a vendor rotation is a 1-line .env change."""
+    return os.getenv("NVIDIA_VLM_EMBED_MODEL", DEFAULT_EMBED_MODEL)
+
+
+def _l2_normalize(vec: list[float]) -> list[float]:
+    mag = math.sqrt(sum(x * x for x in vec))
+    return vec if mag == 0 else [x / mag for x in vec]
+
+
+def _embed_batch(texts: list[str], input_type: str, api_key: str, model: str) -> list[list[float]]:
+    """POST one batch to NIM and return L2-normalized vectors in input order."""
+    payload = {
+        "input": texts,
+        "model": model,
+        "input_type": input_type,  # "passage" for docs, "query" for searches
+        "modality": "text",
+        "encoding_format": "float",
+        "truncate": "END",
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    resp = httpx.post(NVIDIA_EMBED_URL, json=payload, headers=headers, timeout=EMBED_TIMEOUT_S)
+    resp.raise_for_status()
+    data = sorted(resp.json()["data"], key=lambda d: d.get("index", 0))
+    return [_l2_normalize(item["embedding"]) for item in data]
+
+
+def embed_texts(
+    texts: list[str],
+    input_type: str = "passage",
+    *,
+    api_key: str | None = None,
+    batch_size: int = EMBED_BATCH_SIZE,
+) -> list[list[float]]:
+    """Embed a list of texts via NVIDIA NIM. Batched, L2-normalized, order-preserving."""
+    if not texts:
+        return []
+    api_key = api_key or os.getenv("NVIDIA_API_KEY")
+    if not api_key:
+        raise RuntimeError("NVIDIA_API_KEY not set — cannot embed")
+    model = _embed_model()
+
+    out: list[list[float]] = []
+    for i in range(0, len(texts), batch_size):
+        out.extend(_embed_batch(texts[i : i + batch_size], input_type, api_key, model))
+    return out
+
+
+def embed_query(text: str, *, api_key: str | None = None) -> list[float]:
+    """Embed a single search query (input_type='query')."""
+    return embed_texts([text], input_type="query", api_key=api_key)[0]

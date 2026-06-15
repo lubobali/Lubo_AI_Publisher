@@ -10,6 +10,8 @@ from src.knowledge_base import (
     _drop_repeated_lines,
     chunk_text,
     clean_text,
+    embed_query,
+    embed_texts,
     extract_book_text,
 )
 
@@ -152,3 +154,81 @@ class TestChunkText:
         big = "word " * 600  # one 600-word "sentence", no terminators
         chunks = chunk_text(big.strip(), target_words=400)
         assert len(chunks) == 1
+
+
+def _fake_post_factory(vector):
+    """Return an httpx.post stand-in that echoes len(input) embeddings of `vector`."""
+
+    def _fake_post(url, json=None, headers=None, timeout=None):
+        n = len(json["input"])
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json.return_value = {"data": [{"index": i, "embedding": list(vector)} for i in range(n)]}
+        return resp
+
+    return _fake_post
+
+
+class TestEmbedding:
+    @patch("src.knowledge_base.httpx.post")
+    def test_posts_correct_payload(self, mock_post):
+        mock_post.side_effect = _fake_post_factory([1.0, 0.0])
+        embed_texts(["hello", "world"], input_type="passage", api_key="k")
+        url = mock_post.call_args[0][0]
+        payload = mock_post.call_args[1]["json"]
+        headers = mock_post.call_args[1]["headers"]
+        assert url == "https://integrate.api.nvidia.com/v1/embeddings"
+        assert payload["model"] == "nvidia/llama-nemotron-embed-vl-1b-v2"
+        assert payload["input_type"] == "passage"
+        assert payload["modality"] == "text"
+        assert payload["input"] == ["hello", "world"]
+        assert headers["Authorization"] == "Bearer k"
+
+    @patch("src.knowledge_base.httpx.post")
+    def test_normalizes_vectors(self, mock_post):
+        mock_post.side_effect = _fake_post_factory([3.0, 4.0])  # magnitude 5
+        out = embed_texts(["x"], api_key="k")
+        assert out[0] == [0.6, 0.8]
+
+    @patch("src.knowledge_base.httpx.post")
+    def test_batches_large_input(self, mock_post):
+        mock_post.side_effect = _fake_post_factory([1.0, 0.0])
+        out = embed_texts([f"t{i}" for i in range(120)], api_key="k", batch_size=50)
+        assert mock_post.call_count == 3  # 50 + 50 + 20
+        assert len(out) == 120
+
+    @patch("src.knowledge_base.httpx.post")
+    def test_orders_by_index(self, mock_post):
+        def _out_of_order(url, json=None, headers=None, timeout=None):
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.json.return_value = {
+                "data": [
+                    {"index": 1, "embedding": [0.0, 1.0]},
+                    {"index": 0, "embedding": [1.0, 0.0]},
+                ]
+            }
+            return resp
+
+        mock_post.side_effect = _out_of_order
+        out = embed_texts(["a", "b"], api_key="k")
+        assert out[0] == [1.0, 0.0]
+        assert out[1] == [0.0, 1.0]
+
+    @patch("src.knowledge_base.httpx.post")
+    def test_embed_query_uses_query_input_type(self, mock_post):
+        mock_post.side_effect = _fake_post_factory([1.0, 0.0])
+        vec = embed_query("what is sharding", api_key="k")
+        assert isinstance(vec, list) and isinstance(vec[0], float)
+        assert mock_post.call_args[1]["json"]["input_type"] == "query"
+
+    def test_empty_texts_returns_empty(self):
+        assert embed_texts([], api_key="k") == []
+
+    def test_missing_api_key_raises(self, monkeypatch):
+        monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+        try:
+            embed_texts(["x"])
+            raise AssertionError("expected RuntimeError")
+        except RuntimeError:
+            pass
