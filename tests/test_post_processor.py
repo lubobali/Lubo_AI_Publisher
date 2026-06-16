@@ -5,6 +5,7 @@ from src.post_processor import (
     enforce_line_breaks,
     ensure_paragraph_spacing,
     limit_hashtags,
+    normalize_brand,
     process_post,
     strip_apostrophes,
     strip_dashes,
@@ -14,6 +15,19 @@ from src.post_processor import (
     strip_model_meta,
     validate_post,
 )
+
+
+class TestNormalizeBrand:
+    def test_fixes_brand_casing(self):
+        assert normalize_brand("luBot is great and lubot rocks, Lubot wins") == (
+            "LuBot is great and LuBot rocks, LuBot wins"
+        )
+
+    def test_leaves_correct_casing(self):
+        assert normalize_brand("LuBot shipped today") == "LuBot shipped today"
+
+    def test_does_not_touch_domain(self):
+        assert normalize_brand("visit lubot.ai and staging.lubot.ai") == "visit lubot.ai and staging.lubot.ai"
 
 
 class TestStripMarkdown:

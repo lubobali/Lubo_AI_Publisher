@@ -303,6 +303,14 @@ def strip_model_meta(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
+_BRAND_RE = re.compile(r"\b[Ll][Uu][Bb][Oo][Tt]\b(?!\.)")
+
+
+def normalize_brand(text: str) -> str:
+    """Fix brand casing to 'LuBot' (but leave the domain lubot.ai alone)."""
+    return _BRAND_RE.sub("LuBot", text)
+
+
 def deduplicate_hashtags(hashtags: list[str]) -> list[str]:
     """Remove duplicate hashtags, preserving order."""
     return list(dict.fromkeys(hashtags))
@@ -370,6 +378,7 @@ def process_post(text: str, hashtags: list[str]) -> tuple[str, list[str]]:
     # so compliance categories stay stable.
     text = strip_markdown(text)
     text = strip_model_meta(text)
+    text = normalize_brand(text)
 
     prev = text
     text = strip_dashes(text)
