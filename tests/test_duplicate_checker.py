@@ -17,7 +17,7 @@ from src.duplicate_checker import (
 )
 from src.models import Base, PublisherPost, PublisherScrapedUrl
 
-TEST_DB_URL = os.getenv("DATABASE_URL", "postgresql://publisher:publisher_dev@localhost:5433/publisher")
+TEST_DB_URL = os.getenv("DATABASE_URL", "postgresql://publisher:publisher_dev@localhost:5433/publisher_test")
 
 
 @pytest.fixture(scope="module")

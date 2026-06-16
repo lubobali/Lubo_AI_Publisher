@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from src.analytics_worker import AnalyticsWorker, calculate_engagement_rate, recalculate_topic_performance
 from src.models import Base, PublisherAnalytics, PublisherPost, PublisherTopicPerformance
 
-TEST_DB_URL = os.getenv("DATABASE_URL", "postgresql://publisher:publisher_dev@localhost:5433/publisher")
+TEST_DB_URL = os.getenv("DATABASE_URL", "postgresql://publisher:publisher_dev@localhost:5433/publisher_test")
 
 
 @pytest.fixture(scope="module")

@@ -36,6 +36,8 @@ EMBED_TIMEOUT_S = 60
 _PAGE_NUMBER_RE = re.compile(r"^\s*\d{1,4}\s*$")  # a line that is only a page number
 _INLINE_WS_RE = re.compile(r"[ \t]+")
 _BLANK_LINES_RE = re.compile(r"\n{3,}")
+# NUL + other control chars (keep \t=09 and \n=0a). Postgres TEXT rejects NUL.
+_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _DIGITS_RE = re.compile(r"\d+")
 
 
@@ -91,8 +93,9 @@ def _drop_repeated_lines(
 
 
 def clean_text(text: str) -> str:
-    """Normalize whitespace and drop page-number-only lines."""
+    """Normalize whitespace, strip control chars, and drop page-number-only lines."""
     text = text.replace("\f", "\n")
+    text = _CONTROL_RE.sub("", text)  # strip NUL/control bytes (Postgres TEXT rejects NUL)
     lines = [_INLINE_WS_RE.sub(" ", line).strip() for line in text.splitlines() if not _PAGE_NUMBER_RE.match(line)]
     text = "\n".join(lines)
     text = _BLANK_LINES_RE.sub("\n\n", text)
@@ -273,6 +276,35 @@ def store_chunks(
     session.flush()
     logger.info("Stored %d chunks for %s", len(chunks), book_slug)
     return len(chunks)
+
+
+def _book_meta(path: str | Path) -> tuple[str, str]:
+    """Derive (title, slug) from a PDF filename. Title is metadata only (never shown)."""
+    stem = Path(path).stem
+    slug = re.sub(r"[^a-z0-9]+", "-", stem.lower()).strip("-")
+    title = re.sub(r"[_-]+", " ", stem).strip()
+    return title, slug
+
+
+def ingest_book(
+    session: Session,
+    path: str | Path,
+    *,
+    api_key: str | None = None,
+    batch_size: int = EMBED_BATCH_SIZE,
+) -> int:
+    """Full ingest for one book: extract -> chunk -> embed -> store. Returns chunk count.
+
+    Idempotent per book (store_chunks replaces existing rows for the slug). Caller commits.
+    """
+    title, slug = _book_meta(path)
+    chunks = chunk_text(extract_book_text(path))
+    if not chunks:
+        logger.warning("No chunks extracted from %s", path)
+        store_chunks(session, title, slug, [], [])  # clear any stale rows for this slug
+        return 0
+    embeddings = embed_texts(chunks, input_type="passage", api_key=api_key, batch_size=batch_size)
+    return store_chunks(session, title, slug, chunks, embeddings)
 
 
 # ---------------------------------------------------------------------------

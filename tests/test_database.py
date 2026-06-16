@@ -16,7 +16,7 @@ from sqlalchemy.orm import sessionmaker
 from src.models import Base, PublisherAnalytics, PublisherPost, PublisherScrapedUrl, PublisherTopicPerformance
 
 # Test database URL — separate from production
-TEST_DB_URL = os.getenv("DATABASE_URL", "postgresql://publisher:publisher_dev@localhost:5433/publisher")
+TEST_DB_URL = os.getenv("DATABASE_URL", "postgresql://publisher:publisher_dev@localhost:5433/publisher_test")
 
 
 @pytest.fixture(scope="module")

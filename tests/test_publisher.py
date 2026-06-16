@@ -20,7 +20,7 @@ from src.publisher import (
 # Database fixtures (same pattern as test_database.py)
 # ---------------------------------------------------------------------------
 
-TEST_DB_URL = os.getenv("DATABASE_URL", "postgresql://publisher:publisher_dev@localhost:5433/publisher")
+TEST_DB_URL = os.getenv("DATABASE_URL", "postgresql://publisher:publisher_dev@localhost:5433/publisher_test")
 
 
 @pytest.fixture(scope="module")

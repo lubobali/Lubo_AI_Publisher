@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from src.api import app, get_db_session
 from src.models import Base, PublisherPost, PublisherTopicPerformance
 
-TEST_DB_URL = os.getenv("DATABASE_URL", "postgresql://publisher:publisher_dev@localhost:5433/publisher")
+TEST_DB_URL = os.getenv("DATABASE_URL", "postgresql://publisher:publisher_dev@localhost:5433/publisher_test")
 
 test_engine = create_engine(TEST_DB_URL)
 TestSession = sessionmaker(bind=test_engine)

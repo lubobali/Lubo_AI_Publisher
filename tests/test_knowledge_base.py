@@ -22,7 +22,7 @@ from src.knowledge_base import (
 )
 from src.models import Base, PublisherKnowledgeBase
 
-TEST_DB_URL = os.getenv("DATABASE_URL", "postgresql://publisher:publisher_dev@localhost:5433/publisher")
+TEST_DB_URL = os.getenv("DATABASE_URL", "postgresql://publisher:publisher_dev@localhost:5433/publisher_test")
 
 
 @pytest.fixture(scope="module")
@@ -35,14 +35,15 @@ def test_engine():
 
 @pytest.fixture()
 def db_session(test_engine):
+    # Isolation in a shared DB: delete existing KB rows INSIDE this transaction
+    # (so tests see a clean KB), then roll back at teardown — which undoes both the
+    # delete and the test's own rows. Real committed knowledge-base data is restored
+    # intact. Tests must flush (never commit).
     session = sessionmaker(bind=test_engine)()
-    # clean slate so tests don't see each other's rows
     session.query(PublisherKnowledgeBase).delete()
-    session.commit()
+    session.flush()
     yield session
     session.rollback()
-    session.query(PublisherKnowledgeBase).delete()
-    session.commit()
     session.close()
 
 
@@ -104,6 +105,14 @@ class TestCleanText:
 
     def test_strips_form_feed(self):
         assert "\f" not in clean_text("page a\fpage b")
+
+    def test_strips_nul_and_control_chars(self):
+        # Real PDFs (LLM Foundations, Jurafsky) embed NUL bytes that Postgres TEXT rejects
+        out = clean_text("bad\x00text and\x07more\x1f")
+        assert "\x00" not in out and "\x07" not in out and "\x1f" not in out
+        assert "badtext" in out and "andmore" in out
+        # tabs and newlines survive (tab collapses to a space)
+        assert clean_text("a\tb") == "a b"
 
     def test_empty_input(self):
         assert clean_text("") == ""
@@ -273,7 +282,7 @@ class TestStoreChunks:
             ["chunk a", "chunk b two"],
             [[1.0, 0.0], [0.0, 1.0]],
         )
-        db_session.commit()
+        db_session.flush()
         assert n == 2
         rows = (
             db_session.query(PublisherKnowledgeBase)
@@ -289,9 +298,9 @@ class TestStoreChunks:
 
     def test_reingest_replaces_old_rows(self, db_session):
         store_chunks(db_session, "DDIA", "ddia", ["a", "b", "c"], [[1.0]] * 3)
-        db_session.commit()
+        db_session.flush()
         store_chunks(db_session, "DDIA", "ddia", ["x", "y"], [[2.0]] * 2)
-        db_session.commit()
+        db_session.flush()
         rows = db_session.query(PublisherKnowledgeBase).filter_by(book_slug="ddia").all()
         assert len(rows) == 2
         assert {r.text for r in rows} == {"x", "y"}
@@ -299,10 +308,10 @@ class TestStoreChunks:
     def test_isolates_by_slug(self, db_session):
         store_chunks(db_session, "Book A", "a", ["a1", "a2"], [[1.0]] * 2)
         store_chunks(db_session, "Book B", "b", ["b1", "b2", "b3"], [[1.0]] * 3)
-        db_session.commit()
+        db_session.flush()
         # re-ingesting B must not touch A
         store_chunks(db_session, "Book B", "b", ["b1new"], [[1.0]])
-        db_session.commit()
+        db_session.flush()
         assert db_session.query(PublisherKnowledgeBase).filter_by(book_slug="a").count() == 2
         assert db_session.query(PublisherKnowledgeBase).filter_by(book_slug="b").count() == 1
 
@@ -354,7 +363,7 @@ class TestKnowledgeBaseSearch:
 
         embs = [_unit([1, 0, 0]), _unit([0, 1, 0]), _unit([0, 0, 1])]
         store_chunks(db_session, "Book", "b", ["about cats", "about dogs", "about birds"], embs)
-        db_session.commit()
+        db_session.flush()
         mock_eq.return_value = _unit([0, 1, 0.05])  # closest to "about dogs"
         results = KnowledgeBase(db_session, min_score=0.3).search("anything", top_k=2)
         assert results[0].text == "about dogs"
@@ -366,7 +375,7 @@ class TestKnowledgeBaseSearch:
         from src.knowledge_base import KnowledgeBase
 
         store_chunks(db_session, "Book", "b", ["a", "b"], [_unit([1, 0, 0]), _unit([0, 1, 0])])
-        db_session.commit()
+        db_session.flush()
         mock_eq.return_value = _unit([0, 0, 1])  # orthogonal -> score ~0, below threshold
         assert KnowledgeBase(db_session, min_score=0.35).search("q") == []
 
@@ -376,3 +385,47 @@ class TestKnowledgeBaseSearch:
 
         assert KnowledgeBase(db_session).search("q") == []
         mock_eq.assert_not_called()  # don't waste an API call on an empty KB
+
+
+class TestIngestBook:
+    def test_book_meta(self):
+        from src.knowledge_base import _book_meta
+
+        title, slug = _book_meta("/books/Machine-Learning-Yearning-Andrew-Ng.pdf")
+        assert slug == "machine-learning-yearning-andrew-ng"
+        assert "Machine Learning Yearning" in title
+
+    @patch("src.knowledge_base.embed_texts")
+    @patch("src.knowledge_base.extract_book_text")
+    def test_ingests_and_stores(self, mock_extract, mock_embed, db_session):
+        from src.knowledge_base import ingest_book
+
+        mock_extract.return_value = _sentences_text(200)  # -> multiple chunks
+        mock_embed.side_effect = lambda texts, **kw: [[1.0, 0.0]] * len(texts)
+        n = ingest_book(db_session, "/books/Some-Book.pdf", api_key="k")
+        db_session.flush()
+        assert n > 1
+        assert db_session.query(PublisherKnowledgeBase).filter_by(book_slug="some-book").count() == n
+
+    @patch("src.knowledge_base.extract_book_text")
+    def test_empty_book_stores_nothing(self, mock_extract, db_session):
+        from src.knowledge_base import ingest_book
+
+        mock_extract.return_value = ""
+        assert ingest_book(db_session, "/books/Empty.pdf", api_key="k") == 0
+        assert db_session.query(PublisherKnowledgeBase).filter_by(book_slug="empty").count() == 0
+
+    @patch("src.knowledge_base.embed_texts")
+    @patch("src.knowledge_base.extract_book_text")
+    def test_reingest_is_idempotent(self, mock_extract, mock_embed, db_session):
+        from src.knowledge_base import ingest_book
+
+        mock_embed.side_effect = lambda texts, **kw: [[1.0, 0.0]] * len(texts)
+        mock_extract.return_value = _sentences_text(200)
+        first = ingest_book(db_session, "/books/Some-Book.pdf", api_key="k")
+        db_session.flush()
+        mock_extract.return_value = _sentences_text(50)  # smaller second time
+        second = ingest_book(db_session, "/books/Some-Book.pdf", api_key="k")
+        db_session.flush()
+        assert second < first
+        assert db_session.query(PublisherKnowledgeBase).filter_by(book_slug="some-book").count() == second

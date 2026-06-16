@@ -13,7 +13,7 @@ from src.scheduler import Pipeline, approve_post, publish_approved_posts, reject
 from src.scraper import ScrapedArticle
 from src.writer import WriterResult
 
-TEST_DB_URL = os.getenv("DATABASE_URL", "postgresql://publisher:publisher_dev@localhost:5433/publisher")
+TEST_DB_URL = os.getenv("DATABASE_URL", "postgresql://publisher:publisher_dev@localhost:5433/publisher_test")
 
 
 @pytest.fixture(scope="module")
