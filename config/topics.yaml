@@ -7,7 +7,7 @@ categories:
     sources_key: ai_news
 
   - name: Tech Talk
-    description: Something Lubo built — his stack, real project details
+    description: Lubo's senior take on a data/AI engineering topic — opinion and expertise, not a personal project log
     sources_key: tech_talk
 
   - name: AI Gadgets

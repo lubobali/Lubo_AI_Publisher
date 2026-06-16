@@ -276,6 +276,16 @@ class TestBuildUserPrompt:
         assert "lubo actually does biohacking" not in prompt.lower()
         assert "i tried this" not in prompt.lower()
 
+    def test_tech_talk_is_opinion_not_project(self):
+        """Tech Talk must be opinion/expertise, never a claimed personal project."""
+        prompt = build_user_prompt(
+            topic_name="Tech Talk",
+            topic_description="senior take on a DE topic",
+            articles=SAMPLE_ARTICLES,
+        ).lower()
+        assert "do not claim you personally built" in prompt
+        assert "opinion" in prompt
+
     def test_includes_topic_specific_rules_for_my_agent(self):
         prompt = build_user_prompt(
             topic_name="My Agent",
