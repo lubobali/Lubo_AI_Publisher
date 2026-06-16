@@ -65,7 +65,7 @@ def get_random_post_time(
 ) -> time:
     """Generate a random posting time within the day's window.
 
-    Weekdays: 4-10 PM CT. Weekends: 10 AM - 6 PM CT.
+    Windows come from schedule.yaml (weekday 4-5:59 PM CT, weekend 11 PM-midnight CT).
     If previous_time is given, ensures at least min_hour_diff hours difference.
     """
     config = load_schedule_config()
