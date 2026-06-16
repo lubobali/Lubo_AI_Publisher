@@ -10,8 +10,54 @@ from src.post_processor import (
     strip_dashes,
     strip_filler_phrases,
     strip_json_wrapper,
+    strip_markdown,
+    strip_model_meta,
     validate_post,
 )
+
+
+class TestStripMarkdown:
+    def test_removes_bold(self):
+        assert strip_markdown("this is **bold** text") == "this is bold text"
+
+    def test_removes_inline_italic_and_code(self):
+        assert "*" not in strip_markdown("some *italic* and `code` here")
+        assert "`" not in strip_markdown("some *italic* and `code` here")
+
+    def test_strips_header_markers_keeps_text(self):
+        assert strip_markdown("## The Fix") == "The Fix"
+        assert strip_markdown("### Why it matters") == "Why it matters"
+
+    def test_drops_setext_underline_lines(self):
+        out = strip_markdown("My Title\n=====\nbody")
+        assert "=====" not in out
+        assert "My Title" in out and "body" in out
+
+    def test_converts_star_bullets_to_dash(self):
+        assert strip_markdown("* first\n* second").splitlines()[0].startswith("- ")
+
+    def test_plain_text_untouched(self):
+        assert strip_markdown("just a normal sentence here") == "just a normal sentence here"
+
+
+class TestStripModelMeta:
+    def test_removes_rule_leak_brackets(self):
+        out = strip_model_meta("queries took [NO NUMBER - AS PER RULES, SINCE NONE GIVEN] too long")
+        assert "NO NUMBER" not in out
+        assert "queries took" in out and "too long" in out
+
+    def test_drops_label_lines(self):
+        text = 'LinkedIn Post\n\nReal content here.\n\nScreenshot URL: null\nHashtags: ["#AI"]'
+        out = strip_model_meta(text)
+        assert "Real content here." in out
+        assert "LinkedIn Post" not in out
+        assert "Screenshot URL" not in out
+        assert "Hashtags" not in out
+
+    def test_keeps_normal_content(self):
+        text = "I shipped a feature today.\n\nIt was hard but worth it."
+        assert strip_model_meta(text) == text
+
 
 # ---------------------------------------------------------------------------
 # strip_dashes

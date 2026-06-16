@@ -253,6 +253,56 @@ def strip_news_anchor_openings(text: str) -> str:
     return text.strip()
 
 
+_SETEXT_UNDERLINE_RE = re.compile(r"^\s*[=\-_]{3,}\s*$")
+_HEADER_RE = re.compile(r"^\s*#{1,6}\s*")
+_STAR_BULLET_RE = re.compile(r"^(\s*)\*\s+")
+_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+_BOLD_US_RE = re.compile(r"__(.+?)__")
+_ITALIC_RE = re.compile(r"\*([^*\n]+?)\*")
+_CODE_RE = re.compile(r"`([^`\n]+?)`")
+
+
+def strip_markdown(text: str) -> str:
+    """Strip markdown the LLM adds — LinkedIn renders none of it.
+
+    Removes bold/italic/code markers and header '#', drops setext underline lines
+    (====, ----), and converts '* ' bullets to '- ' (Lubo's style).
+    """
+    lines = []
+    for line in text.split("\n"):
+        if _SETEXT_UNDERLINE_RE.match(line):
+            continue
+        line = _HEADER_RE.sub("", line)
+        line = _STAR_BULLET_RE.sub(r"\1- ", line)
+        lines.append(line)
+    text = "\n".join(lines)
+    text = _BOLD_RE.sub(r"\1", text)
+    text = _BOLD_US_RE.sub(r"\1", text)
+    text = _ITALIC_RE.sub(r"\1", text)
+    text = _CODE_RE.sub(r"\1", text)
+    return text.replace("**", "").replace("`", "")
+
+
+_RULE_LEAK_RE = re.compile(
+    r"\[[^\]]*(?:NO NUMBER|AS PER RULE|PLACEHOLDER|INSERT|NO DATA|TODO|COULD SAY)[^\]]*\]",
+    re.IGNORECASE,
+)
+_META_LABEL_LINE_RE = re.compile(r"^\s*(linkedin post|post text|the post|output|caption)\s*:?\s*$", re.IGNORECASE)
+_META_KV_LINE_RE = re.compile(r"^\s*(screenshot url|screenshot|hashtags?)\s*:.*$", re.IGNORECASE)
+
+
+def strip_model_meta(text: str) -> str:
+    """Remove model scaffolding: bracketed rule-leaks and label/meta lines.
+
+    The 49B sometimes verbalizes prompt rules ("[NO NUMBER - AS PER RULES]") and
+    emits structural labels ("LinkedIn Post", "Screenshot URL: null", "Hashtags: ...").
+    """
+    text = _RULE_LEAK_RE.sub("", text)
+    kept = [ln for ln in text.split("\n") if not (_META_LABEL_LINE_RE.match(ln) or _META_KV_LINE_RE.match(ln))]
+    text = "\n".join(kept)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
 def deduplicate_hashtags(hashtags: list[str]) -> list[str]:
     """Remove duplicate hashtags, preserving order."""
     return list(dict.fromkeys(hashtags))
@@ -315,6 +365,11 @@ def process_post(text: str, hashtags: list[str]) -> tuple[str, list[str]]:
     prev = text
     text = strip_json_wrapper(text)
     fixes["json_wrapper_removed"] = text != prev
+
+    # New-model cleanup (49B emits markdown + meta/rule-leaks). Applied, not scored,
+    # so compliance categories stay stable.
+    text = strip_markdown(text)
+    text = strip_model_meta(text)
 
     prev = text
     text = strip_dashes(text)
