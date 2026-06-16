@@ -27,6 +27,7 @@ def test_daily_generation_runs_pipeline(mock_pipeline_cls, mock_session_local):
 @patch("src.cron.SessionLocal")
 def test_publish_runs_when_token_present(mock_session_local, mock_publish, monkeypatch):
     monkeypatch.setenv("LINKEDIN_ACCESS_TOKEN", "tok123")
+    monkeypatch.setenv("LINKEDIN_PERSON_URN", "urn:li:person:x")
     mock_publish.return_value = 1
     cron._run_publish()
     mock_publish.assert_awaited_once()

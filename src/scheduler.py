@@ -275,6 +275,7 @@ def reject_post(session: Session, post_id: int) -> bool:
 async def publish_approved_posts(
     session: Session,
     access_token: str,
+    person_urn: str,
     platform: str = "linkedin",
 ) -> int:
     """Publish all approved posts. Returns count of published posts."""
@@ -282,7 +283,7 @@ async def publish_approved_posts(
     if not approved:
         return 0
 
-    publisher = get_publisher(platform, access_token=access_token)
+    publisher = get_publisher(platform, access_token=access_token, person_urn=person_urn)
     published_count = 0
 
     for post in approved:

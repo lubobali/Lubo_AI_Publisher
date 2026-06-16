@@ -764,7 +764,7 @@ class TestPublishApproved:
             patch("src.scheduler.get_publisher", return_value=mock_publisher),
             patch("builtins.open", MagicMock(return_value=MagicMock(read=MagicMock(return_value=b"img")))),
         ):
-            count = await publish_approved_posts(db_session, access_token="test")
+            count = await publish_approved_posts(db_session, access_token="test", person_urn="urn:li:person:x")
 
         assert count >= 1
         db_session.refresh(post)
@@ -782,7 +782,7 @@ class TestPublishApproved:
         db_session.add(post)
         db_session.flush()
 
-        count = await publish_approved_posts(db_session, access_token="test")
+        count = await publish_approved_posts(db_session, access_token="test", person_urn="urn:li:person:x")
         assert count == 0
 
 

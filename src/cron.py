@@ -46,14 +46,15 @@ def _run_daily_generation() -> None:
 def _run_publish() -> None:
     """Publish any approved posts to LinkedIn. No-op without a token."""
     token = os.getenv("LINKEDIN_ACCESS_TOKEN")
-    if not token:
-        logger.warning("LINKEDIN_ACCESS_TOKEN not set — skipping publish")
+    person_urn = os.getenv("LINKEDIN_PERSON_URN")
+    if not (token and person_urn):
+        logger.warning("LINKEDIN_ACCESS_TOKEN/PERSON_URN not set — skipping publish")
         return
 
     async def _go():
         session = SessionLocal()
         try:
-            n = await publish_approved_posts(session, token)
+            n = await publish_approved_posts(session, token, person_urn)
             session.commit()
             if n:
                 logger.info("Published %d approved post(s)", n)
