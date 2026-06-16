@@ -20,8 +20,11 @@ CONFIG_DIR = Path(__file__).parent.parent / "config"
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
 # Env-overridable so vendor rotations are a 1-line .env change (the old 253B was
-# retired ~May 6, 2026). Default is a current, available Nemotron model.
-NVIDIA_MODEL = os.getenv("NVIDIA_LLM_MODEL", "nvidia/llama-3.3-nemotron-super-49b-v1")
+# retired ~May 6, 2026). Default = Nemotron 3 Ultra 550B (NVIDIA's flagship open
+# model, free on the NIM endpoint). It writes clean, on-voice, low-hallucination
+# posts — verified far better than the 49B. Falls back to 49B if Ultra is ever
+# rate-limited (NVIDIA_LLM_MODEL=nvidia/llama-3.3-nemotron-super-49b-v1).
+NVIDIA_MODEL = os.getenv("NVIDIA_LLM_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
 
