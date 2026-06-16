@@ -295,3 +295,30 @@ class TestWeekOverWeek:
         assert insights.weekly_stats.total_delta_pct == 100.0
         assert "100%" in article.summary
         assert "up" in article.summary.lower()
+
+
+class TestLocalMode:
+    """Local-read mode: read archive files directly instead of SSH (worker has no ssh)."""
+
+    def test_local_mode_reads_files_without_ssh(self, tmp_path):
+        (tmp_path / "wakatime-2026-06-13.json").write_text(json.dumps(DAY1))
+        (tmp_path / "wakatime-2026-06-12.json").write_text(json.dumps(DAY2))
+        with patch("src.wakatime_insights.subprocess.run") as mock_run:
+            article = WakaTimeInsights(archive_dir=str(tmp_path), local=True).get_weekly_stats()
+        mock_run.assert_not_called()
+        assert article is not None
+        assert "Building in public" in article.title
+
+    def test_local_mode_reads_notes(self, tmp_path):
+        (tmp_path / "wakatime-2026-06-13.json").write_text(json.dumps(DAY1))
+        notes_dir = tmp_path / "notes"
+        notes_dir.mkdir()
+        (notes_dir / "week.md").write_text("shipped local-read mode")
+        article = WakaTimeInsights(archive_dir=str(tmp_path), local=True).get_weekly_stats()
+        assert "shipped local-read mode" in article.summary
+
+    @patch("src.wakatime_insights.subprocess.run")
+    def test_ssh_is_default(self, mock_run):
+        mock_run.return_value = MagicMock(stdout=_ssh_output([DAY1, DAY2]), returncode=0)
+        WakaTimeInsights().get_weekly_stats()
+        assert "ssh" in mock_run.call_args_list[0].args[0]

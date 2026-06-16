@@ -6,6 +6,7 @@ in actual work, not scraped news.
 """
 
 import logging
+import os
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -20,6 +21,11 @@ logger = logging.getLogger(__name__)
 DEFAULT_HOST = "root@178.156.214.8"
 DEFAULT_REPO = "/srv/lubot-staging/services-agent-api"
 DEFAULT_DAYS_BACK = 7
+
+# When the worker runs on the same Hetzner box as staging (with /srv/lubot-staging
+# mounted in), read git locally instead of SSHing to ourselves — the container has
+# no ssh client. Opt-in via env so tests/Mac keep the SSH path.
+STAGING_LOCAL = os.getenv("STAGING_LOCAL", "").lower() in ("1", "true", "yes")
 
 # Commit messages matching these patterns are noise
 NOISE_PATTERNS = [
@@ -255,10 +261,12 @@ class GitInsights:
         host: str = DEFAULT_HOST,
         repo_path: str = DEFAULT_REPO,
         days_back: int = DEFAULT_DAYS_BACK,
+        local: bool | None = None,
     ):
         self.host = host
         self.repo_path = repo_path
         self.days_back = days_back
+        self.local = STAGING_LOCAL if local is None else local
         self.best_commit: GitCommit | None = None
 
     @observe()
@@ -324,8 +332,21 @@ class GitInsights:
         )
 
     def _fetch_git_log(self) -> tuple[str, str]:
-        """SSH to staging and run git log. Returns (log_output, numstat_output)."""
+        """Read git log from staging. Returns (log_output, numstat_output).
+
+        Local mode runs git directly on the mounted repo (no ssh client needed);
+        otherwise SSHes to the staging host.
+        """
         since = f"{self.days_back} days ago"
+
+        if self.local:
+            log_argv = ["git", "-C", self.repo_path, "log", f"--since={since}", "--format=%h|%aI|%s"]
+            numstat_argv = ["git", "-C", self.repo_path, "log", f"--since={since}", "--pretty=format:---", "--numstat"]
+            log_result = subprocess.run(log_argv, capture_output=True, text=True, timeout=30)
+            if log_result.returncode != 0:
+                raise subprocess.CalledProcessError(log_result.returncode, log_argv)
+            numstat_result = subprocess.run(numstat_argv, capture_output=True, text=True, timeout=30)
+            return (log_result.stdout, numstat_result.stdout)
 
         # Fetch formatted log
         log_cmd = (

@@ -21,6 +21,10 @@ services:
     container_name: lubot-publisher-worker
     command: python -m src.cron
     env_file: .env
+    environment:
+      # Worker runs on the same box as staging — read git + WakaTime locally
+      # (no ssh client in the container). See git_insights/wakatime_insights.
+      - STAGING_LOCAL=1
     depends_on:
       publisher-db:
         condition: service_healthy
@@ -29,6 +33,7 @@ services:
     restart: unless-stopped
     volumes:
       - publisher-screenshots:/app/screenshots
+      - /srv/lubot-staging:/srv/lubot-staging:ro
     networks:
       - publisher-net
 

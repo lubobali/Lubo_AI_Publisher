@@ -9,8 +9,10 @@ Second "real work" source after git_insights.py. Same SSH-to-staging pattern
 (public IP, Docker-safe — not Tailscale).
 """
 
+import glob
 import json
 import logging
+import os
 import subprocess
 from dataclasses import dataclass, field
 
@@ -23,6 +25,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_HOST = "root@178.156.214.8"
 DEFAULT_ARCHIVE_DIR = "/srv/lubot-staging/.wakatime-archive"
 DEFAULT_DAYS_BACK = 7
+
+# Same as git_insights: when the worker runs on the staging box (archive dir
+# mounted in), read the JSON files directly instead of SSHing to ourselves.
+STAGING_LOCAL = os.getenv("STAGING_LOCAL", "").lower() in ("1", "true", "yes")
 
 # Markers used to delimit the SSH stdout (archives, then optional weekly notes)
 FILE_MARKER = "===WAKA-FILE==="
@@ -270,11 +276,13 @@ class WakaTimeInsights:
         archive_dir: str = DEFAULT_ARCHIVE_DIR,
         days_back: int = DEFAULT_DAYS_BACK,
         include_costs: bool = True,
+        local: bool | None = None,
     ):
         self.host = host
         self.archive_dir = archive_dir
         self.days_back = days_back
         self.include_costs = include_costs
+        self.local = STAGING_LOCAL if local is None else local
         self.weekly_stats: WeeklyStats | None = None
 
     @observe()
@@ -326,14 +334,55 @@ class WakaTimeInsights:
             source_priority=0,  # own work = top priority
         )
 
+    def _read_local_archives(self) -> str:
+        """Read the last 2*N daily archives + latest notes from the mounted dir.
+
+        Produces the same FILE_MARKER/NOTES_MARKER-delimited string the SSH path
+        returns, so the parser is identical for both modes.
+        """
+        paths = sorted(
+            glob.glob(os.path.join(self.archive_dir, "wakatime-*.json")),
+            key=os.path.getmtime,
+            reverse=True,
+        )[: self.days_back * 2]
+
+        parts: list[str] = []
+        for path in paths:
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    parts.append(FILE_MARKER)
+                    parts.append(fh.read())
+            except OSError:
+                logger.debug("Could not read WakaTime archive %s", path)
+
+        parts.append(NOTES_MARKER)
+        notes = sorted(
+            glob.glob(os.path.join(self.archive_dir, "notes", "*.md")),
+            key=os.path.getmtime,
+            reverse=True,
+        )
+        if notes:
+            try:
+                with open(notes[0], encoding="utf-8") as fh:
+                    parts.append(fh.read())
+            except OSError:
+                logger.debug("Could not read WakaTime notes %s", notes[0])
+
+        return "\n".join(parts)
+
     def _fetch_archives(self) -> str:
-        """SSH to staging, cat the last 2*N daily archives + latest weekly notes.
+        """Read WakaTime archives from staging — locally if mounted, else via SSH.
+
+        SSH path: cat the last 2*N daily archives + latest weekly notes.
 
         Pulls two weeks so we can compute the week-over-week momentum delta.
         Output: FILE_MARKER + json per archive, then NOTES_MARKER + notes text.
         Trailing `true` keeps the remote exit code 0 when the host is reachable,
         so a missing notes file never looks like an SSH failure.
         """
+        if self.local:
+            return self._read_local_archives()
+
         remote = (
             f"cd {self.archive_dir} && "
             f"for f in $(ls -t wakatime-*.json 2>/dev/null | head -{self.days_back * 2}); do "

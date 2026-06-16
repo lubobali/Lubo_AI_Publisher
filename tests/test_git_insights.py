@@ -262,3 +262,25 @@ class TestGitInsightsCommitDetails:
         article = insights.get_latest_feature()
         # Summary should contain the actual commit messages for writer context
         assert "stock" in article.summary.lower() or "Stock" in article.summary
+
+
+class TestLocalMode:
+    """Local-read mode: run git on the mounted repo instead of SSH (worker has no ssh)."""
+
+    @patch("src.git_insights.subprocess.run")
+    def test_local_mode_runs_git_not_ssh(self, mock_run):
+        mock_run.return_value = MagicMock(
+            stdout="a1b2c3d|2026-06-15T10:00:00+00:00|add stock ticker endpoint\n",
+            returncode=0,
+        )
+        GitInsights(local=True).get_latest_feature()
+        argv = mock_run.call_args_list[0].args[0]
+        assert argv[0] == "git"
+        assert "-C" in argv
+        assert "ssh" not in argv
+
+    @patch("src.git_insights.subprocess.run")
+    def test_ssh_is_default(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="", returncode=0)
+        GitInsights().get_latest_feature()
+        assert "ssh" in mock_run.call_args_list[0].args[0]
