@@ -301,7 +301,7 @@ class TestBuildUserPrompt:
             articles=SAMPLE_ARTICLES,
         )
         assert "ONLY use features from this list" in prompt
-        assert "Multi-model orchestration" in prompt
+        assert "100% NVIDIA powered" in prompt
         assert "Hetzner" in prompt
         assert "do NOT invent features" in prompt
 
@@ -312,7 +312,7 @@ class TestBuildUserPrompt:
             articles=SAMPLE_ARTICLES,
         )
         assert "ONLY use features from this list" not in prompt
-        assert "Multi-model orchestration" not in prompt
+        assert "100% NVIDIA powered" not in prompt
 
     def test_my_agent_build_prompt_includes_git_context(self):
         """My Agent Build posts include build log instructions."""
@@ -332,7 +332,7 @@ class TestBuildUserPrompt:
             topic_description="What Lubo built this week",
             articles=SAMPLE_ARTICLES,
         )
-        assert "Multi-model orchestration" not in prompt
+        assert "100% NVIDIA powered" not in prompt
         assert "ONLY use features from this list" not in prompt
 
     def test_building_in_public_prompt_includes_stats_rules(self):

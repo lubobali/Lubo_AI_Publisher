@@ -148,7 +148,12 @@ def build_user_prompt(
                 f"ONLY use features from this list — do NOT invent features:\n{features_text}\n\n"
                 f"Pick ONE feature and write a post about it. "
                 f"Compare to ChatGPT or other tools. Show what makes LuBot different. "
-                f"Use real numbers and real examples from the feature list above."
+                f"Use ONLY facts from the feature list above, and use any number EXACTLY as "
+                f"written — never change a digit (if it says 34 tables, never write 36). "
+                f"If a number is not in the list, do not state one. "
+                f"Do NOT invent a fake user scenario with made up data and dates "
+                f"(no 'uploaded sales data in January, asked in March'). "
+                f"Remember: LuBot is 100% NVIDIA — never say it uses GPT, Claude, or Gemini."
             )
 
     # Git-based My Agent Build posts — grounded in real commits

@@ -109,17 +109,19 @@ topic_specific:
     - Use real numbers from the features list, dont invent new ones
 
 # Real LuBot features — ONLY these can be mentioned in my_agent posts
+# ACCURATE facts about the real LuBot (staging). Keep these TRUE — the writer may
+# only use facts/numbers from this list, exactly as written. Update when LuBot changes.
 my_agent_features:
-  - "Multi-model orchestration, routes queries between GPT-4, Claude, Gemini based on task type"
-  - "Self-hosted on Hetzner dedicated server, no cloud vendor lock-in, full data control"
-  - "Real-time stock analysis with 49 parallel research modules running simultaneously"
-  - "Voice input via Whisper, talk to your AI agent instead of typing"
-  - "Custom tool-calling framework, LuBot picks and chains tools automatically"
-  - "PostgreSQL long-term memory, remembers context across sessions, not just one chat"
-  - "Cost tracking per query, shows exactly what each AI call costs in real time"
-  - "Full stack in docker-compose, entire system deploys with one command"
-  - "122K lines of Python, 36 database tables, 42 API endpoints"
-  - "4-tier cascade routing, 95% of routing costs zero LLM tokens"
+  - "100% NVIDIA powered, runs on Nemotron models (Ultra, Super, Nano, Vision, embeddings) — no GPT, no Claude, no Gemini"
+  - "The Cascade: 4-tier intent routing (deterministic, regex, embeddings, then LLM) so 95% of queries cost zero LLM tokens"
+  - "Multi-tenant SaaS, every user gets their own fully isolated data"
+  - "Three modes in one platform: Website analytics, your uploaded files, and an AI stock advisor"
+  - "AI stock advisor, not a dashboard: reads the market, news and fundamentals, runs Monte Carlo retirement projections"
+  - "Multimodal PDF RAG: extracts text, tables and images and embeds them in one vector space"
+  - "PostgreSQL long-term memory that remembers context across sessions, and self-learns from usage"
+  - "Self-hosted on Hetzner, full data control, no vendor reading your business logic"
+  - "Brand new frontend built from scratch (React, Tailwind, TradingView charts)"
+  - "Around 112K lines of Python, 34 database tables, 28 AI tools, all in docker-compose"
 
 hashtag_rules:
   max_count: 5
