@@ -120,6 +120,32 @@ class TestPipelineGenerate:
         assert post.post_text == writer_result.post_text
 
     @pytest.mark.asyncio
+    async def test_stores_post_embedding_for_dedup(self, db_session):
+        """The saved post must carry an embedding so future runs can skip same-idea posts."""
+        articles = _make_articles()
+        with (
+            patch("src.scheduler.scrape_topic", new_callable=AsyncMock, return_value=articles),
+            patch("src.scheduler.DuplicateChecker") as mock_dedup_cls,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()),
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/s.png")),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_dedup = MagicMock()
+            mock_dedup.check_article = AsyncMock(return_value=MagicMock(is_duplicate=False))
+            mock_dedup.record_url = MagicMock()
+            mock_dedup.get_embedding = AsyncMock(return_value=[0.1, 0.2, 0.3])
+            mock_dedup_cls.return_value = mock_dedup
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
+
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 16))
+
+        assert result.success is True
+        post = db_session.query(PublisherPost).filter_by(id=result.post_id).first()
+        assert post.post_embedding == [0.1, 0.2, 0.3]
+
+    @pytest.mark.asyncio
     async def test_pipeline_skips_duplicate_articles(self, db_session):
         """Pipeline tries next article when first is a duplicate."""
         articles = _make_articles()

@@ -156,6 +156,13 @@ class Pipeline:
                 image_path = generated.path
                 logger.info("Generated image: %s", image_path)
 
+        # 6.5. Embed the final post so future runs can skip same-idea posts (semantic dedup)
+        post_embedding = None
+        try:
+            post_embedding = await DuplicateChecker(self.session).get_embedding(writer_result.post_text)
+        except Exception:
+            logger.debug("Post embedding for dedup failed", exc_info=True)
+
         # 7. Save as PENDING
         post = PublisherPost(
             posted_at=datetime.now(UTC),
@@ -167,6 +174,7 @@ class Pipeline:
             hashtags=writer_result.hashtags,
             status="pending",
             day_of_week=target_date.strftime("%A").lower(),
+            post_embedding=post_embedding,
         )
         self.session.add(post)
         self.session.flush()
