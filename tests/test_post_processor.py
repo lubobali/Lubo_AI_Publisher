@@ -26,6 +26,9 @@ class TestNormalizeBrand:
     def test_leaves_correct_casing(self):
         assert normalize_brand("LuBot shipped today") == "LuBot shipped today"
 
+    def test_fixes_lobot_typo(self):
+        assert normalize_brand("lobot ate 61 hours") == "LuBot ate 61 hours"
+
     def test_does_not_touch_domain(self):
         assert normalize_brand("visit lubot.ai and staging.lubot.ai") == "visit lubot.ai and staging.lubot.ai"
 

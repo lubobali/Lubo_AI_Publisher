@@ -303,7 +303,7 @@ def strip_model_meta(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
-_BRAND_RE = re.compile(r"\b[Ll][Uu][Bb][Oo][Tt]\b(?!\.)")
+_BRAND_RE = re.compile(r"\b[Ll][UuOo][Bb][Oo][Tt]\b(?!\.)")  # catches LuBot + the 'lobot' typo
 
 
 def normalize_brand(text: str) -> str:
