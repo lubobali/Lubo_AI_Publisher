@@ -1,5 +1,7 @@
 """LinkedIn API client — OAuth flow and authenticated API calls."""
 
+import os
+
 import httpx
 
 LINKEDIN_TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
@@ -28,7 +30,10 @@ async def exchange_code_for_token(
         return response.json()
 
 
-LINKEDIN_API_VERSION = "202401"
+# LinkedIn only supports a rolling ~12-month window of monthly versions; "202401"
+# was stale (426 Upgrade Required). Env-overridable so future rotations are a
+# 1-line .env change. 202506 verified working Jun 2026.
+LINKEDIN_API_VERSION = os.getenv("LINKEDIN_API_VERSION", "202506")
 
 
 def get_auth_headers(access_token: str) -> dict:
