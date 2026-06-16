@@ -134,6 +134,18 @@ class TestBuildSystemPrompt:
         prompt = build_system_prompt()
         assert "do not invent" in prompt.lower() or "never fabricate" in prompt.lower()
 
+    def test_forbids_invented_numbers(self):
+        prompt = build_system_prompt().lower()
+        assert "never invent a specific number" in prompt or "made up number" in prompt
+
+    def test_forbids_invented_tools(self):
+        prompt = build_system_prompt().lower()
+        assert "tool" in prompt and ("didnt actually use" in prompt or "did not actually use" in prompt)
+
+    def test_forbids_markdown(self):
+        prompt = build_system_prompt().lower()
+        assert "no markdown" in prompt or "plain text only" in prompt
+
 
 # ---------------------------------------------------------------------------
 # User prompt building
