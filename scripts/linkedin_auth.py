@@ -68,21 +68,20 @@ def cmd_url() -> None:
 
 
 def _fetch_urn(access: str) -> str:
-    u = httpx.get(
-        "https://api.linkedin.com/v2/userinfo",
-        headers={"Authorization": f"Bearer {access}"},
-        timeout=30,
+    headers = {"Authorization": f"Bearer {access}"}
+    # Newer OpenID Connect scope -> /v2/userinfo returns 'sub'
+    u = httpx.get("https://api.linkedin.com/v2/userinfo", headers=headers, timeout=30)
+    if u.status_code == 200 and u.json().get("sub"):
+        return f"urn:li:person:{u.json()['sub']}"
+    # Older r_liteprofile scope -> /v2/me returns 'id'
+    m = httpx.get("https://api.linkedin.com/v2/me", headers=headers, timeout=30)
+    if m.status_code == 200 and m.json().get("id"):
+        return f"urn:li:person:{m.json()['id']}"
+    sys.exit(
+        f"Could not get your URN (userinfo={u.status_code}, me={m.status_code}). "
+        "Add the 'Sign In with LinkedIn' product, then create a NEW token with the "
+        "profile/openid scope checked, and paste that one."
     )
-    if u.status_code != 200:
-        sys.exit(
-            f"userinfo failed ({u.status_code}): {u.text}\n"
-            "The token needs the openid/profile scope — add the 'Sign In with LinkedIn "
-            "using OpenID Connect' product, then create a new token with that scope checked."
-        )
-    sub = u.json().get("sub")
-    if not sub:
-        sys.exit("No 'sub' in userinfo response — cannot derive person URN")
-    return f"urn:li:person:{sub}"
 
 
 def cmd_urn() -> None:
