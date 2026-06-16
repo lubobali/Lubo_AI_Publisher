@@ -40,3 +40,7 @@ def _ensure_database(url: str) -> None:
 # Respect an explicit DATABASE_URL (CI), otherwise use the dedicated test DB.
 os.environ.setdefault("DATABASE_URL", DEFAULT_TEST_DB)
 _ensure_database(os.environ["DATABASE_URL"])
+
+# Langfuse is OFF in production by default; tests turn it on to validate the
+# tracing wiring (the SDK is mocked in tests, so there is no real API cost).
+os.environ.setdefault("LANGFUSE_ENABLED", "true")
