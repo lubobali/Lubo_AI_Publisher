@@ -1,11 +1,31 @@
 services:
-  publisher:
+  publisher-web:
     build: .
-    container_name: lubot-publisher
+    image: lubot-publisher:latest
+    container_name: lubot-publisher-web
+    command: uvicorn src.api:app --host 0.0.0.0 --port 8100
+    env_file: .env
+    ports:
+      - "127.0.0.1:8100:8100"   # localhost only — nginx terminates SSL in front
+    depends_on:
+      publisher-db:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - publisher-screenshots:/app/screenshots
+    networks:
+      - publisher-net
+
+  publisher-worker:
+    image: lubot-publisher:latest   # reuse the image built by publisher-web
+    container_name: lubot-publisher-worker
+    command: python -m src.cron
     env_file: .env
     depends_on:
       publisher-db:
         condition: service_healthy
+      publisher-web:
+        condition: service_started
     restart: unless-stopped
     volumes:
       - publisher-screenshots:/app/screenshots
