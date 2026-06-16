@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>LuBot Publisher</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background:#0a0e1a; -webkit-tap-highlight-color: transparent; }
+    .pre { white-space: pre-wrap; word-wrap: break-word; }
+  </style>
+</head>
+<body class="text-slate-200 min-h-screen">
+  <div class="max-w-xl mx-auto px-4 pb-24 pt-5">
+
+    <header class="flex items-center justify-between mb-5">
+      <div class="flex items-center gap-2">
+        <div class="h-7 w-7 rounded-lg bg-emerald-500 flex items-center justify-center font-bold text-slate-900">L</div>
+        <h1 class="text-lg font-bold tracking-tight">LuBot Publisher</h1>
+      </div>
+      <span id="count" class="text-sm text-emerald-400 font-semibold">…</span>
+    </header>
+
+    <div id="pending" class="space-y-4"></div>
+    <div id="empty" class="hidden text-center text-slate-500 py-16">
+      <div class="text-4xl mb-2">✓</div>
+      <div>No posts waiting. You are all caught up.</div>
+    </div>
+
+    <h2 class="text-xs uppercase tracking-widest text-slate-500 mt-9 mb-3">Recent</h2>
+    <div id="recent" class="space-y-2 text-sm"></div>
+  </div>
+
+  <script>
+    const CAT = {
+      ai_news:"AI News", tech_talk:"Tech Talk", ai_gadgets:"AI Gadgets",
+      my_agent:"My Agent", biohacker:"Biohacker", wakatime:"Building in Public",
+      my_agent_git:"My Agent Build"
+    };
+    const esc = s => (s||"").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+    const when = iso => { try { return new Date(iso).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}); } catch { return ""; } };
+
+    async function load() {
+      const posts = await (await fetch("/api/posts")).json();
+      const pending = posts.filter(p => p.status === "pending");
+      const recent  = posts.filter(p => p.status !== "pending").slice(0, 8);
+
+      document.getElementById("count").textContent = pending.length + " pending";
+      document.getElementById("empty").classList.toggle("hidden", pending.length > 0);
+
+      document.getElementById("pending").innerHTML = pending.map(p => `
+        <div class="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-hidden">
+          <div class="px-4 pt-4 flex items-center justify-between">
+            <span class="text-xs font-semibold px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-400">${esc(CAT[p.topic_category]||p.topic_category)}</span>
+            <span class="text-xs text-slate-500">${when(p.posted_at)}</span>
+          </div>
+          <div class="px-4 py-3 pre text-[15px] leading-relaxed">${esc(p.post_text)}</div>
+          ${p.image_path ? `<img src="/api/posts/${p.id}/image" class="w-full border-y border-slate-800" loading="lazy" onerror="this.remove()">` : ""}
+          ${(p.hashtags&&p.hashtags.length)?`<div class="px-4 pt-3 text-emerald-400/80 text-sm">${esc(p.hashtags.join(" "))}</div>`:""}
+          <div class="p-3 grid grid-cols-2 gap-2">
+            <button onclick="act(${p.id},'approve',this)" class="py-3 rounded-xl bg-emerald-500 text-slate-900 font-semibold active:scale-95 transition">✓ Approve &amp; Post</button>
+            <button onclick="act(${p.id},'reject',this)" class="py-3 rounded-xl bg-slate-800 text-slate-300 font-semibold active:scale-95 transition">✕ Reject</button>
+          </div>
+        </div>`).join("");
+
+      document.getElementById("recent").innerHTML = recent.map(p => `
+        <div class="flex items-center gap-2 text-slate-400">
+          <span class="${p.status==='rejected'?'text-rose-400':'text-emerald-400'}">${p.status==='rejected'?'✕':'✓'}</span>
+          <span class="truncate flex-1">${esc(CAT[p.topic_category]||p.topic_category)} — ${esc((p.post_text||'').slice(0,60))}…</span>
+        </div>`).join("") || `<div class="text-slate-600">Nothing yet.</div>`;
+    }
+
+    async function act(id, what, btn) {
+      btn.disabled = true; btn.textContent = "…";
+      try {
+        const r = await fetch(`/api/posts/${id}/${what}`, { method: "POST" });
+        if (!r.ok) throw new Error(await r.text());
+        await load();
+      } catch (e) { alert("Failed: " + e.message); btn.disabled = false; }
+    }
+
+    load();
+  </script>
+</body>
+</html>

@@ -990,20 +990,20 @@ Completely separate from LuBot. Nothing shared.
 
   --- PHASE 3: REACT FRONTEND + DEPLOY (Steps 16-17) ---
 
-  Step 16: REACT DASHBOARD FRONTEND (publisher.lubobali.com)
-    - Same stack as LuBot: React 19 + Vite + Tailwind 4 + shadcn/ui + Radix
-    - Dark theme matching LuBot (navy #0a0e1a, green accent #22c55e)
-    - Mobile-first responsive design (phone, tablet, desktop)
-    - Simple auth (login page, session cookie from FastAPI backend)
-    - Pages:
-      a. POST QUEUE — pending AI posts, approve/reject with one click
-      b. CREATE POST — write manual post (text + image + category + platform)
-      c. POST HISTORY — all posts (auto + manual) with status, dates, metrics
-      d. ANALYTICS — engagement per post, per category, trends, charts
-      e. Platform selector — checkboxes for which platforms to publish to
-    - Separate directory: publisher-frontend/ (or monorepo subfolder)
-    - Vite build → static files served by nginx
-    - Marketable: clean enough to sell as a product to others
+  Step 16: APPROVAL DASHBOARD (publisher.lubobali.com) — DELIBERATELY MINIMAL
+    DECISION (Jun 16): this is Lubo's personal approval tool, NOT a product. No
+    React/Vite/shadcn toolchain (nothing to break). ONE clean page, mobile-first,
+    served directly by the existing FastAPI backend. Backend API already done
+    (/api/posts?status=pending, /approve, /reject).
+    - Single static file (dashboard.html): Tailwind via CDN + vanilla JS fetch
+    - Dark LuBot theme (navy #0a0e1a, green accent #22c55e)
+    - ONE screen: pending posts as cards (category, date, post text, screenshot
+      preview, hashtags) with two buttons: Approve & Post / Reject
+    - Small "recently posted/rejected" list below
+    - Served by FastAPI at "/" (API stays at /api/*). No nginx-for-static, no build.
+    - Auth: simple shared token (optional v1) — it is behind the domain/SSL anyway
+    - NOT building: create-post page, analytics charts, platform checkboxes (LinkedIn
+      only for now). Can add later if ever wanted. Keep it boring and reliable.
 
   Step 17: DEPLOY + FIRST REAL POST
     - DNS: A record publisher.lubobali.com → 178.156.214.8

@@ -2,14 +2,18 @@
 
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.db import SessionLocal
 from src.models import PublisherPost, PublisherTopicPerformance
 from src.observability import get_client
+
+DASHBOARD_FILE = Path(__file__).parent.parent / "static" / "dashboard.html"
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +79,21 @@ class AnalyticsResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+
+@app.get("/", response_class=HTMLResponse)
+def dashboard():
+    """Serve the single-page approval dashboard."""
+    return HTMLResponse(DASHBOARD_FILE.read_text())
+
+
+@app.get("/api/posts/{post_id}/image")
+def post_image(post_id: int, session: Session = Depends(get_db_session)):
+    """Serve the screenshot/image for a post so the dashboard can show it."""
+    post = session.query(PublisherPost).filter_by(id=post_id).first()
+    if not post or not post.image_path or not Path(post.image_path).exists():
+        raise HTTPException(status_code=404, detail="No image for this post")
+    return FileResponse(post.image_path)
 
 
 @app.get("/api/health")

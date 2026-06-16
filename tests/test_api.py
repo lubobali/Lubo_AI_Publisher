@@ -225,3 +225,27 @@ class TestHealth:
         resp = client.get("/api/health")
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
+
+
+class TestDashboard:
+    def test_serves_dashboard_html(self, client):
+        r = client.get("/")
+        assert r.status_code == 200
+        assert "text/html" in r.headers["content-type"]
+        assert "LuBot Publisher" in r.text
+
+    def test_post_image_404_when_no_image(self, client, db_session):
+        post = _create_post(db_session, image_path=None)
+        r = client.get(f"/api/posts/{post.id}/image")
+        assert r.status_code == 404
+
+    def test_post_image_404_when_post_missing(self, client):
+        assert client.get("/api/posts/999999/image").status_code == 404
+
+    def test_post_image_served_when_present(self, client, db_session, tmp_path):
+        img = tmp_path / "shot.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"x" * 200)
+        post = _create_post(db_session, image_path=str(img))
+        r = client.get(f"/api/posts/{post.id}/image")
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith("image")
