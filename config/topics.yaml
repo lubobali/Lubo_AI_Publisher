@@ -1,26 +1,29 @@
 # Topic categories — 7 topics rotating weekly
 # Week N: topics shift by 1 position so Monday is NOT always the same topic
+# Phase 2.10: dropped AI Gadgets + My Agent (showcase); added Stock Talk x2
+# (Market Pulse + Investing Principle), placed 3 slots apart so the two stock
+# posts never land on back-to-back days.
 
 categories:
   - name: AI News
     description: Hot AI news, quick post about tools/announcements
     sources_key: ai_news
 
+  - name: Market Pulse
+    description: Calm, data-driven take on the market week — real index moves from yfinance. Builder of an AI stock advisor, not financial advice.
+    sources_key: market_pulse
+
   - name: Tech Talk
     description: Lubo's senior take on a data/AI engineering topic — opinion and expertise, not a personal project log
     sources_key: tech_talk
 
-  - name: AI Gadgets
-    description: Latest AI gadgets, hardware, physical products
-    sources_key: ai_gadgets
-
-  - name: My Agent
-    description: LuBot showcase — new features, real AI output
-    sources_key: my_agent
-
   - name: Biohacker
     description: Biohacking, supplements, longevity science
     sources_key: biohacker
+
+  - name: Investing Principle
+    description: Evergreen long-term investing wisdom from the engineer who built an AI stock advisor. Calm, behavioral, not financial advice.
+    sources_key: stock_talk
 
   - name: Building in Public
     description: Lubo's real coding week — hours, top languages, AI usage, week-over-week momentum. Honest building-in-public stats from WakaTime.
