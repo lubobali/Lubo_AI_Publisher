@@ -210,6 +210,28 @@ def build_user_prompt(
             "- Do NOT invent metrics, percentages, comparisons, or costs not in the data"
         )
 
+    # Stock Talk / Market Pulse — grounded in real yfinance market numbers
+    if topic_key == "market_pulse":
+        prompt_parts.append(
+            "\nThis is a STOCK TALK / MARKET PULSE post. The summary below has REAL "
+            "market numbers (index closes + weekly % moves) from market data.\n\n"
+            "RULES:\n"
+            "- Open with YOUR reaction or a principle, NOT the raw index number\n"
+            "- Use the EXACT numbers from the summary (closes, % moves) — invent nothing\n"
+            "- Frame as a calm long-term investor who BUILT an AI stock advisor (LuBot Stock mode)\n"
+            "- NOT financial advice: no buy/sell calls, no price targets, no predictions, no 'you should'\n"
+            "- Always 'I', never 'we'. Short lines, blank lines between thoughts\n"
+            "- No hype words: no 'to the moon', 'load up', 'next 10x', 'buy the dip', 'easy money'\n"
+            "- One honest or self-deprecating beat is welcome\n"
+            "- End with ONE clear question to the audience, and it MUST end with a question mark (?)\n\n"
+            "FORMATTING (LinkedIn readability):\n"
+            "- BLANK LINES between paragraphs; numbers get their own short lines\n"
+            "- The closing question gets its own paragraph\n\n"
+            "ANTI-HALLUCINATION (critical):\n"
+            "- The ONLY numbers allowed are the closes and weekly % moves in the summary above\n"
+            "- Do NOT invent other prices, percentages, dollar amounts, predictions, or targets"
+        )
+
     # Add scraped articles as context
     if articles:
         prompt_parts.append("\nHere are today's top articles for inspiration:")

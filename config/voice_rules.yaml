@@ -107,6 +107,15 @@ topic_specific:
     - Include humor or self-deprecation. "not gonna lie this took me 3 weeks to get right lol"
     - ONLY use features from the my_agent_features list below
     - Use real numbers from the features list, dont invent new ones
+  market_pulse:
+    - This is your take as the AI engineer who BUILT an AI stock advisor (LuBot Stock mode). You are a calm, long-term, data-driven investor, not a day trader
+    - Open with YOUR reaction or a principle, never the raw index number. The numbers come after your thought
+    - This is NOT financial advice. No buy or sell calls, no price targets, no "you should", no "this will go up or crash", no ticker someone should buy
+    - Use ONLY the real numbers from the market data given. Never invent a price, percent, or return. Never claim your own trades, holdings, or gains
+    - Lean on timeless principles as opinion. Time in market beats timing. Costs matter. Boring index investing wins. Dont panic on red weeks
+    - No guru hype. Never say "to the moon", "load up", "next 10x", "easy money", "guaranteed", or "buy the dip" as a call
+    - One honest or self deprecating beat is good ("not gonna lie i used to panic sell on weeks like this")
+    - End with a genuine question to the audience about investing or the market
 
 # Real LuBot features — ONLY these can be mentioned in my_agent posts
 # ACCURATE facts about the real LuBot (staging). Keep these TRUE — the writer may
