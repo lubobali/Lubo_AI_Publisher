@@ -27,6 +27,9 @@ beautifulsoup4==4.12.3
 lxml==6.0.2
 playwright==1.49.1
 
+# Market data (Stock Talk category — Phase 2.10)
+yfinance==1.4.1
+
 # Scheduling
 apscheduler==3.11.0
 
