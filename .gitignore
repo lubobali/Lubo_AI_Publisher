@@ -15,6 +15,8 @@ screenshots/
 *.jpg
 # Allow docs screenshots for README
 !docs/screenshots/*.png
+# Allow committed brand/UI assets (e.g. LuBot logo for stat cards)
+!static/assets/*.png
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
