@@ -106,7 +106,7 @@ def main() -> None:
     sched = build_scheduler()
     _schedule_todays_generation(sched)  # don't wait for the first midnight — schedule today now
     logger.info(
-        "Publisher scheduler up — randomized daily generation (weekday 4-5 PM / weekend 11 PM %s), publish every %d min",
+        "Publisher scheduler up — randomized daily generation (weekday 3-5 PM / weekend 11 PM %s), publish every %d min",
         TIMEZONE,
         PUBLISH_INTERVAL_MIN,
     )
