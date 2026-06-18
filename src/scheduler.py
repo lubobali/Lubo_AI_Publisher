@@ -15,16 +15,23 @@ from src.observability import get_client, observe
 from src.post_processor import process_post, validate_post
 from src.publisher import get_publisher
 from src.scraper import ScrapedArticle, scrape_topic
-from src.screenshotter import take_git_screenshot, take_screenshot, take_wakatime_screenshot
+from src.screenshotter import (
+    take_git_screenshot,
+    take_screenshot,
+    take_stock_lwc_screenshot,
+    take_wakatime_screenshot,
+)
 from src.self_learner import SelfLearner
+from src.stock_insights import StockInsights, build_stock_screenshot_fields
 from src.topic_rotator import get_todays_topic
 from src.wakatime_insights import WakaTimeInsights, build_screenshot_fields
 from src.writer import WriterResult, write_post
 
 logger = logging.getLogger(__name__)
 
-# Only technical posts get book-knowledge grounding (Phase 2.8 decision).
-GROUNDED_CATEGORIES = {"tech_talk", "my_agent_git", "ai_news"}
+# Only technical/finance posts get knowledge grounding. "stock_talk" = the
+# Investing Principle variant, grounded in finance-blog wisdom (Phase 2.10).
+GROUNDED_CATEGORIES = {"tech_talk", "my_agent_git", "ai_news", "stock_talk"}
 
 
 @dataclass
@@ -43,6 +50,7 @@ class Pipeline:
         self.session = session
         self._git_insights: GitInsights | None = None
         self._wakatime: WakaTimeInsights | None = None
+        self._stock: StockInsights | None = None
 
     @observe()
     async def generate_post(self, target_date: date) -> PipelineResult:
@@ -69,6 +77,10 @@ class Pipeline:
             selected_article = self._get_wakatime_article()
             if selected_article is None:
                 return PipelineResult(success=False, error="No WakaTime archives found for weekly stats")
+        elif category == "market_pulse":
+            selected_article = self._get_stock_article()
+            if selected_article is None:
+                return PipelineResult(success=False, error="No market data available for the weekly pulse")
         else:
             articles = await scrape_topic(category)
             if not articles:
@@ -143,6 +155,20 @@ class Pipeline:
                 if screenshot:
                     image_path = screenshot.path
                     logger.info("WakaTime stat-card screenshot: %s", image_path)
+        elif category == "market_pulse":
+            # Render our own market card from real data (never screenshot a finance site).
+            if self._stock and self._stock.market_week:
+                fields = build_stock_screenshot_fields(self._stock.market_week)
+                screenshot = await take_stock_lwc_screenshot(**fields)
+                if screenshot:
+                    image_path = screenshot.path
+                    logger.info("Stock market-card screenshot: %s", image_path)
+        elif category == "stock_talk":
+            # Investing Principle: show Lubo's own product, never screenshot the finance article.
+            screenshot = await take_screenshot("https://staging.lubot.ai")
+            if screenshot:
+                image_path = screenshot.path
+                logger.info("Screenshot from staging (stock principle): %s", image_path)
         elif selected_article.url:
             screenshot = await take_screenshot(selected_article.url)
             if screenshot:
@@ -200,6 +226,11 @@ class Pipeline:
         """Fetch this week's coding stats from WakaTime archives on staging."""
         self._wakatime = WakaTimeInsights()
         return self._wakatime.get_weekly_stats()
+
+    def _get_stock_article(self) -> ScrapedArticle | None:
+        """Fetch this week's market pulse (real index data) from yfinance."""
+        self._stock = StockInsights()
+        return self._stock.get_market_pulse()
 
     def _get_book_concepts(self, category: str, topic: dict, article: ScrapedArticle) -> list[str]:
         """Retrieve 2-3 book concepts to ground a technical post. Never fatal.

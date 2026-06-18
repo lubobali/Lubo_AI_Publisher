@@ -2,8 +2,8 @@
 
 posting_windows:
   weekday:
-    start_hour: 16  # 4 PM CT
-    end_hour: 18    # through 5:59 PM CT (4-5 PM window)
+    start_hour: 15  # 3 PM CT
+    end_hour: 17    # through 4:59 PM CT (3-5 PM window)
   weekend:
     start_hour: 23  # 11 PM CT
     end_hour: 24    # through 11:59 PM CT (11 PM - midnight window)

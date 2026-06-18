@@ -506,12 +506,13 @@ class TestParseResponse:
 
 
 class TestGetLlmClient:
-    def test_client_has_increased_max_retries(self):
+    def test_client_retries_then_fails_over(self):
         import os
 
         with patch.dict(os.environ, {"NVIDIA_API_KEY": "test-key"}):
             client = get_llm_client()
-            assert client.max_retries == 5
+            # Lowered 5 -> 2 so we fail over to OpenRouter sooner than burning retries on a 429
+            assert client.max_retries == 2
 
     def test_client_has_timeout(self):
         import os
@@ -624,3 +625,104 @@ class TestWritePost:
                 articles=SAMPLE_ARTICLES,
             )
             assert result is None
+
+
+def _fake_ok_response(content='{"post_text": "calm long term market take", "hashtags": ["#Investing"]}'):
+    """A successful chat-completion response mock."""
+    resp = MagicMock()
+    resp.choices = [MagicMock(message=MagicMock(content=content))]
+    resp.usage = MagicMock(prompt_tokens=10, completion_tokens=20)
+    resp.model = "test-model"
+    return resp
+
+
+def _fake_empty_response():
+    """A response whose content AND reasoning_content are empty."""
+    resp = MagicMock()
+    resp.choices = [MagicMock(message=MagicMock(content=None, reasoning_content=None))]
+    resp.usage = MagicMock(prompt_tokens=5, completion_tokens=0)
+    resp.model = "test-model"
+    return resp
+
+
+class TestProviderFallback:
+    """NIM-primary / OpenRouter-fallback in write_post."""
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_openrouter_when_nim_fails(self):
+        nim = AsyncMock()
+        nim.chat.completions.create = AsyncMock(side_effect=Exception("429 rate limit"))
+        orc = AsyncMock()
+        orc.chat.completions.create = AsyncMock(return_value=_fake_ok_response())
+        with (
+            patch("src.writer.get_llm_client", return_value=nim),
+            patch("src.writer.get_fallback_client", return_value=orc),
+        ):
+            result = await write_post("AI News", "desc", SAMPLE_ARTICLES)
+        assert isinstance(result, WriterResult)
+        nim.chat.completions.create.assert_awaited_once()
+        orc.chat.completions.create.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_falls_back_when_nim_returns_empty(self):
+        nim = AsyncMock()
+        nim.chat.completions.create = AsyncMock(return_value=_fake_empty_response())
+        orc = AsyncMock()
+        orc.chat.completions.create = AsyncMock(return_value=_fake_ok_response())
+        with (
+            patch("src.writer.get_llm_client", return_value=nim),
+            patch("src.writer.get_fallback_client", return_value=orc),
+        ):
+            result = await write_post("AI News", "desc", SAMPLE_ARTICLES)
+        assert isinstance(result, WriterResult)
+        orc.chat.completions.create.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_both_providers_fail(self):
+        nim = AsyncMock()
+        nim.chat.completions.create = AsyncMock(side_effect=Exception("nim down"))
+        orc = AsyncMock()
+        orc.chat.completions.create = AsyncMock(side_effect=Exception("or down"))
+        with (
+            patch("src.writer.get_llm_client", return_value=nim),
+            patch("src.writer.get_fallback_client", return_value=orc),
+        ):
+            result = await write_post("AI News", "desc", SAMPLE_ARTICLES)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_no_fallback_when_unconfigured(self):
+        nim = AsyncMock()
+        nim.chat.completions.create = AsyncMock(side_effect=Exception("nim down"))
+        with (
+            patch("src.writer.get_llm_client", return_value=nim),
+            patch("src.writer.get_fallback_client", return_value=None),
+        ):
+            result = await write_post("AI News", "desc", SAMPLE_ARTICLES)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_uses_nim_and_skips_fallback_on_success(self):
+        nim = AsyncMock()
+        nim.chat.completions.create = AsyncMock(return_value=_fake_ok_response())
+        orc = AsyncMock()
+        orc.chat.completions.create = AsyncMock(return_value=_fake_ok_response())
+        with (
+            patch("src.writer.get_llm_client", return_value=nim),
+            patch("src.writer.get_fallback_client", return_value=orc),
+        ):
+            result = await write_post("AI News", "desc", SAMPLE_ARTICLES)
+        assert isinstance(result, WriterResult)
+        orc.chat.completions.create.assert_not_awaited()
+
+    def test_fallback_client_none_without_key(self, monkeypatch):
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        from src.writer import get_fallback_client
+
+        assert get_fallback_client() is None
+
+    def test_fallback_client_built_with_key(self, monkeypatch):
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+        from src.writer import get_fallback_client
+
+        assert get_fallback_client() is not None

@@ -1103,5 +1103,135 @@ Completely separate from LuBot. Nothing shared.
   - Scheduled approval (approve now, publish at specific time)
 
 ==============================================================================
+PHASE 2.10: STOCK TALK CATEGORY (planned Jun 18, 2026)
+==============================================================================
+
+GOAL
+  Add an 8th content category, "Stock Talk," posted 2x/week. Frames Lubo as the
+  AI engineer who BUILT an AI stock advisor (LuBot Stock mode) + a calm,
+  data-driven long-term investor. NOT a stock-tipper, NOT financial advice.
+
+ROTATION CHANGE (confirmed)
+  Drop AI Gadgets + My Agent (showcase). Keep My Agent Build (real git) and
+  Building in Public (real WakaTime). New 7-slot week:
+    Biohacker / AI News / Tech Talk / STOCK TALK /
+    My Agent Build / Building in Public / STOCK TALK
+
+SOURCES (3 tiers)
+  Tier 1 - Educational blogs (RSS, clean text -> scraper source + RAG):
+    - JL Collins "Stock Series" (jlcollinsnh.com/stock-series) - index/FIRE wisdom
+    - A Wealth of Common Sense (Ben Carlson) - awealthofcommonsense.com/feed
+    - Of Dollars and Data (Nick Maggiulli) - data-driven personal finance
+    - Collaborative Fund (Morgan Housel) - behavior/history
+    NOTE: blog text is copyrighted; we ground on it like the books (extract
+    concepts, never quote verbatim, never name the source in the post).
+  Tier 2 - Market news RSS (timely angle): CNBC markets, MarketWatch top stories.
+  Tier 3 - Podcasts (audio -> pull episode titles + show-notes via RSS):
+    Animal Spirits, Money For the Rest of Us, We Study Billionaires.
+    George Gammon/Rebel Capitalist = OPTIONAL/secondary (macro-doom tone, off-brand).
+  REAL DATA backbone - yfinance (already used in LuBot): live index/watchlist
+    weekly performance -> real numbers, truthful, like git/WakaTime insights.
+
+BUILD ORDER (SAFETY - critical)
+  The live worker generates a post every day. To never break it, build + test
+  the whole HANDLER first, prove a real stock post by FORCING the topic in-
+  container (like we did for #11/#12), and flip the rotation DEAD LAST. Keep all
+  tests green after each step; only rebuild/redeploy the worker once, at the end.
+  Do it all on branch feature/stock-talk; merge to main only when verified.
+
+TWO STOCK POSTS PER WEEK MUST DIFFER (no two near-identical recaps)
+  Use two sub-variants, like my_agent vs my_agent_git:
+    - VARIANT 1 "Market Pulse" (stock_talk) - reacts to the real week via yfinance
+      data + Card B dashboard. Data-driven, timely.
+    - VARIANT 2 "Investing Principle" (stock_principle) - a calm long-term take
+      grounded in the Stock Series / blog wisdom (RAG), optionally tied to LuBot
+      Stock mode + Card A. Evergreen, behavioral, not number-heavy.
+  Schedule them spaced apart in the week (not back-to-back days).
+
+BUILD STEPS (RECR, test-first; mock external = yfinance/RSS/embeddings, keep
+real = aggregation/rotation/prompt assembly)
+  S2. scraper_sources.yaml - add stock feeds (Tier 1 blogs + Tier 2 news,
+      in priority order). Verify each RSS returns clean text before locking.
+  S3. src/stock_insights.py - yfinance real-data module (mirror wakatime_insights):
+      pull weekly performance of major indices + a small watchlist, notable
+      movers -> ScrapedArticle with REAL numbers. Add yfinance to requirements.txt.
+      FALLBACK: if yfinance is down/rate-limited, the pipeline falls back to a
+      scraped Tier-1/Tier-2 finance article so the post still generates (never a
+      hard dependency on Yahoo).
+  S4. Stock Series RAG - scrape the ~36 Stock Series posts -> chunk -> embed ->
+      knowledge_base (new blog->KB path alongside the PDF path). Add both stock
+      keys to GROUNDED_CATEGORIES. Reuse the EXISTING RAG guardrail (never quote
+      verbatim, never name the book/source/author) - same as the 11 books today.
+  S5. Podcast show-notes source - podcast RSS -> ScrapedArticle (titles + notes).
+      (Can land in a follow-up; the rest ships the category.)
+  S6. Images - two OWNED sources, no third-party site screenshots (see IMAGE
+      DESIGN below). MUST look professional/real, never cartoon.
+  S7. CONTENT ENGINEERING (the core - see PROMPT DESIGN below):
+      - voice_rules.yaml: add topic_specific blocks for BOTH stock variants
+        (Lubo tone + finance truth rules + no-advice framing)
+      - writer.py build_user_prompt: add hardcoded blocks for both variants
+        (real-data grounding + anti-hallucination + no buy/sell calls), mirroring
+        the building_in_public block
+  S8. E2E verify (FORCED topic, in-container) - generate both stock variants;
+      confirm truthful (numbers only from yfinance/data), on-voice (no apostrophes,
+      insight-first, ends w/ question), no financial advice, never names the
+      blog/book, calm not hype. Cards render pro, not cartoon.
+  S1. Rotation wiring (DO LAST) - topics.yaml + topic_rotator: replace AI Gadgets
+      slot with "Market Pulse" and My Agent slot with "Investing Principle",
+      spaced apart. Update rotation tests. THEN rebuild/redeploy once.
+
+PROMPT DESIGN (use Lubo's tone words, never generic)
+  Inherits the global voice (ESL, no apostrophes, short lines, insight-first,
+  self-deprecation, ends with a question, numbers ONLY from data). Stock-specific:
+    - Persona: "i built an AI stock advisor, im a long-term data-driven investor,
+      not a trader" - lean on principles (costs matter, time-in-market, behavior
+      beats timing), calm not hype
+    - NOT financial advice: no buy/sell calls, no price targets, no "you should",
+      no "this will go up/crash", no tickers-to-buy
+    - Truth: real numbers ONLY from the yfinance data / article; never invent a
+      price, %, return, or position. Never claim personal trades/holdings/results
+    - Ban guru/hype words: "to the moon", "load up", "next 10x", "easy money",
+      "guaranteed", "buy the dip" as a call
+    - Allowed: react to a real market move with a principle, share an opinion as
+      opinion ("the way i see it", "honestly the boring index wins"), connect to
+      having built LuBot Stock mode
+    - End with a genuine question to the audience
+
+IMAGE DESIGN (must look professional/real, NOT cartoon; both OWNED by us)
+  Rule: never screenshot third-party finance sites/charts (TradingView, Yahoo,
+  CNBC, MarketWatch). We take only the raw NUMBERS (facts, not copyrightable)
+  and render our own visuals, OR screenshot Lubo's own product. Same legal
+  stance as the deleted biohacker screenshot.
+
+  CARD B - yfinance market stat-card (default for market-recap posts)
+    - Rendered by us via HTML/CSS + Playwright (same engine as the WakaTime
+      stat-card take_wakatime_screenshot / _build_wakatime_html)
+    - Must look like a real trading dashboard, NOT clipart:
+      * REAL plotted line charts of each index's week, drawn from the actual
+        yfinance daily closes. Chart lib (Chart.js / lightweight-charts) must be
+        VENDORED LOCALLY in the repo (no CDN at render time) OR hand-built inline
+        SVG sparklines - so the card always renders offline. Not flat icons/emoji
+      * Fintech dark UI: clean typography, grid, subtle gridlines, ticker labels
+      * Green/red color-coded moves; exact % and prices from yfinance
+      * The REAL LuBot logo (static/assets/lubot-logo.png - 200x222 RGBA,
+        transparent bg, copied from staging frontend) embedded in a corner -
+        NOT a text "LuBot" mark
+    - 100% truthful (real data) + 100% ours (we draw it) = zero copyright risk
+    - New builder: take_stock_screenshot() + pure _build_stock_html(), mirror
+      the WakaTime card; build_stock_screenshot_fields() adapts the yfinance
+      data -> kwargs. Pure HTML builder is unit-tested; render verified on real data
+
+  CARD A - LuBot Stock mode screenshot (for tool-focused posts)
+    - Screenshot staging.lubot.ai stock mode (same path as my_agent ->
+      take_screenshot of staging)
+    - Frame on Lubo's OWN UI (the AI analysis, Monte Carlo retirement projection,
+      his layout) - avoid a full-bleed embedded TradingView widget to stay clean
+
+  SELECTION (in scheduler, stock_talk branch)
+    - Market-recap post  -> Card B (yfinance dashboard)
+    - Tool-focused post  -> Card A (Stock mode screenshot)
+    - Fallback to generated image if either fails (same safety net as today)
+
+==============================================================================
   END OF PLAN
 ==============================================================================

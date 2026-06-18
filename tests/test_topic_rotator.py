@@ -138,8 +138,8 @@ class TestLoadSchedule:
     def test_weekday_hours(self):
         config = load_schedule_config()
         weekday = config["posting_windows"]["weekday"]
-        assert weekday["start_hour"] == 16
-        assert weekday["end_hour"] == 18
+        assert weekday["start_hour"] == 15
+        assert weekday["end_hour"] == 17
 
     def test_weekend_hours(self):
         config = load_schedule_config()
@@ -155,11 +155,11 @@ class TestLoadSchedule:
 
 class TestGetRandomPostTime:
     def test_weekday_within_window(self):
-        """Weekday post time should be between 4-5:59 PM CT."""
+        """Weekday post time should be between 3-4:59 PM CT (3-5 PM window)."""
         d = date(2026, 3, 23)  # Monday
         t = get_random_post_time(d)
-        assert t.hour >= 16
-        assert t.hour < 18
+        assert t.hour >= 15
+        assert t.hour < 17
 
     def test_weekend_within_window(self):
         """Weekend post time should be between 11 PM - midnight CT."""
@@ -200,7 +200,7 @@ class TestGetRandomPostTime:
     )
     def test_all_weekdays_use_weekday_window(self, d):
         t = get_random_post_time(d)
-        assert 16 <= t.hour < 22
+        assert 15 <= t.hour < 17
 
     @pytest.mark.parametrize(
         "d",

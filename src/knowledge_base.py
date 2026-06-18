@@ -5,6 +5,7 @@ retrieval land in later substeps. pypdf reads a local file; everything else
 here is pure text processing (so it is unit-tested without touching books/).
 """
 
+import hashlib
 import logging
 import math
 import os
@@ -15,6 +16,7 @@ from pathlib import Path
 
 import httpx
 import numpy as np
+from bs4 import BeautifulSoup
 from pypdf import PdfReader
 from sqlalchemy.orm import Session
 
@@ -305,6 +307,86 @@ def ingest_book(
         return 0
     embeddings = embed_texts(chunks, input_type="passage", api_key=api_key, batch_size=batch_size)
     return store_chunks(session, title, slug, chunks, embeddings)
+
+
+# ---------------------------------------------------------------------------
+# RSS-content ingestion — finance blogs -> KB (Phase 2.10, Stock Talk grounding)
+#
+# Robust alternative to per-page scraping: pull each post's body from the feed
+# (content:encoded, falling back to description), chunk/embed/store ONE slug per
+# post so re-running ACCUMULATES (old posts that scroll off the feed are kept).
+# ---------------------------------------------------------------------------
+
+_FEED_USER_AGENT = "Mozilla/5.0 (compatible; LuBotPublisher/1.0; +https://lubot.ai)"
+
+
+def _html_to_text(html: str) -> str:
+    """Strip HTML to clean plain text (drops script/style), then normalize."""
+    if not html:
+        return ""
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style"]):
+        tag.decompose()
+    return clean_text(soup.get_text(" ", strip=True))
+
+
+def parse_feed_posts(xml_text: str) -> list[tuple[str, str, str]]:
+    """Parse RSS items into (url, title, body_text).
+
+    Prefers full content (content:encoded), falls back to description. Skips
+    items missing a url or with empty body.
+    """
+    soup = BeautifulSoup(xml_text, "xml")
+    posts: list[tuple[str, str, str]] = []
+    for item in soup.find_all("item"):
+        link = item.find("link")
+        title = item.find("title")
+        encoded = item.find("encoded")  # content:encoded (local name under xml parser)
+        desc = item.find("description")
+        html = (encoded.get_text() if encoded else "") or (desc.get_text() if desc else "")
+        body = _html_to_text(html)
+        url = link.get_text(strip=True) if link else ""
+        if url and body:
+            posts.append((url, title.get_text(strip=True) if title else "", body))
+    return posts
+
+
+def _fetch_feed(url: str) -> str:
+    """Fetch raw RSS XML over HTTP. Separated out so tests inject a fake fetcher."""
+    resp = httpx.get(url, headers={"User-Agent": _FEED_USER_AGENT}, timeout=30, follow_redirects=True)
+    resp.raise_for_status()
+    return resp.text
+
+
+def ingest_rss_feed(
+    session: Session,
+    feed_url: str,
+    blog_title: str,
+    blog_slug: str,
+    *,
+    fetch=None,
+    api_key: str | None = None,
+    batch_size: int = EMBED_BATCH_SIZE,
+    max_posts: int = 10,
+) -> int:
+    """Ingest a finance blog's RSS posts into the KB. Returns total chunks stored.
+
+    Each post is stored under its own slug (blog_slug + url hash) so repeated runs
+    accumulate posts over time instead of wiping the archive. Caller commits.
+    blog_title is metadata only (never shown / never named in posts).
+    """
+    fetch = fetch or _fetch_feed
+    posts = parse_feed_posts(fetch(feed_url))[:max_posts]
+    total = 0
+    for url, _title, body in posts:
+        chunks = chunk_text(body)
+        if not chunks:
+            continue
+        embeddings = embed_texts(chunks, input_type="passage", api_key=api_key, batch_size=batch_size)
+        slug = f"{blog_slug}-{hashlib.md5(url.encode()).hexdigest()[:8]}"
+        total += store_chunks(session, blog_title, slug, chunks, embeddings)
+    logger.info("Ingested %d chunks from %d posts of %s", total, len(posts), blog_slug)
+    return total
 
 
 # ---------------------------------------------------------------------------

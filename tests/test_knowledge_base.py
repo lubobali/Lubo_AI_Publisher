@@ -13,11 +13,14 @@ from sqlalchemy.orm import sessionmaker
 
 from src.knowledge_base import (
     _drop_repeated_lines,
+    _html_to_text,
     chunk_text,
     clean_text,
     embed_query,
     embed_texts,
     extract_book_text,
+    ingest_rss_feed,
+    parse_feed_posts,
     store_chunks,
 )
 from src.models import Base, PublisherKnowledgeBase
@@ -429,3 +432,88 @@ class TestIngestBook:
         db_session.flush()
         assert second < first
         assert db_session.query(PublisherKnowledgeBase).filter_by(book_slug="some-book").count() == second
+
+
+# ---------------------------------------------------------------------------
+# RSS-content ingestion (Phase 2.10 — finance blogs -> KB)
+# ---------------------------------------------------------------------------
+
+_CONTENT_NS = 'xmlns:content="http://purl.org/rss/1.0/modules/content/"'
+
+
+def _synth_feed():
+    """Synthetic RSS: post one has full content:encoded, post two only a description."""
+    body1 = "Investing is simple but not always easy. " * 20
+    body2 = "Patience is the real edge over many years. " * 20
+    return f"""<?xml version="1.0"?>
+<rss version="2.0" {_CONTENT_NS}><channel>
+<item><title>Post One</title><link>https://ex.com/one</link>
+<content:encoded><![CDATA[<p>{body1}</p><script>tracker()</script>]]></content:encoded>
+<description>excerpt one teaser</description></item>
+<item><title>Post Two</title><link>https://ex.com/two</link>
+<description><![CDATA[<p>{body2}</p>]]></description></item>
+</channel></rss>"""
+
+
+def _synth_feed_extra():
+    body3 = "Compounding quietly rewards the patient investor. " * 20
+    return f"""<?xml version="1.0"?>
+<rss version="2.0" {_CONTENT_NS}><channel>
+<item><title>Post Three</title><link>https://ex.com/three</link>
+<content:encoded><![CDATA[<p>{body3}</p>]]></content:encoded></item>
+</channel></rss>"""
+
+
+class TestHtmlToText:
+    def test_strips_tags_and_scripts(self):
+        out = _html_to_text("<p>hello <b>world</b></p><script>bad()</script>")
+        assert "hello world" in out
+        assert "bad" not in out
+
+
+class TestParseFeedPosts:
+    def test_prefers_content_encoded_over_description(self):
+        posts = parse_feed_posts(_synth_feed())
+        assert len(posts) == 2
+        url, _title, body = posts[0]
+        assert url == "https://ex.com/one"
+        assert "Investing is simple" in body
+        assert "excerpt one teaser" not in body  # full content won, not the teaser
+
+    def test_falls_back_to_description(self):
+        posts = parse_feed_posts(_synth_feed())
+        assert "Patience is the real edge" in posts[1][2]
+
+    def test_skips_items_without_url(self):
+        xml = (
+            '<?xml version="1.0"?><rss><channel><item><title>No link</title>'
+            "<description>body here words</description></item></channel></rss>"
+        )
+        assert parse_feed_posts(xml) == []
+
+
+class TestIngestRssFeed:
+    def test_stores_one_slug_per_post(self, db_session):
+        with patch("src.knowledge_base.embed_texts", side_effect=lambda texts, **k: [[0.1, 0.2]] * len(texts)):
+            n = ingest_rss_feed(db_session, "http://feed", "My Blog", "myblog", fetch=lambda _u: _synth_feed())
+        assert n >= 2
+        rows = db_session.query(PublisherKnowledgeBase).all()
+        slugs = {r.book_slug for r in rows}
+        assert len(slugs) == 2
+        assert all(s.startswith("myblog-") for s in slugs)
+        assert all(r.book_title == "My Blog" for r in rows)
+
+    def test_accumulates_across_runs(self, db_session):
+        with patch("src.knowledge_base.embed_texts", side_effect=lambda texts, **k: [[0.1, 0.2]] * len(texts)):
+            ingest_rss_feed(db_session, "http://feed", "My Blog", "myblog", fetch=lambda _u: _synth_feed())
+            # A later run surfaces a NEW post; old posts must remain (not wiped)
+            ingest_rss_feed(db_session, "http://feed", "My Blog", "myblog", fetch=lambda _u: _synth_feed_extra())
+        slugs = {r.book_slug for r in db_session.query(PublisherKnowledgeBase).all()}
+        assert len(slugs) == 3  # 2 original + 1 new, accumulated
+
+    def test_reingest_same_feed_is_idempotent(self, db_session):
+        with patch("src.knowledge_base.embed_texts", side_effect=lambda texts, **k: [[0.1, 0.2]] * len(texts)):
+            ingest_rss_feed(db_session, "http://feed", "My Blog", "myblog", fetch=lambda _u: _synth_feed())
+            ingest_rss_feed(db_session, "http://feed", "My Blog", "myblog", fetch=lambda _u: _synth_feed())
+        slugs = {r.book_slug for r in db_session.query(PublisherKnowledgeBase).all()}
+        assert len(slugs) == 2  # same 2 posts, not duplicated

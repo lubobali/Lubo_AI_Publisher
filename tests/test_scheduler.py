@@ -871,3 +871,52 @@ class TestBookGrounding:
 
         assert result.success is True  # KB hiccup must not break the post
         assert mock_write.call_args.kwargs["book_concepts"] == []
+
+
+class TestStockPipeline:
+    """market_pulse uses StockInsights (yfinance), not the web scraper (Phase 2.10)."""
+
+    @pytest.mark.asyncio
+    async def test_market_pulse_uses_stock_insights(self, db_session):
+        stock_article = ScrapedArticle(
+            title="Market week: S&P 500 closed +1.0%",
+            url="",
+            summary="THIS WEEK IN THE MARKET: real numbers",
+            source="stock:market",
+            published_at=None,
+            source_priority=0,
+        )
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "Market Pulse", "sources_key": "market_pulse", "description": "test"},
+            ),
+            patch.object(Pipeline, "_get_stock_article", return_value=stock_article) as mock_stock,
+            patch("src.scheduler.scrape_topic", new_callable=AsyncMock) as mock_scrape,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()),
+            patch("src.scheduler.take_stock_lwc_screenshot", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/g.png")),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 14))
+
+        assert result.success is True
+        mock_stock.assert_called_once()
+        mock_scrape.assert_not_called()  # uses yfinance, not the web scraper
+
+    @pytest.mark.asyncio
+    async def test_market_pulse_fails_gracefully(self, db_session):
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "Market Pulse", "sources_key": "market_pulse", "description": "test"},
+            ),
+            patch.object(Pipeline, "_get_stock_article", return_value=None),
+        ):
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 14))
+
+        assert result.success is False
+        assert "market" in result.error.lower()

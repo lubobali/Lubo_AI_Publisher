@@ -2,6 +2,7 @@
 
 import contextlib
 import html as html_lib
+import json
 import logging
 import re
 import tempfile
@@ -548,6 +549,299 @@ async def take_wakatime_screenshot(
                 await browser.close()
     except Exception as e:
         logger.warning("WakaTime screenshot failed: %s", e)
+        return None
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Stock Talk market card (Phase 2.10) — a real-looking fintech dashboard rendered
+# from live yfinance numbers. Owned + truthful: our render of real data + our logo.
+# ---------------------------------------------------------------------------
+
+_LOGO_PATH = Path(__file__).parent.parent / "static" / "assets" / "lubot-logo.png"
+
+
+def _sparkline_svg(closes: list[float], width: int = 300, height: int = 80) -> str:
+    """Build a real line-chart SVG from daily closes. Green if up on the week, else red."""
+    if len(closes) < 2:
+        return ""
+    lo, hi = min(closes), max(closes)
+    rng = (hi - lo) or 1.0
+    n = len(closes)
+    pad = 6
+
+    def px(i: int) -> float:
+        return pad + i * (width - 2 * pad) / (n - 1)
+
+    def py(v: float) -> float:
+        return pad + (height - 2 * pad) * (1 - (v - lo) / rng)
+
+    pts = " ".join(f"{px(i):.1f},{py(v):.1f}" for i, v in enumerate(closes))
+    up = closes[-1] >= closes[0]
+    color = "#a6e3a1" if up else "#f38ba8"
+    area = f"{pad:.1f},{height - pad:.1f} {pts} {width - pad:.1f},{height - pad:.1f}"
+    return (
+        f'<svg viewBox="0 0 {width} {height}" preserveAspectRatio="none" '
+        f'style="width:100%;height:100%;display:block">'
+        f'<polygon points="{area}" fill="{color}" opacity="0.10"/>'
+        f'<polyline points="{pts}" fill="none" stroke="{color}" stroke-width="2.5" '
+        f'stroke-linejoin="round" stroke-linecap="round"/></svg>'
+    )
+
+
+def _logo_data_uri() -> str:
+    """Read the LuBot logo PNG and return it as a base64 data URI (offline-safe)."""
+    try:
+        import base64
+
+        return "data:image/png;base64," + base64.b64encode(_LOGO_PATH.read_bytes()).decode()
+    except Exception:
+        logger.debug("LuBot logo not found at %s", _LOGO_PATH, exc_info=True)
+        return ""
+
+
+def _build_stock_html(indices: list[dict], date_range: str, logo_uri: str = "") -> str:
+    """Build the Market Pulse stat-card HTML. Pure — no I/O, no Playwright.
+
+    indices: [{"name": str, "last_close": float, "pct": float, "closes": [float]}]
+    """
+    cols = ""
+    for ix in indices:
+        up = ix["pct"] >= 0
+        color = "#a6e3a1" if up else "#f38ba8"
+        sign = "+" if up else ""
+        cols += (
+            '<div class="idx">'
+            f'<div class="iname">{html_lib.escape(str(ix["name"]))}</div>'
+            f'<div class="iclose">{ix["last_close"]:,.2f}</div>'
+            f'<div class="ipct" style="color:{color}">{sign}{ix["pct"]:.1f}%</div>'
+            f'<div class="chart">{_sparkline_svg(list(ix["closes"]))}</div>'
+            "</div>\n"
+        )
+    brand = f'<img class="logo" src="{logo_uri}"/>' if logo_uri else '<div class="wordmark">LuBot</div>'
+
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+body {{ margin:0; padding:0; background:#0b0f17;
+    font-family:'Inter','Segoe UI','Helvetica Neue',sans-serif; color:#e6edf3; }}
+.card {{ margin:22px; padding:30px 36px; background:#0e1420;
+    border:1px solid #1c2333; border-radius:16px;
+    display:flex; flex-direction:column; min-height:583px; box-sizing:border-box; }}
+.head {{ display:flex; align-items:center; justify-content:space-between; }}
+.kicker {{ color:#4ea1ff; font-size:15px; font-weight:700; letter-spacing:2px;
+    text-transform:uppercase; }}
+.range {{ color:#5b6675; font-size:14px; margin-top:4px; }}
+.logo {{ height:56px; width:auto; opacity:0.95; }}
+.wordmark {{ color:#4ea1ff; font-weight:800; font-size:24px; letter-spacing:1px; }}
+.board {{ display:flex; gap:22px; margin-top:28px; flex:1; }}
+.idx {{ flex:1; display:flex; flex-direction:column;
+    background:#0b1019; border:1px solid #1c2333; border-radius:12px;
+    padding:22px 22px 20px; }}
+.iname {{ color:#9aa7b8; font-size:14px; font-weight:700; letter-spacing:1px;
+    text-transform:uppercase; }}
+.iclose {{ font-size:34px; font-weight:800; color:#f0f6fc; margin-top:10px; line-height:1; }}
+.ipct {{ font-size:18px; font-weight:700; margin-top:8px; }}
+.chart {{ margin-top:18px; flex:1; min-height:150px; }}
+.foot {{ margin-top:22px; padding-top:16px; border-top:1px solid #1c2333;
+    color:#5b6675; font-size:13px; letter-spacing:1px; text-transform:uppercase; }}
+</style></head><body>
+<div class="card">
+    <div class="head">
+        <div>
+            <div class="kicker">Market Pulse</div>
+            <div class="range">{html_lib.escape(date_range)}</div>
+        </div>
+        {brand}
+    </div>
+    <div class="board">
+        {cols}
+    </div>
+    <div class="foot">Weekly close · real market data</div>
+</div>
+</body></html>"""
+
+
+_LWC_PATH = Path(__file__).parent.parent / "static" / "vendor" / "lightweight-charts.js"
+
+_STOCK_LWC_TEMPLATE = """<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+body { margin:0; padding:0; background:#0b0f17;
+    font-family:'Inter','Segoe UI','Helvetica Neue',sans-serif; color:#e6edf3; }
+.card { margin:22px; padding:30px 36px; background:#0e1420;
+    border:1px solid #1c2333; border-radius:16px;
+    display:flex; flex-direction:column; min-height:583px; box-sizing:border-box; }
+.head { display:flex; align-items:center; justify-content:space-between; }
+.kicker { color:#4ea1ff; font-size:15px; font-weight:700; letter-spacing:2px; text-transform:uppercase; }
+.range { color:#5b6675; font-size:14px; margin-top:4px; }
+.logo { height:56px; width:auto; opacity:0.95; }
+.wordmark { color:#4ea1ff; font-weight:800; font-size:24px; letter-spacing:1px; }
+.board { display:flex; gap:22px; margin-top:28px; flex:1; }
+.idx { flex:1; display:flex; flex-direction:column;
+    background:#0b1019; border:1px solid #1c2333; border-radius:12px; padding:22px 22px 18px; }
+.iname { color:#9aa7b8; font-size:14px; font-weight:700; letter-spacing:1px; text-transform:uppercase; }
+.iclose { font-size:34px; font-weight:800; color:#f0f6fc; margin-top:10px; line-height:1; }
+.ipct { font-size:18px; font-weight:700; margin-top:8px; }
+.chart { margin-top:18px; flex:1; min-height:250px; }
+.foot { margin-top:22px; padding-top:16px; border-top:1px solid #1c2333;
+    color:#5b6675; font-size:13px; letter-spacing:1px; text-transform:uppercase; }
+</style></head><body>
+<div class="card">
+    <div class="head">
+        <div><div class="kicker">Market Pulse</div><div class="range">__RANGE__</div></div>
+        __BRAND__
+    </div>
+    <div class="board">__PANELS__</div>
+    <div class="foot">30-day trend · weekly close · real market data · charts: TradingView Lightweight Charts</div>
+</div>
+<script>__LIB__</script>
+<script>
+const PANELS = __DATA__;
+window.addEventListener('load', function () {
+    PANELS.forEach(function (p, idx) {
+        var el = document.getElementById('chart_' + idx);
+        var chart = LightweightCharts.createChart(el, {
+            width: el.clientWidth, height: el.clientHeight,
+            layout: { background: { type: 'solid', color: 'rgba(0,0,0,0)' }, textColor: '#5b6675', fontSize: 12, fontFamily: 'Inter, sans-serif', attributionLogo: false },
+            grid: { vertLines: { visible: false }, horzLines: { color: '#161d2b' } },
+            rightPriceScale: { borderVisible: false },
+            timeScale: { visible: false },
+            crosshair: { mode: 0 },
+            handleScroll: false, handleScale: false
+        });
+        var up = p.pct >= 0;
+        var line = up ? '#26a69a' : '#ef5350';
+        var top = up ? 'rgba(38,166,154,0.30)' : 'rgba(239,83,80,0.30)';
+        var series = chart.addAreaSeries({ lineColor: line, lineWidth: 2, topColor: top, bottomColor: 'rgba(0,0,0,0)', priceLineVisible: false, lastValueVisible: false });
+        var base = 1700000000;
+        series.setData(p.closes.map(function (v, i) { return { time: base + i * 86400, value: v }; }));
+        chart.timeScale().fitContent();
+    });
+});
+</script>
+</body></html>"""
+
+
+def _lwc_lib() -> str:
+    """Read the vendored Lightweight Charts library (offline-safe)."""
+    try:
+        return _LWC_PATH.read_text(encoding="utf-8")
+    except Exception:
+        logger.debug("Lightweight Charts lib not found at %s", _LWC_PATH, exc_info=True)
+        return ""
+
+
+def _build_stock_html_lwc(indices: list[dict], date_range: str, logo_uri: str = "", lib_js: str = "") -> str:
+    """Build the Market Pulse card using TradingView Lightweight Charts. Pure (lib_js injected)."""
+    panels = ""
+    for i, ix in enumerate(indices):
+        up = ix["pct"] >= 0
+        color = "#26a69a" if up else "#ef5350"
+        sign = "+" if up else ""
+        panels += (
+            '<div class="idx">'
+            f'<div class="iname">{html_lib.escape(str(ix["name"]))}</div>'
+            f'<div class="iclose">{ix["last_close"]:,.2f}</div>'
+            f'<div class="ipct" style="color:{color}">{sign}{ix["pct"]:.1f}%</div>'
+            f'<div class="chart" id="chart_{i}"></div>'
+            "</div>\n"
+        )
+    brand = f'<img class="logo" src="{logo_uri}"/>' if logo_uri else '<div class="wordmark">LuBot</div>'
+    data = json.dumps(
+        [
+            {"name": ix["name"], "last_close": ix["last_close"], "pct": ix["pct"], "closes": list(ix["closes"])}
+            for ix in indices
+        ]
+    )
+    return (
+        _STOCK_LWC_TEMPLATE.replace("__RANGE__", html_lib.escape(date_range))
+        .replace("__BRAND__", brand)
+        .replace("__PANELS__", panels)
+        .replace("__LIB__", lib_js)
+        .replace("__DATA__", data)
+    )
+
+
+async def take_stock_lwc_screenshot(indices: list[dict], date_range: str = "") -> ScreenshotResult | None:
+    """Render the Market Pulse card with TradingView Lightweight Charts to a PNG.
+
+    Falls back to the hand-built SVG card if the vendored library is unavailable.
+    """
+    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    lib_js = _lwc_lib()
+    if not lib_js:
+        logger.info("Lightweight Charts lib missing — falling back to SVG market card")
+        return await take_stock_screenshot(indices, date_range)
+    page_html = _build_stock_html_lwc(indices, date_range, logo_uri=_logo_data_uri(), lib_js=lib_js)
+
+    with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
+        f.write(page_html)
+        tmp_path = f.name
+
+    try:
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            try:
+                context = await browser.new_context(
+                    viewport={"width": SCREENSHOT_WIDTH, "height": SCREENSHOT_HEIGHT},
+                    device_scale_factor=1.5,
+                )
+                page = await context.new_page()
+                await page.goto(f"file://{tmp_path}", wait_until="networkidle")
+                await page.wait_for_timeout(1200)  # let Lightweight Charts render
+
+                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                filepath = SCREENSHOT_DIR / f"{timestamp}-stock-lwc.png"
+                filepath.write_bytes(await page.screenshot(full_page=False))
+
+                logger.info("Stock LWC screenshot saved: %s", filepath)
+                return ScreenshotResult(
+                    path=str(filepath), url="stock:market", width=SCREENSHOT_WIDTH, height=SCREENSHOT_HEIGHT
+                )
+            finally:
+                await browser.close()
+    except Exception as e:
+        logger.warning("Stock LWC screenshot failed: %s", e)
+        return None
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+async def take_stock_screenshot(indices: list[dict], date_range: str = "") -> ScreenshotResult | None:
+    """Render the Market Pulse card to a PNG with Playwright (real charts + logo)."""
+    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    page_html = _build_stock_html(indices, date_range, logo_uri=_logo_data_uri())
+
+    with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
+        f.write(page_html)
+        tmp_path = f.name
+
+    try:
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            try:
+                context = await browser.new_context(
+                    viewport={"width": SCREENSHOT_WIDTH, "height": SCREENSHOT_HEIGHT},
+                    device_scale_factor=1.5,
+                )
+                page = await context.new_page()
+                await page.goto(f"file://{tmp_path}", wait_until="domcontentloaded")
+                await page.wait_for_timeout(500)
+
+                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                filepath = SCREENSHOT_DIR / f"{timestamp}-stock-market.png"
+                filepath.write_bytes(await page.screenshot(full_page=False))
+
+                logger.info("Stock market screenshot saved: %s", filepath)
+                return ScreenshotResult(
+                    path=str(filepath),
+                    url="stock:market",
+                    width=SCREENSHOT_WIDTH,
+                    height=SCREENSHOT_HEIGHT,
+                )
+            finally:
+                await browser.close()
+    except Exception as e:
+        logger.warning("Stock screenshot failed: %s", e)
         return None
     finally:
         Path(tmp_path).unlink(missing_ok=True)
