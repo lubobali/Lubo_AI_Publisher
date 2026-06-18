@@ -27,6 +27,13 @@ TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 NVIDIA_MODEL = os.getenv("NVIDIA_LLM_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
+# OpenRouter fallback — free NIM has a rate-limit cap shared across LuBot apps on
+# the same key. When NIM 429s/errors, we retry on OpenRouter so a daily post never
+# silently fails. Only active when OPENROUTER_API_KEY is set. Paid (no rate limit),
+# but the publisher is low-volume so this costs pennies and only when NIM is down.
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3-super-120b-a12b")
+
 
 @dataclass
 class WriterResult:
@@ -413,13 +420,70 @@ def hash_prompt(text: str) -> str:
 
 
 def get_llm_client() -> AsyncOpenAI:
-    """Create an AsyncOpenAI client configured for NVIDIA NIM API."""
+    """Create an AsyncOpenAI client for the NVIDIA NIM API (primary, free)."""
     return AsyncOpenAI(
         base_url=NVIDIA_BASE_URL,
         api_key=os.environ.get("NVIDIA_API_KEY", ""),
-        max_retries=5,
+        max_retries=2,  # fail over to OpenRouter sooner than burning 5 retries on a 429
         timeout=120.0,
     )
+
+
+def get_fallback_client() -> AsyncOpenAI | None:
+    """Create an AsyncOpenAI client for OpenRouter (fallback), or None if unconfigured.
+
+    Returns None when OPENROUTER_API_KEY is missing, so write_post just uses NIM.
+    """
+    api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    if not api_key:
+        return None
+    return AsyncOpenAI(
+        base_url=os.environ.get("OPENROUTER_BASE_URL", OPENROUTER_BASE_URL),
+        api_key=api_key,
+        max_retries=1,
+        timeout=120.0,
+    )
+
+
+async def _generate_once(
+    client: AsyncOpenAI,
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
+    topic_name: str,
+) -> str | None:
+    """Run one completion against a given provider/model. Returns raw text or None."""
+    response = await client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.8,
+        max_tokens=2000,
+    )
+
+    # Report generation metadata to Langfuse (best effort)
+    try:
+        usage = response.usage
+        get_client().update_current_generation(
+            model=response.model or model,
+            model_parameters={"temperature": 0.8, "max_tokens": 2000},
+            usage_details={
+                "input": usage.prompt_tokens if usage else 0,
+                "output": usage.completion_tokens if usage else 0,
+            },
+            metadata={"topic": topic_name, "prompt_version": hash_prompt(system_prompt)},
+        )
+    except Exception:
+        logger.debug("Langfuse generation update failed", exc_info=True)
+
+    msg = response.choices[0].message
+    raw_text = msg.content
+    # Nemotron sometimes puts the answer in reasoning_content
+    if not raw_text:
+        raw_text = getattr(msg, "reasoning_content", None)
+    return raw_text
 
 
 @observe(as_type="generation")
@@ -430,9 +494,9 @@ async def write_post(
     performance_context: str | None = None,
     book_concepts: list[str] | None = None,
 ) -> WriterResult | None:
-    """Generate a LinkedIn post using NVIDIA Nemotron.
+    """Generate a LinkedIn post. Tries NVIDIA NIM first, falls back to OpenRouter.
 
-    Returns WriterResult on success, None on failure.
+    Returns WriterResult on success, None if every provider fails/returns empty.
     """
     system_prompt = build_system_prompt()
     user_prompt = build_user_prompt(
@@ -443,46 +507,22 @@ async def write_post(
         book_concepts=book_concepts,
     )
 
-    client = get_llm_client()
+    # Primary = free NIM; fallback = OpenRouter (only when a key is configured).
+    providers: list[tuple[str, AsyncOpenAI, str]] = [("NIM", get_llm_client(), NVIDIA_MODEL)]
+    fallback = get_fallback_client()
+    if fallback is not None:
+        providers.append(("OpenRouter", fallback, OPENROUTER_MODEL))
 
-    try:
-        response = await client.chat.completions.create(
-            model=NVIDIA_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.8,
-            max_tokens=2000,
-        )
-
-        # Report generation metadata to Langfuse
+    for name, client, model in providers:
         try:
-            usage = response.usage
-            get_client().update_current_generation(
-                model=response.model or NVIDIA_MODEL,
-                model_parameters={"temperature": 0.8, "max_tokens": 2000},
-                usage_details={
-                    "input": usage.prompt_tokens if usage else 0,
-                    "output": usage.completion_tokens if usage else 0,
-                },
-                metadata={"topic": topic_name, "prompt_version": hash_prompt(system_prompt)},
-            )
-        except Exception:
-            logger.debug("Langfuse generation update failed", exc_info=True)
+            raw_text = await _generate_once(client, model, system_prompt, user_prompt, topic_name)
+        except Exception as e:
+            logger.warning("LLM call via %s (%s) failed: %s", name, model, e)
+            continue
+        if raw_text:
+            logger.info("LLM response via %s (%s): %d chars", name, model, len(raw_text))
+            return parse_response(raw_text)
+        logger.warning("LLM via %s (%s) returned empty content", name, model)
 
-        msg = response.choices[0].message
-        raw_text = msg.content
-        # Nemotron 253B sometimes puts the answer in reasoning_content
-        if not raw_text:
-            raw_text = getattr(msg, "reasoning_content", None)
-        if not raw_text:
-            logger.warning("LLM returned empty content")
-            return None
-        logger.info("LLM response received (%d chars)", len(raw_text))
-
-        return parse_response(raw_text)
-
-    except Exception as e:
-        logger.warning("LLM call failed: %s", e)
-        return None
+    logger.warning("All LLM providers failed or returned empty content")
+    return None
