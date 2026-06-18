@@ -138,3 +138,17 @@ class TestGetMarketPulse:
         assert art is not None
         assert "S&P 500" in art.summary
         assert "Nasdaq" not in art.summary  # only 1 close -> dropped
+
+
+class TestBuildStockScreenshotFields:
+    def test_maps_market_week_to_card_kwargs(self):
+        from src.stock_insights import build_stock_screenshot_fields
+
+        stats = [_build_index_stat(s, StockInsights().indices[s], c) for s, c in CLOSES.items()]
+        week = MarketWeek(indices=[s for s in stats if s], start_date="2026-06-15", end_date="2026-06-18")
+        fields = build_stock_screenshot_fields(week)
+        assert fields["date_range"] == "2026-06-15 to 2026-06-18"
+        assert len(fields["indices"]) == 3
+        first = fields["indices"][0]
+        assert set(first) == {"name", "last_close", "pct", "closes"}
+        assert first["name"] == "S&P 500"

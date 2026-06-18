@@ -11,7 +11,9 @@ from src.screenshotter import (
     SCREENSHOT_HEIGHT,
     SCREENSHOT_WIDTH,
     ScreenshotResult,
+    _build_stock_html,
     _build_wakatime_html,
+    _sparkline_svg,
     build_filename,
     take_screenshot,
     take_wakatime_screenshot,
@@ -606,3 +608,55 @@ class TestTakeWakatimeScreenshot:
                 date_range="",
             )
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Stock Talk market card (Phase 2.10)
+# ---------------------------------------------------------------------------
+
+_INDICES = [
+    {"name": "S&P 500", "last_close": 7503.45, "pct": 1.0, "closes": [7400.0, 7460.0, 7503.45]},
+    {"name": "Nasdaq", "last_close": 26465.46, "pct": 2.2, "closes": [25900.0, 26200.0, 26465.46]},
+    {"name": "Dow Jones", "last_close": 51680.02, "pct": -0.8, "closes": [52100.0, 51900.0, 51680.02]},
+]
+
+
+class TestSparklineSvg:
+    def test_empty_for_too_few_points(self):
+        assert _sparkline_svg([7400.0]) == ""
+
+    def test_has_polyline_for_valid_series(self):
+        svg = _sparkline_svg([1.0, 2.0, 3.0])
+        assert "<polyline" in svg and "<svg" in svg
+
+    def test_green_when_up_red_when_down(self):
+        assert "#a6e3a1" in _sparkline_svg([1.0, 2.0, 3.0])  # up -> green
+        assert "#f38ba8" in _sparkline_svg([3.0, 2.0, 1.0])  # down -> red
+
+
+class TestBuildStockHtml:
+    def test_contains_index_names_and_closes(self):
+        html = _build_stock_html(_INDICES, "2026-06-15 to 2026-06-18")
+        assert "S&amp;P 500" in html  # html-escaped
+        assert "7,503.45" in html
+        assert "26,465.46" in html
+
+    def test_shows_signed_percentages(self):
+        html = _build_stock_html(_INDICES, "range")
+        assert "+1.0%" in html
+        assert "-0.8%" in html  # Dow down
+
+    def test_renders_a_chart_per_index(self):
+        html = _build_stock_html(_INDICES, "range")
+        assert html.count("<polyline") == 3
+
+    def test_date_range_present(self):
+        assert "2026-06-15 to 2026-06-18" in _build_stock_html(_INDICES, "2026-06-15 to 2026-06-18")
+
+    def test_uses_logo_img_when_provided(self):
+        html = _build_stock_html(_INDICES, "range", logo_uri="data:image/png;base64,XYZ")
+        assert 'class="logo"' in html and "data:image/png;base64,XYZ" in html
+
+    def test_falls_back_to_wordmark_without_logo(self):
+        html = _build_stock_html(_INDICES, "range")
+        assert "wordmark" in html

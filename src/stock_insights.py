@@ -111,6 +111,17 @@ def _build_summary(week: MarketWeek) -> str:
     return "\n".join(parts)
 
 
+def build_stock_screenshot_fields(week: MarketWeek) -> dict:
+    """Adapt a MarketWeek into kwargs for take_stock_screenshot (keeps formatting DRY)."""
+    return {
+        "indices": [
+            {"name": i.name, "last_close": i.last_close, "pct": i.week_change_pct, "closes": i.closes}
+            for i in week.indices
+        ],
+        "date_range": f"{week.start_date} to {week.end_date}",
+    }
+
+
 class StockInsights:
     """Pulls real index data from yfinance and builds a weekly market-pulse article."""
 
