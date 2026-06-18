@@ -12,6 +12,7 @@ from src.screenshotter import (
     SCREENSHOT_WIDTH,
     ScreenshotResult,
     _build_stock_html,
+    _build_stock_html_lwc,
     _build_wakatime_html,
     _sparkline_svg,
     build_filename,
@@ -660,3 +661,27 @@ class TestBuildStockHtml:
     def test_falls_back_to_wordmark_without_logo(self):
         html = _build_stock_html(_INDICES, "range")
         assert "wordmark" in html
+
+
+class TestBuildStockHtmlLwc:
+    def test_attribution_logo_disabled(self):
+        html = _build_stock_html_lwc(_INDICES, "range", lib_js="/*lib*/")
+        assert "attributionLogo: false" in html
+
+    def test_has_text_credit(self):
+        html = _build_stock_html_lwc(_INDICES, "range", lib_js="/*lib*/")
+        assert "TradingView Lightweight Charts" in html
+
+    def test_has_chart_container_per_index(self):
+        html = _build_stock_html_lwc(_INDICES, "range", lib_js="/*lib*/")
+        assert 'id="chart_0"' in html and 'id="chart_1"' in html and 'id="chart_2"' in html
+
+    def test_injects_lib_and_data(self):
+        html = _build_stock_html_lwc(_INDICES, "range", lib_js="/*MYLIB*/")
+        assert "/*MYLIB*/" in html
+        assert "7503.45" in html  # close value present in injected DATA json
+
+    def test_shows_levels_and_signed_pct(self):
+        html = _build_stock_html_lwc(_INDICES, "range", lib_js="x")
+        assert "7,503.45" in html
+        assert "+1.0%" in html and "-0.8%" in html

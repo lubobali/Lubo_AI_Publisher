@@ -25,7 +25,7 @@ DEFAULT_INDICES = {
     "^IXIC": "Nasdaq",
     "^DJI": "Dow Jones",
 }
-DEFAULT_PERIOD = "5d"  # roughly one trading week
+DEFAULT_PERIOD = "1mo"  # ~30 days of closes for a rich chart; the % move uses the last week
 
 
 @dataclass
@@ -69,14 +69,18 @@ def _fmt_pct(pct: float) -> str:
 
 
 def _build_index_stat(symbol: str, name: str, closes: list[float]) -> IndexStat | None:
-    """Build an IndexStat from a list of daily closes. None if not enough data."""
+    """Build an IndexStat from daily closes. None if not enough data.
+
+    `closes` is the full series (~30 days, for the chart); the weekly % move is
+    computed from the last 5 trading days only.
+    """
     if len(closes) < 2:
         return None
     return IndexStat(
         symbol=symbol,
         name=name,
         last_close=round(closes[-1], 2),
-        week_change_pct=round(_pct_change(closes), 2),
+        week_change_pct=round(_pct_change(closes[-5:]), 2),
         closes=[round(c, 2) for c in closes],
     )
 
