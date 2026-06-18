@@ -248,7 +248,7 @@ def build_user_prompt(
             "- Open with a principle or YOUR reaction, not a headline\n"
             "- Share HOW you think about investing over years, not days\n"
             "- NOT financial advice: no buy/sell, no targets, no predictions, no 'you should', no tickers\n"
-            "- Do NOT invent numbers, returns, dates, or personal trades — if you have no real number, use none\n"
+            "- Use NO numbers at all — not even illustrative ones. Write 'a small move' not 'a 2 percent move'. No invented returns, dates, or personal trades\n"
             "- Never name or quote a book, blog, author, or podcast — make the idea YOUR take\n"
             "- Always 'I', never 'we'. Short lines, blank lines between thoughts\n"
             "- No hype: no 'to the moon', 'load up', 'next 10x', 'easy money', 'get rich'\n"
