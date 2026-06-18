@@ -485,3 +485,26 @@ my_agent_git:
     type: hackernews
     url: https://hn.algolia.com/api/v1/search_by_date
     search_query: data engineering pipeline
+
+# Stock Talk — finance education + market news (Phase 2.10)
+# Priority order: Tier 1 educational blogs first (calm, long-term, on-voice),
+# then Tier 2 market news for the timely angle. All feeds verified Jun 18, 2026.
+# Used for article fallback/inspiration; the truthful backbone is yfinance data.
+stock_talk:
+  # Tier 1 — educational blogs (index/FIRE wisdom, data-driven, calm)
+  - name: JL Collins
+    type: rss
+    url: https://jlcollinsnh.com/feed/
+  - name: A Wealth of Common Sense
+    type: rss
+    url: https://awealthofcommonsense.com/feed/
+  - name: Of Dollars and Data
+    type: rss
+    url: https://ofdollarsanddata.com/feed/
+  # Tier 2 — market news (timely angle)
+  - name: CNBC Markets
+    type: rss
+    url: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258
+  - name: MarketWatch Top Stories
+    type: rss
+    url: https://feeds.content.dowjones.io/public/rss/mw_topstories
