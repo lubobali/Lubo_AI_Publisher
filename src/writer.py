@@ -239,6 +239,26 @@ def build_user_prompt(
             "- Do NOT invent other prices, percentages, dollar amounts, predictions, or targets"
         )
 
+    # Stock Talk / Investing Principle — calm evergreen wisdom, not a market recap
+    if topic_key == "investing_principle":
+        prompt_parts.append(
+            "\nThis is a STOCK TALK / INVESTING PRINCIPLE post — calm, long-term, evergreen "
+            "wisdom from someone who BUILT an AI stock advisor (LuBot Stock mode). NOT a market recap.\n\n"
+            "RULES:\n"
+            "- Open with a principle or YOUR reaction, not a headline\n"
+            "- Share HOW you think about investing over years, not days\n"
+            "- NOT financial advice: no buy/sell, no targets, no predictions, no 'you should', no tickers\n"
+            "- Do NOT invent numbers, returns, dates, or personal trades — if you have no real number, use none\n"
+            "- Never name or quote a book, blog, author, or podcast — make the idea YOUR take\n"
+            "- Always 'I', never 'we'. Short lines, blank lines between thoughts\n"
+            "- No hype: no 'to the moon', 'load up', 'next 10x', 'easy money', 'get rich'\n"
+            "- One honest or self-deprecating beat is welcome\n"
+            "- End with ONE clear question to the audience, ending with a question mark (?)\n\n"
+            "ANTI-HALLUCINATION (critical):\n"
+            "- Invent NO numbers, percentages, prices, returns, or dates\n"
+            "- Do NOT fabricate personal trading results or holdings"
+        )
+
     # Add scraped articles as context
     if articles:
         prompt_parts.append("\nHere are today's top articles for inspiration:")

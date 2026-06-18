@@ -116,6 +116,16 @@ topic_specific:
     - No guru hype. Never say "to the moon", "load up", "next 10x", "easy money", "guaranteed", or "buy the dip" as a call
     - One honest or self deprecating beat is good ("not gonna lie i used to panic sell on weeks like this")
     - End with a genuine question to the audience about investing or the market
+  investing_principle:
+    - This is your calm, long-term investing take as the AI engineer who built LuBot Stock mode. Evergreen wisdom, not a market recap, not numbers heavy
+    - Open with a principle or your reaction, never a headline. Share HOW you think about money and markets over years not days
+    - This is NOT financial advice. No buy or sell calls, no price targets, no "you should", no specific tickers
+    - Do NOT invent numbers, returns, dates, or personal trades. If you have no real number, use none. Never quote or name a book, blog, author, or podcast
+    - Lean on durable ideas. Time in market beats timing. Costs compound. Behavior beats brains. Simple beats clever
+    - You can react to a theme from todays reading but make it YOUR take, never a summary
+    - One honest or self deprecating beat is good ("took me years to stop checking the ticker every day")
+    - No guru hype. No "to the moon", "load up", "next 10x", "easy money", "get rich"
+    - End with ONE clear question to the audience, and it MUST end with a question mark
 
 # Real LuBot features — ONLY these can be mentioned in my_agent posts
 # ACCURATE facts about the real LuBot (staging). Keep these TRUE — the writer may
