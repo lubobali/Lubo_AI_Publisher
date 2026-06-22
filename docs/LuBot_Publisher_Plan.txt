@@ -1635,8 +1635,13 @@ STATUS: planned Jun 22, 2026 (update each step as built).
     injected, accent applied).
   - D3 DONE (Jun 22): scheduler passes select_chart_style(get_week_number(date)) into the
     Card B render. Suite 697 green, lint clean.
-  --> Remaining: D4 - rebuild + render samples to confirm line/baseline paint and look
-      distinct, then regenerate a live post.
+  - D4 DONE (Jun 22): committed (33eb88b), rebuilt + restarted. Rendered the EP.469 symbols
+    (S&P + Semiconductors + Crude Oil) in 3 styles in-container - area-teal, line-amber,
+    baseline-violet ALL paint and look clearly distinct (type + palette + accent differ).
+    Regenerated a fresh live Market Pulse post (transcript cached -> fast) with the new
+    symbol logic for Lubo's approval.
+  --> PHASE 2.10d COMPLETE. Market Pulse now varies chart TYPE + COLOR (weekly rotation) and
+      INSTRUMENTS (theme-driven), all matching the post, all real data.
 
 ==============================================================================
   END OF PLAN

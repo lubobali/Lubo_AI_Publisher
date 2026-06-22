@@ -74,18 +74,20 @@ def select_chart_symbols(bullets: str | None) -> dict[str, str]:
     if not text.strip():
         return dict(DEFAULT_INDICES)
 
-    selected: dict[str, str] = {CHART_ANCHOR[0]: CHART_ANCHOR[1]}
+    # Theme instruments LEAD (the story's instrument first, e.g. Semiconductors), up to
+    # MAX-1; S&P 500 is appended LAST as broad-market context. So the lead panel varies
+    # by theme instead of always being S&P (Phase 2.10d).
+    selected: dict[str, str] = {}
     for symbol, name, keywords in SYMBOL_MAP:
-        if symbol in selected:
-            continue
         if any(re.search(rf"\b{re.escape(kw)}\b", text) for kw in keywords):
             selected[symbol] = name
-        if len(selected) >= MAX_CHART_SYMBOLS:
+        if len(selected) >= MAX_CHART_SYMBOLS - 1:
             break
 
-    # Only the anchor matched -> nothing themed; show the full index card instead.
-    if len(selected) == 1:
+    if not selected:  # nothing themed -> the full default index card
         return dict(DEFAULT_INDICES)
+    if CHART_ANCHOR[0] not in selected:
+        selected[CHART_ANCHOR[0]] = CHART_ANCHOR[1]  # S&P context, last
     return selected
 
 

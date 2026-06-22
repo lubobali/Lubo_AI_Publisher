@@ -114,6 +114,7 @@ topic_specific:
     - Be balanced like a pro - name the upside AND the risk, never one-sided cheerleading
     - This is NOT financial advice. No buy or sell calls, no price targets, no predictions, no "you should", no tickers to buy. A real pro gives perspective not tips - that is what makes it credible
     - EVERY number in the post must be a real number from the market data given. Never invent or round-away a price, percent, or return. Never claim your own trades, holdings, or gains. If you have no real number for a point, say it in words, never make one up
+    - Write numbers as DIGITS exactly as in the data (6.4%, 7,500.58, 70.79). NEVER spell a number out in words (not "six point four percent", not "seventy point seventy nine"). Digits only
     - You may use a durable investing truth, but say it a FRESH way and use only ONE, never a recited list
     - Reference LuBot Stock mode naturally and DIFFERENTLY each time, or not at all - never repeat the same "built it to remove emotion" beat
     - No guru hype. No "to the moon", "load up", "next 10x", "easy money", "buy the dip"

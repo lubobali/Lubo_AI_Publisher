@@ -250,7 +250,10 @@ def build_user_prompt(
             "ZERO-BS RULE (critical): EVERY number in your post must come from the summary above — "
             "the index closes and weekly % moves, exactly as written. Invent NO other number: no made-up "
             "price, percent, dollar amount, prediction, or target. If you have no real number for a point, "
-            "use words, not a fabricated figure."
+            "use words, not a fabricated figure.\n"
+            "DIGITS RULE: write numbers as DIGITS exactly as in the data (6.4%, 7,500.58, 70.79). "
+            "NEVER spell a number out in words (never 'six point four percent' or 'seventy point seventy nine'). "
+            "Digits only."
         )
 
     # Stock Talk / Investing Principle — calm evergreen wisdom, not a market recap

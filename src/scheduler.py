@@ -191,7 +191,10 @@ class Pipeline:
             # Render our own market card from real data (never screenshot a finance site).
             if self._stock and self._stock.market_week:
                 fields = build_stock_screenshot_fields(self._stock.market_week)
-                style = select_chart_style(get_week_number(target_date))
+                # Rotate the chart style PER POST (by how many market_pulse posts exist),
+                # so consecutive posts differ in type + color even within the same week.
+                style_idx = self.session.query(PublisherPost).filter_by(topic_category="market_pulse").count()
+                style = select_chart_style(style_idx)
                 screenshot = await take_stock_lwc_screenshot(**fields, style=style)
                 if screenshot:
                     image_path = screenshot.path

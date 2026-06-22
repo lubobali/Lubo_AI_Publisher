@@ -27,13 +27,14 @@ class TestSelectChartSymbols:
     def test_no_theme_match_defaults_to_indices(self):
         assert select_chart_symbols("- the hosts chatted about weekend plans") == DEFAULT_INDICES
 
-    def test_oil_theme_charts_crude_with_anchor(self):
+    def test_oil_theme_leads_crude_sp_as_context(self):
         syms = select_chart_symbols("- oil prices ignored the geopolitical risk this week")
-        assert syms["^GSPC"] == "S&P 500"  # always anchored
-        assert "CL=F" in syms  # crude oil
+        assert next(iter(syms)) == "CL=F"  # the theme instrument LEADS
+        assert syms["^GSPC"] == "S&P 500"  # S&P present as context
+        assert list(syms).index("^GSPC") == len(syms) - 1  # ...and it is LAST
         assert len(syms) <= 3
 
-    def test_real_episode_themes_ai_semis(self):
+    def test_real_episode_themes_lead_with_semis(self):
         # the actual Animal Spirits EP.469 distillation: AI surge, semis, EM, oil
         bullets = (
             "- the AI surge may end in a crash or pullback\n"
@@ -41,22 +42,23 @@ class TestSelectChartSymbols:
             "- oil prices ignore geopolitical alarm bells"
         )
         syms = select_chart_symbols(bullets)
-        assert syms["^GSPC"] == "S&P 500"
-        assert "SMH" in syms  # semiconductors
-        assert len(syms) == 3  # anchor + 2 themes (capped)
+        assert next(iter(syms)) == "SMH"  # semiconductors leads, NOT S&P
+        assert syms["^GSPC"] == "S&P 500"  # S&P last for context
+        assert len(syms) == 3
 
     def test_caps_at_three(self):
         syms = select_chart_symbols("oil gold semis emerging markets bonds vix dollar small caps")
         assert len(syms) == 3
-        assert "^GSPC" in syms
+        assert "^GSPC" in syms  # 2 theme instruments + S&P context
 
     def test_only_returns_curated_real_symbols(self):
         valid = {"^GSPC"} | {sym for sym, _name, _kw in SYMBOL_MAP} | set(DEFAULT_INDICES)
         assert set(select_chart_symbols("semis and oil and rates and gold")) <= valid
 
-    def test_anchor_is_first(self):
+    def test_sp_is_context_last_not_lead(self):
         syms = select_chart_symbols("- gold had a strong week")
-        assert next(iter(syms)) == "^GSPC"
+        assert next(iter(syms)) == "GC=F"  # theme leads
+        assert list(syms)[-1] == "^GSPC"  # S&P is the context panel, last
 
     def test_ai_theme_charts_semis_not_nasdaq(self):
         # AI/tech talk should surface Semis (the tradeable AI proxy), NOT another index
@@ -68,7 +70,7 @@ class TestSelectChartSymbols:
         # gold + oil should win the slots over an explicit nasdaq mention (indices last)
         syms = select_chart_symbols("- gold and oil ran while nasdaq drifted")
         assert "GC=F" in syms and "CL=F" in syms
-        assert "^IXIC" not in syms  # capped at 3: anchor + 2 specific instruments
+        assert "^IXIC" not in syms  # capped: 2 specific instruments + S&P
 
 
 # A realistic week of closes (mocked yfinance output: {symbol: [daily closes]})
