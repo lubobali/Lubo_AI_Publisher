@@ -15,7 +15,8 @@ approves in the dashboard. Intervals/timezone are env-overridable.
 import asyncio
 import logging
 import os
-from datetime import date, datetime
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 
@@ -30,12 +31,18 @@ TIMEZONE = os.getenv("PUBLISHER_TZ", "America/Chicago")
 
 
 def _run_daily_generation() -> None:
-    """Generate today's post (saved as PENDING for approval)."""
+    """Generate today's post (saved as PENDING for approval).
+
+    Uses the date in the configured timezone (not UTC) — a late-CT generation
+    window can fall on the next UTC day, which would otherwise pick the wrong
+    rotation slot.
+    """
 
     async def _go():
         session = SessionLocal()
         try:
-            result = await Pipeline(session).generate_post(date.today())
+            gen_date = datetime.now(ZoneInfo(TIMEZONE)).date()
+            result = await Pipeline(session).generate_post(gen_date)
             session.commit()
             logger.info("Daily generation: success=%s", getattr(result, "success", None))
         except Exception:

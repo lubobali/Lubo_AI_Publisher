@@ -5,8 +5,8 @@ posting_windows:
     start_hour: 15  # 3 PM CT
     end_hour: 17    # through 4:59 PM CT (3-5 PM window)
   weekend:
-    start_hour: 23  # 11 PM CT
-    end_hour: 24    # through 11:59 PM CT (11 PM - midnight window)
+    start_hour: 11  # 11 AM CT
+    end_hour: 13    # through 12:59 PM CT (11 AM - 12 PM window)
 
 timezone: America/Chicago
 

@@ -144,8 +144,8 @@ class TestLoadSchedule:
     def test_weekend_hours(self):
         config = load_schedule_config()
         weekend = config["posting_windows"]["weekend"]
-        assert weekend["start_hour"] == 23
-        assert weekend["end_hour"] == 24
+        assert weekend["start_hour"] == 11
+        assert weekend["end_hour"] == 13
 
 
 # ---------------------------------------------------------------------------
@@ -162,11 +162,11 @@ class TestGetRandomPostTime:
         assert t.hour < 17
 
     def test_weekend_within_window(self):
-        """Weekend post time should be between 11 PM - midnight CT."""
+        """Weekend post time should be between 11 AM - 12:59 PM CT."""
         d = date(2026, 3, 28)  # Saturday
         t = get_random_post_time(d)
-        assert t.hour >= 23
-        assert t.hour < 24
+        assert t.hour >= 11
+        assert t.hour < 13
 
     def test_returns_time_object(self):
         t = get_random_post_time(date(2026, 3, 23))
@@ -211,4 +211,4 @@ class TestGetRandomPostTime:
     )
     def test_all_weekends_use_weekend_window(self, d):
         t = get_random_post_time(d)
-        assert 23 <= t.hour < 24
+        assert 11 <= t.hour < 13
