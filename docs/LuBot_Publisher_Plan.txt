@@ -1551,11 +1551,18 @@ STATUS: planned Jun 22, 2026 (update each step as built).
       has no '?' and its last line opens with a question word, append '?'; non-question
       closes untouched (never fabricates a question). Wired into process_post (applied, not
       scored). 4 tests. Suite 689 green, lint clean.
-  --> 2.10b + 2.10c CODE COMPLETE and live-proven on the new path. Remaining: P10 multi-run
-      eval, then DEPLOY (rebuild image + restart publisher containers) to put a real pending
-      post + themed chart on publisher.lubot.ai for approval. Rotation NOT flipped (force the
-      topic for the one-off, like #11/#12). NOTE: containers run a baked image (build: .),
-      so the new code needs a rebuild to go live; .env already has DEEPGRAM_API_KEY.
+  - P10 EVAL PASSED (Jun 22): forced market_pulse across all 4 podcasts (weeks 0-3). ALL
+      4/4: validate=True, numbers_grounded=True, show never named, insight-first open, real
+      closing question. Charts tracked themes: Animal Spirits {S&P,Nasdaq,Crude Oil};
+      RiskReversal {S&P,Nasdaq}; Money Life {S&P,Nasdaq,10Y Yield}; Investing Experts
+      {S&P,Nasdaq,10Y Yield}. (Nasdaq recurs - AI/tech is the dominant theme now; 3rd symbol
+      varies for variety.)
+  - COMMITTED + DEPLOYED (Jun 22): branch feature/podcast-market-pulse (689 tests via
+      pre-commit). docker compose build + up -d -> containers run the new code; verified
+      DEEPGRAM/OPENROUTER/NVIDIA keys present in-container. Rotation NOT flipped - forced a
+      one-off market_pulse in the worker (patch get_todays_topic) to create a PENDING post +
+      themed chart on publisher.lubot.ai for Lubo's approval.
+  --> 2.10b + 2.10c COMPLETE. First real podcast-driven Market Pulse pending on the dashboard.
 
 ==============================================================================
   END OF PLAN

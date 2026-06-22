@@ -701,6 +701,7 @@ window.addEventListener('load', function () {
         var el = document.getElementById('chart_' + idx);
         var chart = LightweightCharts.createChart(el, {
             width: el.clientWidth, height: el.clientHeight,
+            localization: { locale: 'en-US' },
             layout: { background: { type: 'solid', color: 'rgba(0,0,0,0)' }, textColor: '#5b6675', fontSize: 12, fontFamily: 'Inter, sans-serif', attributionLogo: false },
             grid: { vertLines: { visible: false }, horzLines: { color: '#161d2b' } },
             rightPriceScale: { borderVisible: false },

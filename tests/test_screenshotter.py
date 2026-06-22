@@ -685,3 +685,9 @@ class TestBuildStockHtmlLwc:
         html = _build_stock_html_lwc(_INDICES, "range", lib_js="x")
         assert "7,503.45" in html
         assert "+1.0%" in html and "-0.8%" in html
+
+    def test_sets_explicit_locale(self):
+        # The container chromium has no system locale; without an explicit one,
+        # Lightweight Charts throws "Incorrect locale information" and draws nothing.
+        html = _build_stock_html_lwc(_INDICES, "range", lib_js="x")
+        assert "locale: 'en-US'" in html
