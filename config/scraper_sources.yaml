@@ -508,3 +508,22 @@ stock_talk:
   - name: MarketWatch Top Stories
     type: rss
     url: https://feeds.content.dowjones.io/public/rss/mw_topstories
+
+# Market Pulse — podcasts (Phase 2.10b). Each weekly Market Pulse rotates to the next
+# show (round-robin by week); the episode audio is transcribed + distilled into the
+# weekly ANGLE, while yfinance stays the number backbone. Feeds verified live Jun 22.
+# This key also fixes the topics.yaml Market Pulse sources_key, which pointed at a
+# "market_pulse" key that did not exist here.
+market_pulse:
+  - name: Animal Spirits
+    type: podcast
+    url: https://feeds.megaphone.fm/TCP6464651487
+  - name: RiskReversal Pod
+    type: podcast
+    url: https://feeds.megaphone.fm/RRM5151570998
+  - name: Money Life with Chuck Jaffe
+    type: podcast
+    url: https://rss.pdrl.fm/5a1008/feeds.libsyn.com/148394/rss/?redirect=false
+  - name: Investing Experts
+    type: podcast
+    url: https://www.spreaker.com/show/5725001/episodes/feed

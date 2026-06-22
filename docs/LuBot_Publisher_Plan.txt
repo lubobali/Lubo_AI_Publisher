@@ -1233,5 +1233,330 @@ IMAGE DESIGN (must look professional/real, NOT cartoon; both OWNED by us)
     - Fallback to generated image if either fails (same safety net as today)
 
 ==============================================================================
+PHASE 2.10b: PODCAST TRANSCRIPTS -> MARKET PULSE (planned Jun 22, 2026)
+==============================================================================
+
+CONTEXT / WHY (Lubo's idea, Jun 22)
+  Phase 2.10 S5 left podcasts as "show-notes only, can land in a follow-up."
+  Show-notes give the TOPICS but not what the hosts actually SAID. Lubo's
+  insight: the gold is to READ the actual discussion (the transcript), look at
+  the real yfinance numbers, and post HIS short take - exactly what a human
+  does: listen to the pod, check the tape, give an opinion. This subphase
+  upgrades S5 from show-notes to FULL TRANSCRIPTS for the Market Pulse post:
+  we transcribe the episode, distill the key market points (DISTILLATION below),
+  and Lubo reacts to those in his own voice + the real yfinance numbers.
+
+THE 4 PODCASTS (Lubo-chosen Jun 22; replaces the old Tier-3 list above)
+  Given as Spotify show links, resolved to real RSS feeds and verified live -
+  all four returned fresh Jun 2026 episodes:
+    1. Animal Spirits (Batnick & Carlson)  - feeds.megaphone.fm/TCP6464651487
+    2. RiskReversal Pod (Nathan & Adami)    - feeds.megaphone.fm/RRM5151570998
+    3. Money Life w/ Chuck Jaffe            - rss.pdrl.fm/.../feeds.libsyn.com/148394/rss
+    4. Investing Experts (Seeking Alpha)    - spreaker.com/show/5725001/episodes/feed
+  ROTATION: use ALL 4, round-robin. Each weekly Market Pulse pulls the NEXT show
+  (index = week_number % 4), so all four cycle over four weeks. Stateless -
+  reuses get_week_number() (the same epoch-based scheme as topic rotation), so
+  no rotation table is needed. On feed/transcription failure, advance to the
+  next show in the rotation order.
+
+TRANSCRIPT RESEARCH (what is actually obtainable - verified Jun 22)
+  - RSS <podcast:transcript> tag: ONLY Investing Experts ships one, and it points
+    to a Seeking Alpha article that returns HTTP 403 (paywalled to bots). Unusable.
+  - The other 3 feeds carry NO transcript in RSS (their "transcript" mentions are
+    incidental words in the show-notes).
+  - The two Megaphone feeds (Animal Spirits, RiskReversal) have NO <link> element
+    at item level - only a UUID <guid> and an <enclosure> mp3 URL. The existing
+    parse_rss would DROP them (it requires a link), so podcasts need their own
+    parser that keys off the enclosure + guid.
+  => CONCLUSION: there is no free, clean transcript via RSS. We obtain the
+     transcript by running ASR on the episode AUDIO (every feed exposes the
+     enclosure mp3).
+
+TRANSCRIPTION = OpenRouter, latest ASR (Approach A, Lubo-chosen)
+  - OpenRouter has a dedicated /api/v1/audio/transcriptions endpoint plus audio-
+    capable chat models. We use the transcription endpoint: download the mp3,
+    POST it, get text back.
+  - MODEL = latest tech, env-swappable via OPENROUTER_TRANSCRIBE_MODEL (current
+    best picked at build time; reviewed Jun 22, 2026):
+      * DEFAULT: gpt-4o-transcribe - top general accuracy on OpenRouter, sub-5%
+        WER, best for 2-host conversational market podcasts.
+      * CHEAP FALLBACK: whisper-large-v3-turbo (~12% WER) or NVIDIA parakeet-
+        tdt-0.6b-v3 (6.34% WER) if cost ever matters.
+      * Also available if needed: Google Chirp 3, Deepgram Nova-3 (~5.26% WER).
+    Number errors from ASR are harmless here (transcript numbers are banned
+    anyway); we only need the arguments, so speaker diarization is not required.
+  - WHY OpenRouter and not NVIDIA NIM: the NIM free tier rate-limits and ASR may
+    not be enabled on the account; CLAUDE.md already plans OpenRouter as the paid
+    writer fallback -> ONE vendor, ONE key (OPENROUTER_API_KEY) for transcription,
+    distillation, AND the writer LLM.
+  - COST: ~1 episode/week, ~60 min. gpt-4o-transcribe is a few cents/episode;
+    whisper-turbo is sub-cent. Either way under ~$1/week. Negligible.
+  - CACHE: transcripts cached in the DB keyed by episode guid, so we never re-pay
+    to transcribe the same episode (mirrors the KB store-by-slug pattern). We only
+    transcribe when the category is actually market_pulse (never on every run).
+
+DISTILLATION (the key quality lever - folded in Jun 22 after review)
+  Raw ASR is ~10k words with NO structure, plus intro + SPONSOR ad-reads at the
+  front and off-topic tangents. Feeding that raw (or naively front-trimmed) to the
+  writer is the difference between a sharp post and a mushy one - it would react to
+  an ad read or a tangent. So between transcription and the writer we add ONE cheap
+  LLM pass that turns the transcript into the writer's actual angle:
+  - INPUT: the full cached transcript.
+  - OUTPUT: 3-5 bullet points = "the key market arguments / themes / debates the
+    hosts made this week" - the meat, in plain words.
+  - STRIP: ad-reads, sponsor segments, intros/outros, housekeeping, pure tangents.
+  - NO NUMBERS in the bullets (keeps the zero-BS rule airtight downstream).
+  - MODEL: latest tech, env-swappable via OPENROUTER_DISTILL_MODEL (a current fast
+    capable chat model picked at build time; can reuse the writer model).
+  - CACHE: store the distilled bullets alongside the transcript (same guid row), so
+    re-runs reuse them too.
+  This is what makes the post feel like Lubo genuinely listened and is reacting to
+  the real conversation, not skimming show-notes.
+
+GUARDRAILS (same stance as the books/blogs RAG + the zero-BS number check)
+  - The distilled bullets feed the ANGLE / IDEAS only. NEVER quote verbatim. NEVER
+    name the podcast or its hosts. Lubo forms his OWN take.
+  - VOICE PROTECTION (folded in Jun 22): smart hosts use polished analyst language;
+    the writer must NOT parrot it. React like Lubo - agree, push back, or riff - in
+    his own casual ESL voice (CLAUDE.md: "dont make posts sound too polished").
+    Never reuse the hosts' phrasing or jargon. The pod is the spark, the voice is his.
+  - FRAMING: treat the pod as "recent market thinking / what smart investors are
+    debating," NOT "this exact week," so a 2-3 day old episode and this week's
+    yfinance tape never feel disjointed.
+  - NUMBERS: the ONLY numbers allowed in the post are the real yfinance figures.
+    A number the HOSTS say is NOT permitted. This is already enforced by the
+    numbers_grounded() "zero-BS" check (current Market Pulse quality work), which
+    traces every significant post number to the yfinance summary ONLY - the
+    transcript is never a number source.
+  - NON-FATAL: if the feed, audio, or ASR fails, the post still generates from
+    yfinance alone (podcast enrichment is optional, exactly like WakaTime enriches
+    the my_agent_git post).
+
+SCOPE
+  Market Pulse ONLY - the timely "pod + numbers + my take" format. The other
+  stock slot (Investing Principle) stays evergreen / no-numbers / no-named-
+  sources, so podcast transcripts do not fit it. Revisit later if wanted.
+
+BUILD STEPS (RECR, test-first; mock external = RSS/audio/OpenRouter, keep real =
+parsing / rotation / cache / prompt assembly)
+  P1. parse_podcast_feed() in src/podcast_insights.py - podcast RSS -> list of
+      episodes (title, enclosure mp3 URL, guid, cleaned show-notes, pubDate);
+      newest-first, selection happens in P5. Handles linkless Megaphone items and
+      strips zero-width junk. (pure, tested)
+  P2. pick_podcast(week) / rotation order - round-robin index over the 4 feeds,
+      with a fallback order so a dead feed advances to the next. (pure, tested)
+  P3. src/transcription.py - transcribe_audio(mp3_url) -> text via OpenRouter
+      /audio/transcriptions. NOTE (verified Jun 22): this endpoint takes a JSON body
+      with BASE64 audio (NOT multipart): {"input_audio":{"data":<b64>,"format":"mp3"},
+      "model":...,"language":"en"} -> {"text":...}. Download the audio, detect format
+      from Content-Type (Spreaker URLs are extensionless), base64, POST. Model + key
+      from env (OPENROUTER_API_KEY, OPENROUTER_TRANSCRIBE_MODEL). (mock the boundary)
+  P4. PublisherPodcastTranscript DB model (guid unique) + get/store, idempotent
+      by guid. Stores transcript AND the distilled bullets (P5.5) in the same row.
+      create_all picks it up. (real-DB tests on publisher_test)
+  P5. PodcastInsights.get_episode_article(session, week) - pick the rotated show ->
+      fetch feed -> SMART-SELECT the episode -> cache-or-(transcribe + distill) ->
+      ScrapedArticle (summary = the distilled bullets, NOT the raw transcript).
+      Non-fatal on any failure (returns None). (mock net)
+      SMART-SELECT: pick the freshest MARKET-relevant episode, skipping obvious
+      non-pulse episodes by title (interview / "Talk Your Book" / sponsor / Q&A /
+      mailbag). If none qualify, advance to the next show in the rotation order.
+  P5.5. DISTILL - the cached transcript -> 3-5 plain-words market-theme bullets via
+      OPENROUTER_DISTILL_MODEL, stripping ads/intros/tangents, NO numbers. Cached
+      with the transcript. (the key quality lever; mock the LLM boundary)
+  P6. config/scraper_sources.yaml - add the market_pulse: key with the 4 podcast
+      feeds. This ALSO fixes a latent bug: topics.yaml points Market Pulse at a
+      sources_key ("market_pulse") that did not exist in scraper_sources.yaml.
+  P7. writer.py - new podcast_context param (mirrors book_concepts), fed the
+      distilled bullets. The Market Pulse block gains a PODCAST CONTEXT section:
+      angle-only; never quote; never name the show/hosts; never take a number from
+      it; react in Lubo's casual ESL voice (agree / push back / riff), DONT parrot
+      analyst language; treat it as "recent market thinking," not "this exact week".
+  P8. scheduler.py - the market_pulse branch fetches the distilled bullets and
+      passes them as podcast_context to write_post; numbers_grounded stays bound to
+      the yfinance summary. Non-fatal if the transcript/bullets are absent.
+  P9. Full suite green + lint, then FIRST LIVE post once Lubo adds OPENROUTER_API_KEY:
+      force market_pulse in-container, confirm the post reflects a real episode's
+      angle, uses ONLY yfinance numbers, never names the show, on-voice (casual ESL,
+      not polished), ends with a question.
+  P10. SHORT MULTI-RUN EVAL before relying on it - force market_pulse ~4 times
+      across all 4 podcasts (rotate the week), eyeball each for: on-topic angle,
+      voice (not analyst-speak), zero ungrounded numbers, no show named, ad-read
+      never leaked. Same discipline as the Stock Talk 7-day dry run. Only then trust
+      it in the live rotation.
+
+STATUS: planned Jun 22, 2026; refined same day after a quality review
+  (added latest-tech ASR default gpt-4o-transcribe, the P5.5 distillation step,
+  smart episode selection, voice protection, and the P10 multi-run eval).
+  Update each step as built.
+  - P1 DONE (Jun 22): src/podcast_insights.py parse_podcast_feed() + PodcastEpisode.
+    6 unit tests (standard / linkless Megaphone / content:encoded+HTML strip /
+    zero-width strip / skip-no-audio / guid fallback). Verified live on 3 real feeds
+    (Animal Spirits 796 eps linkless, Investing Experts 364, Money Life 2082) -
+    clean notes, audio + guid parsed, zero-width gone. Suite 639 green, lint clean.
+  - P2 DONE (Jun 22): rotation_order(week, podcasts) + pick_podcast(week, podcasts) -
+    stateless round-robin by week % n; first = this week's pick, rest = fallback
+    order (full permutation, no dropped coverage); empty-list safe; neg/large weeks
+    wrap. 6 unit tests. Suite 645 green, lint clean.
+  - P3 DONE (Jun 22): src/transcription.py transcribe_audio() -> OpenRouter
+    /audio/transcriptions (JSON+base64, Content-Type format detection, env model/key,
+    default openai/gpt-4o-transcribe). Fully NON-FATAL: None on no-key/download-fail/
+    api-error/empty-text. 7 unit tests (boundary mocked). Corrected plan: endpoint is
+    JSON+base64, not multipart. Suite 652 green, lint clean. (live call exercised at P9)
+  - P4 DONE (Jun 22): PublisherPodcastTranscript model (7th table; guid unique+indexed,
+    transcript + distilled in one row) + get_cached_transcript()/store_transcript()
+    (idempotent upsert by guid; distilled only written when provided, never wiped).
+    create_all picks up the table. 5 real-DB tests on publisher_test. Suite 657 green.
+  - P6 DONE (Jun 22, pulled forward into P5): market_pulse: key added to
+    scraper_sources.yaml with the 4 podcast feeds (type: podcast) + load_podcast_feeds().
+    Updated test_scraper category/type allowlists (new category + 'podcast' type).
+  - P5.5 DONE (Jun 22): distill_transcript() - transcript -> 3-5 market-theme bullets
+    via OpenRouter /chat/completions (env OPENROUTER_DISTILL_MODEL; default
+    nvidia/nemotron-3-super-120b-a12b, swap to latest at P9; strips ads/tangents, no
+    numbers; 60k-char safety cap). Non-fatal. 5 unit tests (boundary mocked).
+  - P5 DONE (Jun 22): src/podcast_insights.py select_episode() (skip Talk Your Book/
+    mailbag/Q&A/AMA/best-of, newest market-relevant in top 10) + PodcastInsights
+    .get_episode_article(session, week): rotate -> fetch -> select -> (cache or
+    transcribe+distill) -> ScrapedArticle (summary = bullets). Advances to next show on
+    any per-feed failure; fully non-fatal (None -> yfinance-only). 9 tests (4 select +
+    orchestration: transcribe+cache / cache-hit-no-spend / feed-fallback / none-on-fail).
+    Verified LIVE up to the transcription boundary: weeks 0-3 rotate Animal Spirits ->
+    RiskReversal -> Money Life -> Investing Experts, each smart-selecting a real market
+    episode. Suite 671 green, lint clean.
+  - P7 DONE (Jun 22): writer.py podcast_context param threaded through build_user_prompt
+    + write_post (mirrors book_concepts). Injects a "RECENT MARKET THINKING" block:
+    spark-not-topic, never name/quote the show/host, don't parrot analyst jargon (casual
+    ESL voice), treat as general mood not "this week", take NO number from it (numbers
+    stay yfinance-only), may ignore. 5 unit tests. Suite 675 green, lint clean.
+  - P8 DONE (Jun 22): scheduler.py market_pulse branch calls _get_podcast_context(date)
+    -> PodcastInsights.get_episode_article(session, get_week_number(date)) -> passes the
+    bullets to write_post as podcast_context. numbers_grounded stays bound to the yfinance
+    summary (transcript never a number source). NON-FATAL: wrapped in try/except, None ->
+    yfinance-only post. 2 new tests (passes context / non-fatal on failure) + updated the
+    existing stock test to mock PodcastInsights (no network). Imports OK. Suite 677 green.
+  - TRANSCRIPTION PIVOT (Jun 22, during P9): OpenRouter /audio/transcriptions was a BAD
+    fit for real episodes (75-95 MB / 60-90 min; its base64-JSON path caps ~25 MB & gpt-
+    4o-transcribe ~25 min). Senior call: use a dedicated long-form ASR. transcribe_audio()
+    rewritten to DEEPGRAM pre-recorded by URL (POST api.deepgram.com/v1/listen, model
+    nova-3, body {"url":...}); Deepgram downloads + transcribes server-side -> no local
+    download, no ffmpeg, no chunking, handles hour-long audio. Kept the SAME swappable
+    seam (transcribe_audio(url)->text|None, non-fatal); only the internals + env changed
+    (DEEPGRAM_API_KEY / DEEPGRAM_MODEL). Distill + writer stay on OpenRouter. Deepgram free
+    tier = $200 credit, no card (~$0.30/episode; covers >1 year). 6 tests rewritten.
+  - P9 PARTIAL (Jun 22): LIVE-validated the new path end to end (key in .env):
+    Deepgram transcribed a real 68-min Animal Spirits episode in ~7s (69,771 chars);
+    distill (OpenRouter nemotron-3-super-120b) -> 5 clean market-theme bullets in ~41s,
+    ad-read stripped, NO numbers (AI-bubble debate, SpaceX IPO froth, narrow leadership,
+    semis lifting EM, oil shrugging geopolitics). Full post+chart eyeball still TODO.
+  --> Code complete through P8 + transcription live-proven. Remaining: finish P9 (post +
+      chart eyeball), P10 (multi-run eval), and Phase 2.10c below (theme-tailored charts)
+      BEFORE the full eyeball — so the chart matches the post. Nothing flips rotation yet.
+
+==============================================================================
+PHASE 2.10c: THEME-TAILORED CHARTS FOR MARKET PULSE (planned Jun 22, 2026)
+==============================================================================
+
+CONTEXT / WHY (Lubo, Jun 22)
+  A $300k-caliber post cannot show a generic S&P/Nasdaq/Dow card while the words
+  talk about oil, semis, or emerging markets. The chart MUST tell the SAME story as
+  the text - text and chart saying different things looks amateur. Until now Market
+  Pulse always rendered the 3-index card (Card B) regardless of the post's angle.
+  This subphase makes the chart track the post's THEME, staying 100% real data.
+
+KEY INSIGHT (already in place - no renderer change needed)
+  The card is already generic: StockInsights(indices={symbol: name}) accepts ANY
+  symbols, and build_stock_screenshot_fields renders whatever is in the MarketWeek.
+  So we change NOTHING in the chart renderer - we just feed it theme-relevant symbols.
+
+DESIGN - ONE shared dataset drives BOTH text and chart
+  Do NOT derive the chart from the post text (fragile) or the post from the chart.
+  Pick the theme's symbols ONCE, fetch real yfinance data, and feed the SAME MarketWeek
+  to both the writer (numbers) and the chart (series). They then cannot disagree, and
+  it is all real data. Flow (theme leads, so the scheduler reorders):
+    1. Podcast bullets (Phase 2.10b)
+    2. select_chart_symbols(bullets) -> 2-3 real symbols (keyword match, allowlist)
+    3. StockInsights(indices=focus).get_market_pulse() -> real data for those
+    4. Writer gets that summary + a note: "the chart shows these symbols, build your
+       take around them"
+    5. Chart renders the SAME MarketWeek
+  Fallback: no theme match OR no bullets (podcast failed) -> the 3 indices (today's
+  behavior). Always anchor with S&P 500; cap at 3 for a clean card.
+
+SYMBOL SELECTION = deterministic keyword match (NOT the LLM)
+  Truthful + deterministic: it can NEVER invent a fake ticker, and the bullets already
+  name the themes. A curated allowlist maps a theme keyword -> a real yfinance symbol +
+  display name, e.g.:
+    broad market/stocks (ANCHOR, always present) -> ^GSPC (S&P 500)
+    tech/ai/nasdaq                               -> ^IXIC (Nasdaq) or QQQ
+    semis/chips/ai chips/nvidia/semiconductor    -> SMH (Semis ETF)
+    oil/crude/energy prices                      -> CL=F (Crude Oil)
+    energy sector                                -> XLE
+    emerging markets/EM/china/india              -> EEM
+    rates/yields/bonds/treasury/fed              -> ^TNX (10Y yield)
+    gold                                         -> GC=F
+    dollar/dxy                                   -> DX=F
+    volatility/vix/fear                          -> ^VIX
+    small caps/russell                           -> IWM
+  Allowlist is curated + extendable; LLM-assisted selection can come later if wanted.
+
+TRUTH GUARDRAILS (unchanged + reinforced)
+  - Only real symbols from the allowlist with real yfinance data are charted/quoted.
+  - numbers_grounded() still checks every post number against the SAME (focus-symbol)
+    summary -> no fabricated prices/percentages.
+  - If a chosen symbol returns no yfinance data, drop it; if none remain, default to
+    the 3 indices. Never chart or quote a symbol we do not have real data for.
+
+BUILD STEPS (RECR, test-first; mock external = yfinance, keep real = selection/wiring)
+  C1. SYMBOL_MAP + select_chart_symbols(bullets) in stock_insights.py - keyword match ->
+      ordered dict {symbol: name}, always S&P-anchored, capped at 3, default to the 3
+      indices when nothing matches or bullets are empty. Pure, fully tested.
+  C2. scheduler.py market_pulse REORDER + wire: podcast bullets FIRST -> select_chart_
+      symbols -> StockInsights(indices=focus).get_market_pulse() -> feed the shared
+      MarketWeek to BOTH write_post (summary) and the Card B screenshot; pass the charted
+      symbol names to the writer so the text anchors on them. Non-fatal: no bullets ->
+      default indices (today's behavior). numbers_grounded stays on the same summary.
+  C3. LIVE verify: force market_pulse; confirm the post's theme and the rendered chart
+      show the SAME symbols/story, numbers only from yfinance, show never named.
+
+STATUS: planned Jun 22, 2026 (update each step as built).
+  - C1 DONE (Jun 22): stock_insights.py CHART_ANCHOR + SYMBOL_MAP (11 curated themes ->
+    real yfinance symbols) + select_chart_symbols(bullets) - deterministic keyword match,
+    always S&P-anchored, capped at 3, defaults to the 3 indices when empty/no match. Only
+    curated real symbols ever returned (no invented tickers). 7 tests incl. the real EP.469
+    bullets -> {S&P, Nasdaq, Semis}. Suite 683 green, lint clean.
+  - C2 DONE (Jun 22): scheduler.py market_pulse REORDERED - podcast bullets FIRST ->
+    select_chart_symbols -> _get_stock_article(indices=focus) so yfinance + the Card B
+    chart use the THEME symbols; the charted names are appended to podcast_context so the
+    writer anchors the text on them ("...chart plots: S&P 500, Nasdaq, Semiconductors..."").
+    numbers_grounded stays on the same focus-symbol summary. Non-fatal: no bullets ->
+    default indices (today's behavior). Updated the P8 context test + added a theme->symbols
+    test (oil -> CL=F charted). Suite 684 green, imports OK, lint clean.
+  - WRITER STABILITY FIX (Jun 22, found during P9): the full post run failed - NIM 550B
+    "Request timed out" + OpenRouter 120B "empty content". ROOT CAUSE (diagnosed live):
+    Nemotron-3 are REASONING models that spend output tokens on hidden reasoning first;
+    max_tokens=2000 truncated them mid-reasoning -> finish=length, content=0 (verified:
+    120B used ~3.5k tokens on reasoning before any answer). And 120s timeout was too
+    short for 550B. FIX in writer.py: MAX_OUTPUT_TOKENS=8000 (env LLM_MAX_TOKENS),
+    REQUEST_TIMEOUT=300s (env LLM_TIMEOUT) on both clients. (Did NOT add a `reasoning`
+    fallback - with enough budget the ANSWER correctly lands in content; reasoning is just
+    thinking.) Re-verified live: 120B with 6k tokens -> finish=stop, real on-theme post
+    (breadth/narrow-leadership) using the exact yfinance numbers. +1 guard test. Suite green.
+  - P9 LIVE EYEBALL PASSED (Jun 22): full chain produced a real Market Pulse post -
+      Animal Spirits EP.469 -> chart {S&P, Nasdaq, Emerging Markets}; the post discussed
+      exactly those (EM +4.8%, S&P +0.9%, Nasdaq +2.4%); numbers_grounded=True (zero
+      fabrication); show never named; LuBot mode referenced naturally; balanced upside+risk;
+      on-voice ESL. Chart tracked the actual bullets (EM this run vs semis last run - working
+      as designed). One nit found + fixed: model dropped the closing '?'.
+  - '?' SAFETY NET DONE (Jun 22): post_processor.ensure_closing_question_mark() - if a post
+      has no '?' and its last line opens with a question word, append '?'; non-question
+      closes untouched (never fabricates a question). Wired into process_post (applied, not
+      scored). 4 tests. Suite 689 green, lint clean.
+  --> 2.10b + 2.10c CODE COMPLETE and live-proven on the new path. Remaining: P10 multi-run
+      eval, then DEPLOY (rebuild image + restart publisher containers) to put a real pending
+      post + themed chart on publisher.lubot.ai for approval. Rotation NOT flipped (force the
+      topic for the one-off, like #11/#12). NOTE: containers run a baked image (build: .),
+      so the new code needs a rebuild to go live; .env already has DEEPGRAM_API_KEY.
+
+==============================================================================
   END OF PLAN
 ==============================================================================

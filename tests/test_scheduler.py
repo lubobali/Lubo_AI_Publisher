@@ -892,12 +892,14 @@ class TestStockPipeline:
                 return_value={"name": "Market Pulse", "sources_key": "market_pulse", "description": "test"},
             ),
             patch.object(Pipeline, "_get_stock_article", return_value=stock_article) as mock_stock,
+            patch("src.scheduler.PodcastInsights") as mock_pod_cls,
             patch("src.scheduler.scrape_topic", new_callable=AsyncMock) as mock_scrape,
             patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()),
             patch("src.scheduler.take_stock_lwc_screenshot", new_callable=AsyncMock, return_value=None),
             patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/g.png")),
             patch("src.scheduler.SelfLearner") as mock_learner_cls,
         ):
+            mock_pod_cls.return_value.get_episode_article.return_value = None  # no podcast (offline)
             mock_report = MagicMock()
             mock_report.format_for_writer.return_value = ""
             mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
@@ -920,3 +922,121 @@ class TestStockPipeline:
 
         assert result.success is False
         assert "market" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_market_pulse_passes_podcast_context_to_writer(self, db_session):
+        """Phase 2.10b: the distilled podcast bullets reach write_post as podcast_context."""
+        stock_article = ScrapedArticle(
+            title="Market week",
+            url="",
+            summary="S&P 500 closed 7,503.45, +1.0% on the week.",
+            source="stock:market",
+            published_at=None,
+        )
+        podcast_article = ScrapedArticle(
+            title="Ep 469",
+            url="https://x/ep",
+            summary="- breadth is narrow\n- rotation debate",
+            source="Animal Spirits",
+            published_at=None,
+        )
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "Market Pulse", "sources_key": "market_pulse", "description": "test"},
+            ),
+            patch.object(Pipeline, "_get_stock_article", return_value=stock_article),
+            patch("src.scheduler.PodcastInsights") as mock_pod_cls,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()) as mock_write,
+            patch("src.scheduler.take_stock_lwc_screenshot", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/g.png")),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_pod_cls.return_value.get_episode_article.return_value = podcast_article
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 14))
+
+        assert result.success is True
+        ctx = mock_write.call_args.kwargs["podcast_context"]
+        assert "- breadth is narrow" in ctx and "- rotation debate" in ctx  # bullets present
+        assert "chart shown with this post plots" in ctx  # writer told what's charted (C2)
+
+    @pytest.mark.asyncio
+    async def test_market_pulse_non_fatal_when_podcast_fails(self, db_session):
+        """A podcast/transcription failure must NOT break the post — falls back to yfinance only."""
+        stock_article = ScrapedArticle(
+            title="Market week",
+            url="",
+            summary="S&P 500 closed 7,503.45, +1.0% on the week.",
+            source="stock:market",
+            published_at=None,
+        )
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "Market Pulse", "sources_key": "market_pulse", "description": "test"},
+            ),
+            patch.object(Pipeline, "_get_stock_article", return_value=stock_article),
+            patch("src.scheduler.PodcastInsights") as mock_pod_cls,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()) as mock_write,
+            patch("src.scheduler.take_stock_lwc_screenshot", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/g.png")),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_pod_cls.return_value.get_episode_article.side_effect = Exception("openrouter down")
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 14))
+
+        assert result.success is True  # podcast failure does not break the post
+        assert mock_write.call_args.kwargs["podcast_context"] is None
+
+    @pytest.mark.asyncio
+    async def test_podcast_theme_drives_chart_symbols(self, db_session):
+        """Phase 2.10c: the podcast theme selects the symbols yfinance/chart use."""
+        podcast_article = ScrapedArticle(
+            title="Ep",
+            url="u",
+            summary="- oil prices ignored the geopolitical alarm bells this week",
+            source="RiskReversal Pod",
+            published_at=None,
+        )
+        captured = {}
+
+        def fake_get_stock(self, indices=None):
+            captured["indices"] = indices
+            self._stock = MagicMock(market_week=None)  # skip the screenshot branch
+            return ScrapedArticle(
+                title="Market week",
+                url="",
+                summary="S&P 500 closed 7,503.45, +1.0%.",
+                source="stock:market",
+                published_at=None,
+            )
+
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "Market Pulse", "sources_key": "market_pulse", "description": "test"},
+            ),
+            patch("src.scheduler.PodcastInsights") as mock_pod_cls,
+            patch.object(Pipeline, "_get_stock_article", fake_get_stock),
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()),
+            patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/g.png")),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_pod_cls.return_value.get_episode_article.return_value = podcast_article
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 14))
+
+        assert result.success is True
+        assert captured["indices"] is not None
+        assert "CL=F" in captured["indices"]  # oil theme -> crude charted
+        assert "^GSPC" in captured["indices"]  # always anchored

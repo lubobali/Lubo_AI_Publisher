@@ -4,6 +4,8 @@ from unittest.mock import patch
 
 from src.scraper import ScrapedArticle
 from src.stock_insights import (
+    DEFAULT_INDICES,
+    SYMBOL_MAP,
     MarketWeek,
     StockInsights,
     _build_index_stat,
@@ -11,7 +13,51 @@ from src.stock_insights import (
     _build_title,
     _fmt_pct,
     _pct_change,
+    select_chart_symbols,
 )
+
+
+class TestSelectChartSymbols:
+    """C1: pick real yfinance symbols matching the podcast theme (keyword match)."""
+
+    def test_empty_or_none_defaults_to_indices(self):
+        assert select_chart_symbols("") == DEFAULT_INDICES
+        assert select_chart_symbols(None) == DEFAULT_INDICES
+
+    def test_no_theme_match_defaults_to_indices(self):
+        assert select_chart_symbols("- the hosts chatted about weekend plans") == DEFAULT_INDICES
+
+    def test_oil_theme_charts_crude_with_anchor(self):
+        syms = select_chart_symbols("- oil prices ignored the geopolitical risk this week")
+        assert syms["^GSPC"] == "S&P 500"  # always anchored
+        assert "CL=F" in syms  # crude oil
+        assert len(syms) <= 3
+
+    def test_real_episode_themes_ai_semis(self):
+        # the actual Animal Spirits EP.469 distillation: AI surge, semis, EM, oil
+        bullets = (
+            "- the AI surge may end in a crash or pullback\n"
+            "- semiconductor demand from AI is boosting emerging markets\n"
+            "- oil prices ignore geopolitical alarm bells"
+        )
+        syms = select_chart_symbols(bullets)
+        assert syms["^GSPC"] == "S&P 500"
+        assert "SMH" in syms  # semiconductors
+        assert len(syms) == 3  # anchor + 2 themes (capped)
+
+    def test_caps_at_three(self):
+        syms = select_chart_symbols("oil gold semis emerging markets bonds vix dollar small caps")
+        assert len(syms) == 3
+        assert "^GSPC" in syms
+
+    def test_only_returns_curated_real_symbols(self):
+        valid = {"^GSPC"} | {sym for sym, _name, _kw in SYMBOL_MAP} | set(DEFAULT_INDICES)
+        assert set(select_chart_symbols("semis and oil and rates and gold")) <= valid
+
+    def test_anchor_is_first(self):
+        syms = select_chart_symbols("- gold had a strong week")
+        assert next(iter(syms)) == "^GSPC"
+
 
 # A realistic week of closes (mocked yfinance output: {symbol: [daily closes]})
 CLOSES = {

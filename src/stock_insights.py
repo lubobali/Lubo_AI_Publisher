@@ -12,6 +12,7 @@ boundary while the aggregation/formatting stays pure and fully tested.
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 
 from src.observability import get_client, observe
@@ -26,6 +27,53 @@ DEFAULT_INDICES = {
     "^DJI": "Dow Jones",
 }
 DEFAULT_PERIOD = "1mo"  # ~30 days of closes for a rich chart; the % move uses the last week
+
+# Theme-tailored charts (Phase 2.10c): map a podcast theme -> a REAL yfinance symbol so
+# the chart tracks what the post talks about. Always S&P-anchored; only these curated,
+# real symbols are ever charted (deterministic keyword match -> no invented tickers).
+CHART_ANCHOR = ("^GSPC", "S&P 500")
+# (symbol, display name, [keywords]) in priority order — earlier entries win the cap.
+SYMBOL_MAP = [
+    ("^IXIC", "Nasdaq", ["nasdaq", "ai", "a.i.", "tech", "technology", "megacap", "mega cap"]),
+    ("SMH", "Semiconductors", ["semi", "semis", "semiconductor", "chip", "chips", "nvidia", "gpu"]),
+    ("CL=F", "Crude Oil", ["oil", "crude", "opec", "brent", "wti"]),
+    ("EEM", "Emerging Markets", ["emerging market", "emerging markets", "china", "india"]),
+    ("^TNX", "10Y Treasury Yield", ["yield", "yields", "treasury", "bond", "bonds", "rate", "rates", "fed"]),
+    ("GC=F", "Gold", ["gold", "bullion"]),
+    ("XLE", "Energy", ["energy sector", "energy stocks"]),
+    ("DX=F", "US Dollar", ["dollar", "dxy", "greenback"]),
+    ("^VIX", "Volatility (VIX)", ["volatility", "vix", "fear gauge"]),
+    ("IWM", "Small Caps", ["small cap", "small caps", "small-cap", "russell"]),
+]
+MAX_CHART_SYMBOLS = 3
+
+
+def select_chart_symbols(bullets: str | None) -> dict[str, str]:
+    """Pick the real yfinance symbols to chart from the week's podcast theme (C1).
+
+    Deterministic keyword match against the curated SYMBOL_MAP: always S&P-anchored,
+    then up to two theme symbols (priority order), capped at MAX_CHART_SYMBOLS. Falls
+    back to the 3 default indices when bullets are empty or no theme matches (today's
+    behavior). Truthful: only curated, real symbols are ever returned — never invented.
+    The SAME symbols feed both the post and the chart so they tell one story.
+    """
+    text = (bullets or "").lower()
+    if not text.strip():
+        return dict(DEFAULT_INDICES)
+
+    selected: dict[str, str] = {CHART_ANCHOR[0]: CHART_ANCHOR[1]}
+    for symbol, name, keywords in SYMBOL_MAP:
+        if symbol in selected:
+            continue
+        if any(re.search(rf"\b{re.escape(kw)}\b", text) for kw in keywords):
+            selected[symbol] = name
+        if len(selected) >= MAX_CHART_SYMBOLS:
+            break
+
+    # Only the anchor matched -> nothing themed; show the full index card instead.
+    if len(selected) == 1:
+        return dict(DEFAULT_INDICES)
+    return selected
 
 
 @dataclass

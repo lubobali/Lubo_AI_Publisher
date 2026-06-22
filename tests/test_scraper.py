@@ -82,6 +82,7 @@ class TestLoadSources:
             "big_tech",
             "my_agent_git",
             "stock_talk",
+            "market_pulse",  # Phase 2.10b — podcast feeds (handled by PodcastInsights)
         }
         assert set(sources.keys()) == expected
 
@@ -97,6 +98,7 @@ class TestLoadSources:
                     "rss",
                     "hackernews",
                     "reddit",
+                    "podcast",
                 ), f"Unknown type {src['type']} in {category}"
 
     def test_hackernews_sources_have_search_query(self):

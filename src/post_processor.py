@@ -350,6 +350,49 @@ def validate_post(text: str) -> tuple[bool, str]:
     return ok, reason
 
 
+_NUMBER_RE = re.compile(r"\d[\d,]*\.?\d*")
+
+
+def _extract_numbers(text: str) -> set[str]:
+    """Numeric tokens from text, normalized (commas stripped, trailing dot removed)."""
+    out: set[str] = set()
+    for m in _NUMBER_RE.finditer(text):
+        n = m.group().replace(",", "").rstrip(".")
+        if n:
+            out.add(n)
+    return out
+
+
+# A post number is treated as grounded if it lands within this relative distance of
+# a real source number — covers honest rounding (7500 vs 7503.45) while staying strict
+# enough to flag fabricated figures (9999.99, 45000, a percent that is 4%+ off).
+_ROUNDING_TOLERANCE = 0.01
+
+
+def numbers_grounded(post_text: str, source_text: str) -> tuple[bool, set[str]]:
+    """Zero-BS check: every SIGNIFICANT number in the post must trace to the source data.
+
+    'Significant' = has a decimal point or >= 3 digits (skips small ints like 1/2/3 and
+    short counts). A number is grounded if it equals an allowed number or sits within
+    _ROUNDING_TOLERANCE of one (tolerates honest rounding, e.g. 7500 vs 7503.45). Returns
+    (ok, ungrounded). Catches fabricated prices/percentages/dollar amounts in market posts.
+    """
+    allowed = _extract_numbers(source_text)
+    allowed_vals = [float(a) for a in allowed]
+    ungrounded: set[str] = set()
+    for n in _extract_numbers(post_text):
+        digits = n.replace(".", "")
+        if "." not in n and len(digits) < 3:
+            continue  # trivial small integer — not a data claim
+        if n in allowed:
+            continue
+        val = float(n)
+        if any(abs(val - a) <= _ROUNDING_TOLERANCE * max(abs(a), 1.0) for a in allowed_vals):
+            continue  # within rounding tolerance of a real number
+        ungrounded.add(n)
+    return (len(ungrounded) == 0, ungrounded)
+
+
 def calculate_compliance_score(total_fixes: int) -> float:
     """Calculate LLM compliance score from number of fix categories triggered.
 
@@ -359,6 +402,35 @@ def calculate_compliance_score(total_fixes: int) -> float:
     if total_fixes <= 0:
         return 1.0
     return max(0.0, 1.0 - total_fixes / _MAX_FIX_CATEGORIES)
+
+
+# Words that open an engagement question — used to safely add a dropped '?'.
+_QUESTION_WORDS = frozenset(
+    "what whats how hows why when where who which is are do does did would will "
+    "could should can have has had am was were if".split()
+)
+
+
+def ensure_closing_question_mark(text: str) -> str:
+    """Add a '?' to the closing line when it reads as a question but the model dropped it.
+
+    Every post must end with an engagement question (validate_post enforces a '?').
+    Reasoning models sometimes emit the question without the mark; if there is no '?'
+    anywhere AND the last non-empty line opens with a question word, append one. A
+    non-question close is left untouched (so we never fabricate a fake question).
+    """
+    if "?" in text:
+        return text
+    lines = text.rstrip("\n").split("\n")
+    for i in range(len(lines) - 1, -1, -1):
+        stripped = lines[i].strip()
+        if not stripped:
+            continue
+        first = stripped.split()[0].lower().strip(",.!:;\"'")
+        if first in _QUESTION_WORDS:
+            lines[i] = lines[i].rstrip() + "?"
+        break
+    return "\n".join(lines)
 
 
 @observe()
@@ -403,6 +475,9 @@ def process_post(text: str, hashtags: list[str]) -> tuple[str, list[str]]:
     prev = text
     text = ensure_paragraph_spacing(text)
     fixes["paragraph_spacing_added"] = text != prev
+
+    # Safety net (applied, not scored): repair a dropped closing '?'.
+    text = ensure_closing_question_mark(text)
 
     hashtags = deduplicate_hashtags(hashtags)
     hashtags = limit_hashtags(hashtags, max_count=5)
