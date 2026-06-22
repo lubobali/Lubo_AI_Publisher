@@ -58,6 +58,18 @@ class TestSelectChartSymbols:
         syms = select_chart_symbols("- gold had a strong week")
         assert next(iter(syms)) == "^GSPC"
 
+    def test_ai_theme_charts_semis_not_nasdaq(self):
+        # AI/tech talk should surface Semis (the tradeable AI proxy), NOT another index
+        syms = select_chart_symbols("- the AI trade keeps powering the market this week")
+        assert "SMH" in syms
+        assert "^IXIC" not in syms  # Nasdaq demoted off the AI keyword
+
+    def test_specific_instruments_beat_broad_indices(self):
+        # gold + oil should win the slots over an explicit nasdaq mention (indices last)
+        syms = select_chart_symbols("- gold and oil ran while nasdaq drifted")
+        assert "GC=F" in syms and "CL=F" in syms
+        assert "^IXIC" not in syms  # capped at 3: anchor + 2 specific instruments
+
 
 # A realistic week of closes (mocked yfinance output: {symbol: [daily closes]})
 CLOSES = {

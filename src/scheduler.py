@@ -17,6 +17,7 @@ from src.post_processor import numbers_grounded, process_post, validate_post
 from src.publisher import get_publisher
 from src.scraper import ScrapedArticle, scrape_topic
 from src.screenshotter import (
+    select_chart_style,
     take_git_screenshot,
     take_screenshot,
     take_stock_lwc_screenshot,
@@ -190,7 +191,8 @@ class Pipeline:
             # Render our own market card from real data (never screenshot a finance site).
             if self._stock and self._stock.market_week:
                 fields = build_stock_screenshot_fields(self._stock.market_week)
-                screenshot = await take_stock_lwc_screenshot(**fields)
+                style = select_chart_style(get_week_number(target_date))
+                screenshot = await take_stock_lwc_screenshot(**fields, style=style)
                 if screenshot:
                     image_path = screenshot.path
                     logger.info("Stock market-card screenshot: %s", image_path)

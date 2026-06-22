@@ -33,17 +33,30 @@ DEFAULT_PERIOD = "1mo"  # ~30 days of closes for a rich chart; the % move uses t
 # real symbols are ever charted (deterministic keyword match -> no invented tickers).
 CHART_ANCHOR = ("^GSPC", "S&P 500")
 # (symbol, display name, [keywords]) in priority order — earlier entries win the cap.
+# SPECIFIC, visually-distinct instruments first; AI/tech -> Semis (the tradeable AI
+# proxy, not another index line); broad indices LAST so themed cards stop looking like
+# the default S&P/Nasdaq/Dow card (Phase 2.10d).
 SYMBOL_MAP = [
-    ("^IXIC", "Nasdaq", ["nasdaq", "ai", "a.i.", "tech", "technology", "megacap", "mega cap"]),
-    ("SMH", "Semiconductors", ["semi", "semis", "semiconductor", "chip", "chips", "nvidia", "gpu"]),
+    (
+        "SMH",
+        "Semiconductors",
+        ["semi", "semis", "semiconductor", "chip", "chips", "nvidia", "gpu", "ai", "a.i.", "artificial intelligence"],
+    ),
     ("CL=F", "Crude Oil", ["oil", "crude", "opec", "brent", "wti"]),
-    ("EEM", "Emerging Markets", ["emerging market", "emerging markets", "china", "india"]),
-    ("^TNX", "10Y Treasury Yield", ["yield", "yields", "treasury", "bond", "bonds", "rate", "rates", "fed"]),
     ("GC=F", "Gold", ["gold", "bullion"]),
-    ("XLE", "Energy", ["energy sector", "energy stocks"]),
-    ("DX=F", "US Dollar", ["dollar", "dxy", "greenback"]),
+    ("EEM", "Emerging Markets", ["emerging market", "emerging markets", "china", "india"]),
+    (
+        "^TNX",
+        "10Y Treasury Yield",
+        ["yield", "yields", "treasury", "bond", "bonds", "rate", "rates", "fed", "interest rate"],
+    ),
     ("^VIX", "Volatility (VIX)", ["volatility", "vix", "fear gauge"]),
+    ("DX=F", "US Dollar", ["dollar", "dxy", "greenback"]),
+    ("XLE", "Energy", ["energy sector", "energy stocks"]),
     ("IWM", "Small Caps", ["small cap", "small caps", "small-cap", "russell"]),
+    # broad indices LAST — only on an explicit mention
+    ("^IXIC", "Nasdaq", ["nasdaq", "tech", "technology"]),
+    ("^DJI", "Dow Jones", ["dow", "industrials", "blue chip"]),
 ]
 MAX_CHART_SYMBOLS = 3
 

@@ -1562,7 +1562,81 @@ STATUS: planned Jun 22, 2026 (update each step as built).
       DEEPGRAM/OPENROUTER/NVIDIA keys present in-container. Rotation NOT flipped - forced a
       one-off market_pulse in the worker (patch get_todays_topic) to create a PENDING post +
       themed chart on publisher.lubot.ai for Lubo's approval.
-  --> 2.10b + 2.10c COMPLETE. First real podcast-driven Market Pulse pending on the dashboard.
+  - LIVE POST CREATED (Jun 22): post #20 PENDING on publisher.lubot.ai. Animal Spirits
+      EP.469 -> chart {S&P 500 +0.9%, Nasdaq +2.4%, Emerging Markets +4.8%}; post text
+      discusses exactly those three (rotation into EM, narrow leadership), numbers match the
+      card, show not named, closing question. Two deploy bugs found + fixed:
+      (1) new publisher_podcast_transcripts table didn't exist in app DB -> ran create_tables
+          (NOTE: app does NOT auto-create tables on startup; the one-off forced run also must
+          session.commit() like cron does - both bit the first attempts).
+      (2) blank chart trend-lines: container chromium has no system locale -> Lightweight
+          Charts threw "Incorrect locale information" -> set localization.locale='en-US'
+          (commit) -> rebuilt -> re-rendered post #20 chart; trend lines now paint. +1 test.
+  --> 2.10b + 2.10c COMPLETE & LIVE. First real podcast-driven Market Pulse (post #20, with a
+      theme-matched chart) is PENDING on publisher.lubot.ai for Lubo's approval.
+  FOLLOW-UPS (not blocking): app should run create_tables() on startup (or a migration) so
+      new tables exist after deploy without manual steps; merge feature/podcast-market-pulse
+      to main + push when Lubo is happy with the live post.
+
+==============================================================================
+PHASE 2.10d: CHART VARIETY FOR MARKET PULSE (planned Jun 22, 2026)
+==============================================================================
+
+CONTEXT / WHY (Lubo, Jun 22)
+  The first themed card still looked like every other stock card: S&P + Nasdaq +
+  one varying symbol, same area-line style, same green/red, every week. Lubo: the
+  charts must be genuinely DIFFERENT post to post - not just different numbers, but
+  different chart TYPE, different COLORS, and different INDEXES/STOCKS - and still
+  match the post. Two root causes + two fixes:
+
+FIX 1 - SYMBOL SELECTION crowded out by broad indices
+  Cause: S&P is always the anchor AND Nasdaq was top-priority + matched "ai"/"tech"
+  (in nearly every market pod), so slots 1-2 were S&P+Nasdaq almost every week.
+  Fix (select_chart_symbols rewrite): prefer SPECIFIC, visually-distinct instruments
+  over broad indices, and map the AI/tech theme -> Semiconductors (SMH, the tradeable
+  AI proxy), not Nasdaq. S&P stays the single anchor; Nasdaq/Dow only chart on an
+  explicit "nasdaq"/"dow" mention (demoted to last). So an AI/semis/EM/oil week now
+  renders e.g. S&P + Semis + Crude Oil - distinct from the index card, and you SEE
+  the AI trade (semis) instead of another index line.
+
+FIX 2 - SAME CARD STYLE every week
+  The card always used one area-chart style + green/red. Add a deterministic STYLE
+  ROTATION (by week, like the podcast rotation) over (chart TYPE x COLOR palette):
+    - CHART TYPES from real closes (Lightweight Charts v4, no extra data needed):
+      area (gradient), line (plain), baseline (split above/below the week-open),
+      histogram (per-day bars). (Candlestick deferred - needs OHLC we don't store.)
+    - COLOR PALETTES: ~5 accent/up/down sets (teal/red, blue/amber, purple/pink,
+      green/orange, cyan/slate). Up/down stays semantic (green-ish up by default)
+      but the hue/accent changes so cards look different.
+  select_chart_style(week) -> {type, palette}; week % len(STYLES). Deterministic,
+  never repeats consecutively, same truthful real data.
+
+TRUTH (unchanged): only real yfinance symbols + numbers; numbers_grounded still
+  ties the post to the same summary; show never named.
+
+BUILD STEPS (RECR, test-first)
+  D1. stock_insights.select_chart_symbols rewrite (prefer specific instruments;
+      AI -> semis; demote Nasdaq/Dow). Update C1 tests.
+  D2. screenshotter: CHART_STYLES + select_chart_style(week); generalize the LWC
+      template/builder to render the chosen series TYPE + PALETTE (area/line/baseline/
+      histogram). Keep the en-US locale fix. Pure builder fully unit-tested.
+  D3. scheduler: pass select_chart_style(week) into the Card B render. Non-fatal.
+  D4. Rebuild + regenerate; eyeball that consecutive weeks differ in type, color, AND
+      instruments, and that each chart still matches its post.
+
+STATUS: planned Jun 22, 2026 (update each step as built).
+  - D1 DONE (Jun 22): select_chart_symbols rewrite - specific instruments first, AI/tech
+    -> Semiconductors (SMH), Nasdaq/Dow demoted to explicit-mention-only + last. EP.469
+    now -> {S&P, Semis, Crude Oil} (was {S&P, Nasdaq, EM}). +2 tests (AI->semis not nasdaq;
+    specifics beat indices). 29 stock tests green.
+  - D2 DONE (Jun 22): screenshotter CHART_STYLES (6 combos: area/line/baseline x palettes)
+    + select_chart_style(week). LWC template now style-driven (series TYPE + palette +
+    accent), keeps the en-US locale fix. Builder + selector unit-tested (rotation, type
+    injected, accent applied).
+  - D3 DONE (Jun 22): scheduler passes select_chart_style(get_week_number(date)) into the
+    Card B render. Suite 697 green, lint clean.
+  --> Remaining: D4 - rebuild + render samples to confirm line/baseline paint and look
+      distinct, then regenerate a live post.
 
 ==============================================================================
   END OF PLAN
