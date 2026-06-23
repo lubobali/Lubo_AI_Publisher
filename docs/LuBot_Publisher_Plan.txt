@@ -1786,6 +1786,14 @@ ENGINE SPLIT (decided Jun 23): TradingView Lightweight Charts for PRICE/CANDLE l
   711 tests green, lint clean. Treemap tile-clip fixed. Committed. A7 (deploy + live
   regenerate + verify numbers match + clean previews) IN PROGRESS.
 
+  BATCH A DONE (Jun 23): deployed (rebuilt + restarted). Regenerated real posts live —
+  candlestick card (#32, header Semiconductors 619.20 +0.5% == post) and heatmap card
+  (#33, S&P/EM/Semis × days, numbers == post). Rotation per post works. Preview posts
+  cleaned. Two live fixes: (1) candlestick synthetic date-axis hidden (real per-day dates
+  -> Batch B); (2) writer forbids DERIVED numbers after the guardrail caught a computed
+  "2.7 point gap" (committed; deploy on next rebuild). PROVEN: rotating luxury cards,
+  real data, chart numbers == post numbers. 711 tests green. Ready to push + Batch B.
+
 ==============================================================================
   END OF PLAN
 ==============================================================================
