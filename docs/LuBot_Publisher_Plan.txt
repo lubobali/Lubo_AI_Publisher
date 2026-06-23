@@ -1233,7 +1233,7 @@ IMAGE DESIGN (must look professional/real, NOT cartoon; both OWNED by us)
     - Fallback to generated image if either fails (same safety net as today)
 
 ==============================================================================
-PHASE 2.10b: PODCAST TRANSCRIPTS -> MARKET PULSE (planned Jun 22, 2026)
+PHASE 2.10b: PODCAST TRANSCRIPTS -> MARKET PULSE  [DONE & LIVE]
 ==============================================================================
 
 CONTEXT / WHY (Lubo's idea, Jun 22)
@@ -1453,7 +1453,7 @@ STATUS: planned Jun 22, 2026; refined same day after a quality review
       BEFORE the full eyeball — so the chart matches the post. Nothing flips rotation yet.
 
 ==============================================================================
-PHASE 2.10c: THEME-TAILORED CHARTS FOR MARKET PULSE (planned Jun 22, 2026)
+PHASE 2.10c: THEME-TAILORED CHARTS FOR MARKET PULSE  [DONE & LIVE]
 ==============================================================================
 
 CONTEXT / WHY (Lubo, Jun 22)
@@ -1579,7 +1579,7 @@ STATUS: planned Jun 22, 2026 (update each step as built).
       to main + push when Lubo is happy with the live post.
 
 ==============================================================================
-PHASE 2.10d: CHART VARIETY FOR MARKET PULSE (planned Jun 22, 2026)
+PHASE 2.10d: CHART VARIETY FOR MARKET PULSE  [DONE & LIVE]
 ==============================================================================
 
 CONTEXT / WHY (Lubo, Jun 22)
@@ -1654,7 +1654,7 @@ STATUS: planned Jun 22, 2026 (update each step as built).
     697 tests green, lint clean, committed, rebuilding to redeploy.
 
 ==============================================================================
-PHASE 2.10e: MANY DISTINCT CHART LAYOUTS (planned Jun 22, 2026 — TODO next session)
+PHASE 2.10e: MANY DISTINCT CHART LAYOUTS (11 layouts)  [DONE & LIVE]
 ==============================================================================
 
 CONTEXT / WHY (Lubo, Jun 22 — end of session)
@@ -1816,7 +1816,7 @@ ENGINE SPLIT (decided Jun 23): TradingView Lightweight Charts for PRICE/CANDLE l
   real data, chart numbers == post numbers. 711 tests green. Ready to push + Batch B.
 
 ==============================================================================
-PHASE 2.11: DEVTRACK WEEKLY REPORT -> BUILDING IN PUBLIC (planned Jun 23, 2026)
+PHASE 2.11: DEVTRACK WEEKLY REPORT -> BUILDING IN PUBLIC  [DONE & LIVE]
 ==============================================================================
 
 CONTEXT / WHY (Lubo, Jun 23)
@@ -1864,6 +1864,32 @@ STATUS: planned Jun 23, 2026. Building F1 next.
     deployed. F5 DONE: regenerated Building in Public (post #52) live — DevTrack card +
     post numbers match the report exactly (81.6h/54.9h/82 commits/428 tests/25.3M tokens).
     PHASE 2.11 COMPLETE & LIVE. (Minor: writer prose rounded 81.6h->"81 hours"; card exact.)
+
+==============================================================================
+SHIPPED & LIVE — STATUS (Jun 23, 2026)
+==============================================================================
+
+[x] Phase 2.10b — Podcast -> Market Pulse: Deepgram transcribe -> distill -> writer
+    angle. Numbers only from yfinance. Show never named. (LIVE)
+[x] Phase 2.10c — Theme-tailored charts: chart instruments track the post's theme
+    (AI->Semis, oil, EM...), one shared dataset feeds post + chart. (LIVE)
+[x] Phase 2.10d — Chart variety: per-post rotation of chart TYPE + COLOR. (LIVE)
+[x] Phase 2.10e — 11 luxury card layouts (Lightweight Charts + ECharts): candlestick
+    (volume+MA+watermark), bar-ranking, hero, treemap, combined-overlay, scoreboard,
+    radial, small-multiples, waterfall, heatmap, slope. Chart numbers == post. (LIVE)
+[x] Phase 2.11 — DevTrack weekly report -> Building in Public: reads Lubo's real
+    weekly report (81.6h/82 commits/428 tests/25.3M tokens), luxury scoreboard card,
+    numbers == report. DevTrack primary, WakaTime fallback. (LIVE)
+
+[x] Merged to main (PR #2, CI green) + GitHub mirror in sync.
+[x] App live + scheduled: daily generation (weekday 3-5 PM / weekend 11 AM CT, random
+    time, 7-category rotation) -> pending; publish loop every 5 min auto-posts approved.
+    Proven live: post #53 auto-published to LinkedIn on approval.
+
+OPEN / NEXT (not blocking):
+[ ] Phase 2.10e could grow toward 20 layouts if wanted (12-16 target already met at 11).
+[ ] app should run create_tables() on startup (new tables needed a manual create on deploy).
+[ ] Resend email notify on pending; dashboard Edit button before approve (older backlog).
 
 ==============================================================================
   END OF PLAN
