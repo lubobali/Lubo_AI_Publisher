@@ -6,32 +6,35 @@ from datetime import UTC, date, datetime
 
 from sqlalchemy.orm import Session
 
+from src.devtrack_insights import DevTrackInsights, build_devtrack_screenshot_fields
 from src.duplicate_checker import DuplicateChecker
 from src.git_insights import GitInsights
 from src.image_generator import generate_image
 from src.knowledge_base import KnowledgeBase
 from src.models import PublisherDestination, PublisherPost
 from src.observability import get_client, observe
-from src.post_processor import process_post, validate_post
+from src.podcast_insights import PodcastInsights
+from src.post_processor import numbers_grounded, process_post, validate_post
 from src.publisher import get_publisher
 from src.scraper import ScrapedArticle, scrape_topic
 from src.screenshotter import (
+    take_card_screenshot,
+    take_devtrack_screenshot,
     take_git_screenshot,
     take_screenshot,
-    take_stock_lwc_screenshot,
     take_wakatime_screenshot,
 )
 from src.self_learner import SelfLearner
-from src.stock_insights import StockInsights, build_stock_screenshot_fields
-from src.topic_rotator import get_todays_topic
+from src.stock_insights import StockInsights, build_stock_screenshot_fields, select_chart_symbols
+from src.topic_rotator import get_todays_topic, get_week_number
 from src.wakatime_insights import WakaTimeInsights, build_screenshot_fields
 from src.writer import WriterResult, write_post
 
 logger = logging.getLogger(__name__)
 
-# Only technical/finance posts get knowledge grounding. "stock_talk" = the
-# Investing Principle variant, grounded in finance-blog wisdom (Phase 2.10).
-GROUNDED_CATEGORIES = {"tech_talk", "my_agent_git", "ai_news", "stock_talk"}
+# Only technical/finance posts get knowledge grounding. Both stock variants
+# (market_pulse + stock_talk) ground in finance wisdom for fresh angles (Phase 2.10).
+GROUNDED_CATEGORIES = {"tech_talk", "my_agent_git", "ai_news", "stock_talk", "market_pulse"}
 
 
 @dataclass
@@ -50,7 +53,9 @@ class Pipeline:
         self.session = session
         self._git_insights: GitInsights | None = None
         self._wakatime: WakaTimeInsights | None = None
+        self._devtrack: DevTrackInsights | None = None
         self._stock: StockInsights | None = None
+        self._podcast: PodcastInsights | None = None
 
     @observe()
     async def generate_post(self, target_date: date) -> PipelineResult:
@@ -65,6 +70,7 @@ class Pipeline:
 
         # 2. Get content — git insights, wakatime stats, or web scraper depending on category
         extra_articles: list[ScrapedArticle] = []
+        podcast_context: str | None = None  # Market Pulse angle (Phase 2.10b)
         if category == "my_agent_git":
             selected_article = self._get_git_article()
             if selected_article is None:
@@ -74,13 +80,25 @@ class Pipeline:
             if waka_article is not None:
                 extra_articles.append(waka_article)
         elif category == "wakatime":
-            selected_article = self._get_wakatime_article()
+            # Building in Public: prefer the rich DevTrack weekly report, fall back to raw WakaTime.
+            selected_article = self._get_building_article()
             if selected_article is None:
-                return PipelineResult(success=False, error="No WakaTime archives found for weekly stats")
+                return PipelineResult(success=False, error="No DevTrack report or WakaTime archives for the week")
         elif category == "market_pulse":
-            selected_article = self._get_stock_article()
+            # Theme leads (Phase 2.10c): get the podcast angle first, pick the chart's
+            # symbols from it, then pull yfinance data for THOSE symbols so the post and
+            # the chart tell one story. Non-fatal: no angle -> default broad indices.
+            podcast_context = self._get_podcast_context(target_date)
+            focus_symbols = select_chart_symbols(podcast_context)
+            selected_article = self._get_stock_article(indices=focus_symbols)
             if selected_article is None:
                 return PipelineResult(success=False, error="No market data available for the weekly pulse")
+            if podcast_context:
+                charted = ", ".join(focus_symbols.values())
+                podcast_context += (
+                    f"\n\nThe chart shown with this post plots: {charted}. "
+                    "Anchor your take on these so the words and the chart match."
+                )
         else:
             articles = await scrape_topic(category)
             if not articles:
@@ -114,6 +132,7 @@ class Pipeline:
             articles=[selected_article, *extra_articles],
             performance_context=feedback,
             book_concepts=book_concepts,
+            podcast_context=podcast_context,
         )
 
         if writer_result is None:
@@ -124,6 +143,22 @@ class Pipeline:
         ok, reason = validate_post(writer_result.post_text)
         if not ok:
             logger.warning("Post failed validation: %s", reason)
+
+        # 5.6. Zero-BS numeric guardrail for market data posts: every number must trace
+        # to the real yfinance summary. Flags fabricated prices/percentages.
+        if category == "market_pulse":
+            nums_ok, ungrounded = numbers_grounded(writer_result.post_text, selected_article.summary)
+            if not nums_ok:
+                logger.warning("Market Pulse has ungrounded numbers (not in market data): %s", sorted(ungrounded))
+            try:
+                get_client().score_current_trace(
+                    name="data_fidelity",
+                    value=1.0 if nums_ok else 0.0,
+                    data_type="NUMERIC",
+                    comment="all numbers from data" if nums_ok else f"ungrounded: {sorted(ungrounded)}",
+                )
+            except Exception:
+                logger.debug("data_fidelity scoring failed", exc_info=True)
 
         # 6. Take screenshot — my_agent uses lubot.ai, everything else uses article URL
         image_path = None
@@ -148,8 +183,14 @@ class Pipeline:
                 image_path = screenshot.path
                 logger.info("Screenshot from staging: %s", image_path)
         elif category == "wakatime":
-            # Dashboard URL is login-walled — render our own stat card (never screenshot the URL).
-            if self._wakatime and self._wakatime.weekly_stats:
+            # Render our own stat card. Prefer the luxury DevTrack card; else the WakaTime card.
+            if self._devtrack and self._devtrack.report:
+                fields = build_devtrack_screenshot_fields(self._devtrack.report)
+                screenshot = await take_devtrack_screenshot(**fields)
+                if screenshot:
+                    image_path = screenshot.path
+                    logger.info("DevTrack build-report card: %s", image_path)
+            elif self._wakatime and self._wakatime.weekly_stats:
                 fields = build_screenshot_fields(self._wakatime.weekly_stats, self._wakatime.include_costs)
                 screenshot = await take_wakatime_screenshot(**fields)
                 if screenshot:
@@ -159,10 +200,14 @@ class Pipeline:
             # Render our own market card from real data (never screenshot a finance site).
             if self._stock and self._stock.market_week:
                 fields = build_stock_screenshot_fields(self._stock.market_week)
-                screenshot = await take_stock_lwc_screenshot(**fields)
+                # Rotate the LUXURY card LAYOUT per post (by how many market_pulse posts
+                # exist) so consecutive posts differ in layout + colors (Phase 2.10e). The
+                # SAME MarketWeek feeds the writer summary AND the card -> numbers match.
+                layout_idx = self.session.query(PublisherPost).filter_by(topic_category="market_pulse").count()
+                screenshot = await take_card_screenshot(**fields, layout_index=layout_idx)
                 if screenshot:
                     image_path = screenshot.path
-                    logger.info("Stock market-card screenshot: %s", image_path)
+                    logger.info("Market-pulse card screenshot: %s", image_path)
         elif category == "stock_talk":
             # Investing Principle: show Lubo's own product, never screenshot the finance article.
             screenshot = await take_screenshot("https://staging.lubot.ai")
@@ -227,10 +272,40 @@ class Pipeline:
         self._wakatime = WakaTimeInsights()
         return self._wakatime.get_weekly_stats()
 
-    def _get_stock_article(self) -> ScrapedArticle | None:
-        """Fetch this week's market pulse (real index data) from yfinance."""
-        self._stock = StockInsights()
+    def _get_building_article(self) -> ScrapedArticle | None:
+        """Building-in-Public source: the rich DevTrack weekly report first (Phase 2.11),
+        then raw WakaTime as fallback. Sets self._devtrack when the report is used so the
+        screenshot step renders the luxury build-report card from the SAME numbers."""
+        self._devtrack = DevTrackInsights()
+        article = self._devtrack.get_weekly_report()
+        if article is not None:
+            return article
+        self._devtrack = None
+        return self._get_wakatime_article()
+
+    def _get_stock_article(self, indices: dict[str, str] | None = None) -> ScrapedArticle | None:
+        """Fetch this week's market pulse (real index data) from yfinance.
+
+        `indices` (Phase 2.10c) charts theme-specific symbols so the card matches the
+        post; defaults to the broad indices when omitted.
+        """
+        self._stock = StockInsights(indices=indices) if indices else StockInsights()
         return self._stock.get_market_pulse()
+
+    def _get_podcast_context(self, target_date: date) -> str | None:
+        """Distilled podcast angle for this week's Market Pulse. Never fatal.
+
+        Rotates to the week's show, transcribes + distills (cached), and returns the
+        bullet points. Any failure (no API key, dead feed, etc.) returns None so the
+        post still generates from the real yfinance numbers alone.
+        """
+        try:
+            self._podcast = PodcastInsights()
+            article = self._podcast.get_episode_article(self.session, get_week_number(target_date))
+            return article.summary if article else None
+        except Exception:
+            logger.warning("Podcast angle fetch failed; Market Pulse uses yfinance only", exc_info=True)
+            return None
 
     def _get_book_concepts(self, category: str, topic: dict, article: ScrapedArticle) -> list[str]:
         """Retrieve 2-3 book concepts to ground a technical post. Never fatal.

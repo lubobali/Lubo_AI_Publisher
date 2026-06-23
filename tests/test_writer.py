@@ -213,6 +213,51 @@ class TestBookConcepts:
         assert "unless you actually did" not in prompt
 
 
+class TestPodcastContext:
+    """Phase 2.10b: distilled podcast bullets injected as the Market Pulse angle."""
+
+    _BULLETS = "- breadth is narrow, few names carry the index\n- debate on rotating into value"
+
+    def test_injected_when_present(self):
+        prompt = build_user_prompt(
+            topic_name="Market Pulse",
+            topic_description="weekly market read",
+            articles=SAMPLE_ARTICLES,
+            podcast_context=self._BULLETS,
+        )
+        assert "breadth is narrow" in prompt
+        assert "recent market thinking" in prompt.lower()
+
+    def test_guardrails_present(self):
+        prompt = build_user_prompt(
+            topic_name="Market Pulse",
+            topic_description="x",
+            articles=SAMPLE_ARTICLES,
+            podcast_context=self._BULLETS,
+        ).lower()
+        # never name/quote the show, no number from it, casual voice, may ignore
+        assert "never name" in prompt and ("podcast" in prompt or "show" in prompt)
+        assert "no number" in prompt
+        assert "ignore" in prompt
+
+    def test_no_block_without_context(self):
+        prompt = build_user_prompt(
+            topic_name="Market Pulse",
+            topic_description="x",
+            articles=SAMPLE_ARTICLES,
+        ).lower()
+        assert "recent market thinking" not in prompt
+
+    def test_empty_context_no_block(self):
+        prompt = build_user_prompt(
+            topic_name="Market Pulse",
+            topic_description="x",
+            articles=SAMPLE_ARTICLES,
+            podcast_context="",
+        ).lower()
+        assert "recent market thinking" not in prompt
+
+
 class TestBuildUserPrompt:
     def test_contains_topic(self):
         prompt = build_user_prompt(
@@ -596,6 +641,20 @@ class TestWritePost:
 
             call_kwargs = mock_client.chat.completions.create.call_args[1]
             assert "nemotron" in call_kwargs["model"].lower()
+
+    @pytest.mark.asyncio
+    async def test_uses_generous_token_budget_for_reasoning_models(self):
+        # Reasoning models burn output tokens on thinking; too small a cap -> empty
+        # content. Guard the fix: the budget must stay well above a tiny cap.
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content='{"post_text": "Test.", "hashtags": ["#AI"]}'))]
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        with patch("src.writer.get_llm_client", return_value=mock_client):
+            await write_post(topic_name="AI News", topic_description="x", articles=SAMPLE_ARTICLES)
+
+        assert mock_client.chat.completions.create.call_args[1]["max_tokens"] >= 6000
 
     @pytest.mark.asyncio
     async def test_returns_none_on_llm_failure(self):

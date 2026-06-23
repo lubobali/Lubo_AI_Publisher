@@ -3,6 +3,7 @@
 from src.post_processor import (
     deduplicate_hashtags,
     enforce_line_breaks,
+    ensure_closing_question_mark,
     ensure_paragraph_spacing,
     limit_hashtags,
     normalize_brand,
@@ -15,6 +16,36 @@ from src.post_processor import (
     strip_model_meta,
     validate_post,
 )
+
+
+class TestEnsureClosingQuestionMark:
+    """Safety net: reasoning models sometimes drop the '?' on the closing question."""
+
+    def test_adds_question_mark_when_missing(self):
+        t = "markets ripped this week\n\nwhat would your portfolio look like if you stopped fighting"
+        assert ensure_closing_question_mark(t).rstrip().endswith("?")
+
+    def test_leaves_existing_question_mark(self):
+        t = "some thoughts\n\nare you buying this dip?"
+        assert ensure_closing_question_mark(t) == t
+
+    def test_does_not_touch_non_question_close(self):
+        t = "just shipped a thing\n\nwild times"
+        assert ensure_closing_question_mark(t) == t  # not a question -> left alone
+
+    def test_process_post_repairs_missing_question_mark(self):
+        body = (
+            "emerging markets up almost five percent while the broad index barely moved. "
+            "that divergence tells you where the money is actually flowing this week. "
+            "the tech names keep carrying the load while everything else just sits there. "
+            "the risk is chasing the hot hand because sentiment turns fast in these spots. "
+            "still, real diversification means owning things that do not move together.\n\n"
+            "what would your portfolio look like if you stopped fighting the rotation"
+        )
+        text, _ = process_post(body, ["#x"])
+        assert text.rstrip().endswith("?")  # dropped '?' repaired
+        ok, _reason = validate_post(text)
+        assert ok is True  # now passes the engagement-question rule
 
 
 class TestNormalizeBrand:
@@ -303,3 +334,40 @@ class TestProcessPost:
         assert "As someone who" not in result_text
         assert len(result_tags) <= 5
         assert result_tags.count("#AI") == 1
+
+
+class TestNumbersGrounded:
+    """Zero-BS guardrail: post numbers must trace to the source market data."""
+
+    SOURCE = "S&P 500: closed 7,503.45, +1.0% on the week. Nasdaq: closed 26,520.82, +2.4%."
+
+    def test_grounded_when_all_numbers_from_source(self):
+        from src.post_processor import numbers_grounded
+
+        post = "the index closed 7,503.45 this week, up 1.0 percent. nasdaq 26,520.82 up 2.4"
+        ok, bad = numbers_grounded(post, self.SOURCE)
+        assert ok is True
+        assert bad == set()
+
+    def test_flags_fabricated_number(self):
+        from src.post_processor import numbers_grounded
+
+        post = "the market hit 9,999.99 and i made 45000 dollars this week"
+        ok, bad = numbers_grounded(post, self.SOURCE)
+        assert ok is False
+        assert "9999.99" in bad
+        assert "45000" in bad
+
+    def test_skips_trivial_small_integers(self):
+        from src.post_processor import numbers_grounded
+
+        post = "3 indices, 1 thing i learned, 2 takeaways"  # no real data claims
+        ok, bad = numbers_grounded(post, self.SOURCE)
+        assert ok is True
+
+    def test_tolerates_rounding(self):
+        from src.post_processor import numbers_grounded
+
+        post = "around 7500 on the week"  # rounded from 7,503.45
+        ok, _ = numbers_grounded(post, self.SOURCE)
+        assert ok is True

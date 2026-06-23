@@ -47,6 +47,15 @@ def _default_topic():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _devtrack_off_by_default():
+    """Building in Public defaults to the WakaTime fallback in tests (no real DevTrack
+    report read from /srv). The DevTrack-specific test overrides this within its own `with`."""
+    with patch("src.scheduler.DevTrackInsights") as m:
+        m.return_value.get_weekly_report.return_value = None
+        yield m
+
+
 def _make_articles():
     return [
         ScrapedArticle(
@@ -892,12 +901,14 @@ class TestStockPipeline:
                 return_value={"name": "Market Pulse", "sources_key": "market_pulse", "description": "test"},
             ),
             patch.object(Pipeline, "_get_stock_article", return_value=stock_article) as mock_stock,
+            patch("src.scheduler.PodcastInsights") as mock_pod_cls,
             patch("src.scheduler.scrape_topic", new_callable=AsyncMock) as mock_scrape,
             patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()),
-            patch("src.scheduler.take_stock_lwc_screenshot", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.take_card_screenshot", new_callable=AsyncMock, return_value=None),
             patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/g.png")),
             patch("src.scheduler.SelfLearner") as mock_learner_cls,
         ):
+            mock_pod_cls.return_value.get_episode_article.return_value = None  # no podcast (offline)
             mock_report = MagicMock()
             mock_report.format_for_writer.return_value = ""
             mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
@@ -920,3 +931,177 @@ class TestStockPipeline:
 
         assert result.success is False
         assert "market" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_market_pulse_passes_podcast_context_to_writer(self, db_session):
+        """Phase 2.10b: the distilled podcast bullets reach write_post as podcast_context."""
+        stock_article = ScrapedArticle(
+            title="Market week",
+            url="",
+            summary="S&P 500 closed 7,503.45, +1.0% on the week.",
+            source="stock:market",
+            published_at=None,
+        )
+        podcast_article = ScrapedArticle(
+            title="Ep 469",
+            url="https://x/ep",
+            summary="- breadth is narrow\n- rotation debate",
+            source="Animal Spirits",
+            published_at=None,
+        )
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "Market Pulse", "sources_key": "market_pulse", "description": "test"},
+            ),
+            patch.object(Pipeline, "_get_stock_article", return_value=stock_article),
+            patch("src.scheduler.PodcastInsights") as mock_pod_cls,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()) as mock_write,
+            patch("src.scheduler.take_card_screenshot", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/g.png")),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_pod_cls.return_value.get_episode_article.return_value = podcast_article
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 14))
+
+        assert result.success is True
+        ctx = mock_write.call_args.kwargs["podcast_context"]
+        assert "- breadth is narrow" in ctx and "- rotation debate" in ctx  # bullets present
+        assert "chart shown with this post plots" in ctx  # writer told what's charted (C2)
+
+    @pytest.mark.asyncio
+    async def test_market_pulse_non_fatal_when_podcast_fails(self, db_session):
+        """A podcast/transcription failure must NOT break the post — falls back to yfinance only."""
+        stock_article = ScrapedArticle(
+            title="Market week",
+            url="",
+            summary="S&P 500 closed 7,503.45, +1.0% on the week.",
+            source="stock:market",
+            published_at=None,
+        )
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "Market Pulse", "sources_key": "market_pulse", "description": "test"},
+            ),
+            patch.object(Pipeline, "_get_stock_article", return_value=stock_article),
+            patch("src.scheduler.PodcastInsights") as mock_pod_cls,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()) as mock_write,
+            patch("src.scheduler.take_card_screenshot", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/g.png")),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_pod_cls.return_value.get_episode_article.side_effect = Exception("openrouter down")
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 14))
+
+        assert result.success is True  # podcast failure does not break the post
+        assert mock_write.call_args.kwargs["podcast_context"] is None
+
+    @pytest.mark.asyncio
+    async def test_podcast_theme_drives_chart_symbols(self, db_session):
+        """Phase 2.10c: the podcast theme selects the symbols yfinance/chart use."""
+        podcast_article = ScrapedArticle(
+            title="Ep",
+            url="u",
+            summary="- oil prices ignored the geopolitical alarm bells this week",
+            source="RiskReversal Pod",
+            published_at=None,
+        )
+        captured = {}
+
+        def fake_get_stock(self, indices=None):
+            captured["indices"] = indices
+            self._stock = MagicMock(market_week=None)  # skip the screenshot branch
+            return ScrapedArticle(
+                title="Market week",
+                url="",
+                summary="S&P 500 closed 7,503.45, +1.0%.",
+                source="stock:market",
+                published_at=None,
+            )
+
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "Market Pulse", "sources_key": "market_pulse", "description": "test"},
+            ),
+            patch("src.scheduler.PodcastInsights") as mock_pod_cls,
+            patch.object(Pipeline, "_get_stock_article", fake_get_stock),
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()),
+            patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/g.png")),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_pod_cls.return_value.get_episode_article.return_value = podcast_article
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 14))
+
+        assert result.success is True
+        assert captured["indices"] is not None
+        assert "CL=F" in captured["indices"]  # oil theme -> crude charted
+        assert "^GSPC" in captured["indices"]  # always anchored
+
+
+class TestDevTrackPipeline:
+    """Phase 2.11: Building in Public uses the DevTrack weekly report (primary) + luxury card."""
+
+    @pytest.mark.asyncio
+    async def test_uses_devtrack_report_and_card(self, db_session):
+        from src.devtrack_insights import DevTrackReport
+
+        report = DevTrackReport(
+            period_label="Week 25",
+            date_range="Jun 15 to Jun 21, 2026",
+            total_hours=81.6,
+            code_hours=54.9,
+            commits=82,
+            lines_added=25922,
+            lines_deleted=3949,
+            files_changed=128,
+            tests_added=428,
+            ai_sessions=18,
+            ai_output_tokens=25298310,
+            days_worked="7 of 7",
+            momentum="-8.9h (-14%)",
+        )
+        art = ScrapedArticle(
+            title="Build week: Week 25",
+            url="",
+            summary="MY BUILD WEEK: 81.6h, 82 commits",
+            source="devtrack:weekly",
+            published_at=None,
+        )
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "Building in Public", "sources_key": "wakatime", "description": "test"},
+            ),
+            patch("src.scheduler.DevTrackInsights") as mdt,
+            patch(
+                "src.scheduler.take_devtrack_screenshot",
+                new_callable=AsyncMock,
+                return_value=MagicMock(path="/tmp/dt.png"),
+            ) as mshot,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()) as mwrite,
+            patch("src.scheduler.SelfLearner") as mlearn,
+        ):
+            inst = mdt.return_value
+            inst.get_weekly_report.return_value = art
+            inst.report = report
+            mreport = MagicMock()
+            mreport.format_for_writer.return_value = ""
+            mlearn.return_value.generate_performance_report.return_value = mreport
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 23))
+
+        assert result.success is True
+        assert mwrite.call_args.kwargs["articles"][0].source == "devtrack:weekly"  # DevTrack summary used
+        mshot.assert_awaited_once()  # luxury DevTrack card rendered

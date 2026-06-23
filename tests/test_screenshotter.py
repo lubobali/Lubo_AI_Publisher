@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from src.screenshotter import (
+    CHART_STYLES,
     MIN_SCREENSHOT_BYTES,
     SCREENSHOT_DIR,
     SCREENSHOT_HEIGHT,
@@ -16,6 +17,7 @@ from src.screenshotter import (
     _build_wakatime_html,
     _sparkline_svg,
     build_filename,
+    select_chart_style,
     take_screenshot,
     take_wakatime_screenshot,
 )
@@ -685,3 +687,38 @@ class TestBuildStockHtmlLwc:
         html = _build_stock_html_lwc(_INDICES, "range", lib_js="x")
         assert "7,503.45" in html
         assert "+1.0%" in html and "-0.8%" in html
+
+    def test_sets_explicit_locale(self):
+        # The container chromium has no system locale; without an explicit one,
+        # Lightweight Charts throws "Incorrect locale information" and draws nothing.
+        html = _build_stock_html_lwc(_INDICES, "range", lib_js="x")
+        assert "locale: 'en-US'" in html
+
+    def test_renders_chosen_chart_type(self):
+        line = _build_stock_html_lwc(_INDICES, "range", lib_js="x", style=CHART_STYLES[1])  # line
+        assert CHART_STYLES[1]["type"] == "line"
+        assert '"type": "line"' in line or '"type":"line"' in line  # style injected as JSON
+        baseline = next(s for s in CHART_STYLES if s["type"] == "baseline")
+        html = _build_stock_html_lwc(_INDICES, "range", lib_js="x", style=baseline)
+        assert baseline["accent"] in html  # palette accent applied to the card
+
+    def test_style_accent_overrides_card_color(self):
+        violet = next(s for s in CHART_STYLES if "violet" in s["name"])
+        html = _build_stock_html_lwc(_INDICES, "range", lib_js="x", style=violet)
+        assert f"color:{violet['accent']}" in html  # kicker/wordmark use the palette accent
+
+
+class TestSelectChartStyle:
+    """Phase 2.10d: rotate chart type + palette by week so cards look different."""
+
+    def test_rotates_by_week(self):
+        styles = [select_chart_style(w)["name"] for w in range(len(CHART_STYLES))]
+        assert len(set(styles)) == len(CHART_STYLES)  # a full cycle, all distinct
+
+    def test_consecutive_weeks_differ_in_type_or_color(self):
+        for w in range(len(CHART_STYLES) * 2):
+            a, b = select_chart_style(w), select_chart_style(w + 1)
+            assert a != b  # never the same style two weeks running
+
+    def test_wraps_around(self):
+        assert select_chart_style(0) == select_chart_style(len(CHART_STYLES))

@@ -664,6 +664,46 @@ body {{ margin:0; padding:0; background:#0b0f17;
 
 _LWC_PATH = Path(__file__).parent.parent / "static" / "vendor" / "lightweight-charts.js"
 
+# Chart style rotation (Phase 2.10d) — each week's Card B uses a different chart TYPE
+# and COLOR palette so consecutive Market Pulse posts look genuinely distinct. All
+# types render from the daily closes we already have (no extra data); up/down stays
+# semantic. Candlestick is deferred (needs OHLC we don't store).
+CHART_STYLES = [
+    {"name": "area-teal", "type": "area", "up": "#26a69a", "down": "#ef5350", "accent": "#4ea1ff", "grid": "#161d2b"},
+    {"name": "line-amber", "type": "line", "up": "#3b82f6", "down": "#f59e0b", "accent": "#60a5fa", "grid": "#17202e"},
+    {
+        "name": "baseline-violet",
+        "type": "baseline",
+        "up": "#a78bfa",
+        "down": "#fb7185",
+        "accent": "#c084fc",
+        "grid": "#1d1a2e",
+    },
+    {"name": "area-cyan", "type": "area", "up": "#22d3ee", "down": "#f472b6", "accent": "#67e8f9", "grid": "#0f2430"},
+    {
+        "name": "line-emerald",
+        "type": "line",
+        "up": "#34d399",
+        "down": "#fb923c",
+        "accent": "#6ee7b7",
+        "grid": "#13251c",
+    },
+    {
+        "name": "baseline-sky",
+        "type": "baseline",
+        "up": "#38bdf8",
+        "down": "#f87171",
+        "accent": "#7dd3fc",
+        "grid": "#11202e",
+    },
+]
+
+
+def select_chart_style(week: int) -> dict:
+    """Pick this week's chart style (type + palette), round-robin by week number."""
+    return CHART_STYLES[week % len(CHART_STYLES)]
+
+
 _STOCK_LWC_TEMPLATE = """<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 body { margin:0; padding:0; background:#0b0f17;
     font-family:'Inter','Segoe UI','Helvetica Neue',sans-serif; color:#e6edf3; }
@@ -671,10 +711,10 @@ body { margin:0; padding:0; background:#0b0f17;
     border:1px solid #1c2333; border-radius:16px;
     display:flex; flex-direction:column; min-height:583px; box-sizing:border-box; }
 .head { display:flex; align-items:center; justify-content:space-between; }
-.kicker { color:#4ea1ff; font-size:15px; font-weight:700; letter-spacing:2px; text-transform:uppercase; }
+.kicker { color:__ACCENT__; font-size:15px; font-weight:700; letter-spacing:2px; text-transform:uppercase; }
 .range { color:#5b6675; font-size:14px; margin-top:4px; }
 .logo { height:56px; width:auto; opacity:0.95; }
-.wordmark { color:#4ea1ff; font-weight:800; font-size:24px; letter-spacing:1px; }
+.wordmark { color:__ACCENT__; font-weight:800; font-size:24px; letter-spacing:1px; }
 .board { display:flex; gap:22px; margin-top:28px; flex:1; }
 .idx { flex:1; display:flex; flex-direction:column;
     background:#0b1019; border:1px solid #1c2333; border-radius:12px; padding:22px 22px 18px; }
@@ -696,24 +736,41 @@ body { margin:0; padding:0; background:#0b0f17;
 <script>__LIB__</script>
 <script>
 const PANELS = __DATA__;
+const STYLE = __STYLE__;
+function hexA(h, a) { var n = parseInt(h.slice(1), 16); return 'rgba(' + ((n>>16)&255) + ',' + ((n>>8)&255) + ',' + (n&255) + ',' + a + ')'; }
 window.addEventListener('load', function () {
     PANELS.forEach(function (p, idx) {
         var el = document.getElementById('chart_' + idx);
         var chart = LightweightCharts.createChart(el, {
             width: el.clientWidth, height: el.clientHeight,
+            localization: { locale: 'en-US' },
             layout: { background: { type: 'solid', color: 'rgba(0,0,0,0)' }, textColor: '#5b6675', fontSize: 12, fontFamily: 'Inter, sans-serif', attributionLogo: false },
-            grid: { vertLines: { visible: false }, horzLines: { color: '#161d2b' } },
+            grid: { vertLines: { visible: false }, horzLines: { color: STYLE.grid } },
             rightPriceScale: { borderVisible: false },
             timeScale: { visible: false },
             crosshair: { mode: 0 },
             handleScroll: false, handleScale: false
         });
         var up = p.pct >= 0;
-        var line = up ? '#26a69a' : '#ef5350';
-        var top = up ? 'rgba(38,166,154,0.30)' : 'rgba(239,83,80,0.30)';
-        var series = chart.addAreaSeries({ lineColor: line, lineWidth: 2, topColor: top, bottomColor: 'rgba(0,0,0,0)', priceLineVisible: false, lastValueVisible: false });
+        var color = up ? STYLE.up : STYLE.down;
         var base = 1700000000;
-        series.setData(p.closes.map(function (v, i) { return { time: base + i * 86400, value: v }; }));
+        var data = p.closes.map(function (v, i) { return { time: base + i * 86400, value: v }; });
+        var series;
+        if (STYLE.type === 'line') {
+            series = chart.addLineSeries({ color: color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+            series.setData(data);
+        } else if (STYLE.type === 'baseline') {
+            series = chart.addBaselineSeries({
+                baseValue: { type: 'price', price: p.closes[0] },
+                topLineColor: STYLE.up, topFillColor1: hexA(STYLE.up, 0.28), topFillColor2: hexA(STYLE.up, 0.02),
+                bottomLineColor: STYLE.down, bottomFillColor1: hexA(STYLE.down, 0.02), bottomFillColor2: hexA(STYLE.down, 0.28),
+                lineWidth: 2, priceLineVisible: false, lastValueVisible: false
+            });
+            series.setData(data);
+        } else {
+            series = chart.addAreaSeries({ lineColor: color, lineWidth: 2, topColor: hexA(color, 0.30), bottomColor: 'rgba(0,0,0,0)', priceLineVisible: false, lastValueVisible: false });
+            series.setData(data);
+        }
         chart.timeScale().fitContent();
     });
 });
@@ -730,8 +787,14 @@ def _lwc_lib() -> str:
         return ""
 
 
-def _build_stock_html_lwc(indices: list[dict], date_range: str, logo_uri: str = "", lib_js: str = "") -> str:
-    """Build the Market Pulse card using TradingView Lightweight Charts. Pure (lib_js injected)."""
+def _build_stock_html_lwc(
+    indices: list[dict], date_range: str, logo_uri: str = "", lib_js: str = "", style: dict | None = None
+) -> str:
+    """Build the Market Pulse card using TradingView Lightweight Charts. Pure (lib_js injected).
+
+    `style` (Phase 2.10d) sets the chart TYPE + COLOR palette; defaults to the first style.
+    """
+    style = style or CHART_STYLES[0]
     panels = ""
     for i, ix in enumerate(indices):
         up = ix["pct"] >= 0
@@ -756,14 +819,19 @@ def _build_stock_html_lwc(indices: list[dict], date_range: str, logo_uri: str = 
         _STOCK_LWC_TEMPLATE.replace("__RANGE__", html_lib.escape(date_range))
         .replace("__BRAND__", brand)
         .replace("__PANELS__", panels)
+        .replace("__ACCENT__", style["accent"])
         .replace("__LIB__", lib_js)
         .replace("__DATA__", data)
+        .replace("__STYLE__", json.dumps(style))
     )
 
 
-async def take_stock_lwc_screenshot(indices: list[dict], date_range: str = "") -> ScreenshotResult | None:
+async def take_stock_lwc_screenshot(
+    indices: list[dict], date_range: str = "", style: dict | None = None
+) -> ScreenshotResult | None:
     """Render the Market Pulse card with TradingView Lightweight Charts to a PNG.
 
+    `style` (Phase 2.10d) selects the chart type + palette for this week's card.
     Falls back to the hand-built SVG card if the vendored library is unavailable.
     """
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
@@ -771,7 +839,7 @@ async def take_stock_lwc_screenshot(indices: list[dict], date_range: str = "") -
     if not lib_js:
         logger.info("Lightweight Charts lib missing — falling back to SVG market card")
         return await take_stock_screenshot(indices, date_range)
-    page_html = _build_stock_html_lwc(indices, date_range, logo_uri=_logo_data_uri(), lib_js=lib_js)
+    page_html = _build_stock_html_lwc(indices, date_range, logo_uri=_logo_data_uri(), lib_js=lib_js, style=style)
 
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
         f.write(page_html)
@@ -801,6 +869,100 @@ async def take_stock_lwc_screenshot(indices: list[dict], date_range: str = "") -
                 await browser.close()
     except Exception as e:
         logger.warning("Stock LWC screenshot failed: %s", e)
+        return None
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+async def take_card_screenshot(
+    indices: list[dict], date_range: str = "", layout_index: int = 0
+) -> ScreenshotResult | None:
+    """Render a rotating LUXURY Market Pulse card (Phase 2.10e) to a PNG.
+
+    Picks the layout via cards.select_card_layout(layout_index) — rotates per post over
+    the catalog (ECharts variety + TradingView candlestick). Injects the layout's engine
+    lib. NON-FATAL: falls back to the prior LWC card, then the SVG card.
+    """
+    from src import cards
+
+    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    layout = cards.select_card_layout(layout_index)
+    engine = layout["engine"]
+    if engine == "lwc":
+        lib_js = cards.lwc_lib()
+    elif engine == "echarts":
+        lib_js = cards.echarts_lib()
+    else:  # "html" layouts (e.g. scoreboard) need no chart lib
+        lib_js = ""
+    if engine != "html" and not lib_js:
+        logger.info("Card engine lib missing for %s — falling back to LWC card", layout["name"])
+        return await take_stock_lwc_screenshot(indices, date_range)
+
+    palette = cards.PALETTES[layout["palette"] % len(cards.PALETTES)]
+    page_html = layout["builder"](indices, date_range, palette, lib_js, cards._logo_data_uri())
+
+    with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
+        f.write(page_html)
+        tmp_path = f.name
+
+    try:
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            try:
+                context = await browser.new_context(
+                    viewport={"width": SCREENSHOT_WIDTH, "height": SCREENSHOT_HEIGHT},
+                    device_scale_factor=2,
+                )
+                page = await context.new_page()
+                await page.goto(f"file://{tmp_path}", wait_until="networkidle")
+                await page.wait_for_timeout(1200)  # let the chart engine paint
+
+                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                filepath = SCREENSHOT_DIR / f"{timestamp}-card-{layout['name']}.png"
+                filepath.write_bytes(await page.screenshot(full_page=False))
+                logger.info("Card screenshot (%s) saved: %s", layout["name"], filepath)
+                return ScreenshotResult(
+                    path=str(filepath), url="stock:market", width=SCREENSHOT_WIDTH, height=SCREENSHOT_HEIGHT
+                )
+            finally:
+                await browser.close()
+    except Exception as e:
+        logger.warning("Card screenshot (%s) failed: %s — falling back", layout["name"], e)
+        return await take_stock_lwc_screenshot(indices, date_range)
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+async def take_devtrack_screenshot(metrics: dict, date_range: str = "") -> ScreenshotResult | None:
+    """Render the luxury Building-in-Public stat-card (Phase 2.11) to a PNG. Non-fatal."""
+    from src import cards
+
+    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    page_html = cards.build_devtrack_card(metrics, date_range, cards.PALETTES[0], logo_uri=cards._logo_data_uri())
+    with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
+        f.write(page_html)
+        tmp_path = f.name
+    try:
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            try:
+                context = await browser.new_context(
+                    viewport={"width": SCREENSHOT_WIDTH, "height": SCREENSHOT_HEIGHT}, device_scale_factor=2
+                )
+                page = await context.new_page()
+                await page.goto(f"file://{tmp_path}", wait_until="networkidle")
+                await page.wait_for_timeout(500)
+                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                filepath = SCREENSHOT_DIR / f"{timestamp}-devtrack.png"
+                filepath.write_bytes(await page.screenshot(full_page=False))
+                logger.info("DevTrack card screenshot saved: %s", filepath)
+                return ScreenshotResult(
+                    path=str(filepath), url="devtrack:weekly", width=SCREENSHOT_WIDTH, height=SCREENSHOT_HEIGHT
+                )
+            finally:
+                await browser.close()
+    except Exception as e:
+        logger.warning("DevTrack card screenshot failed: %s", e)
         return None
     finally:
         Path(tmp_path).unlink(missing_ok=True)

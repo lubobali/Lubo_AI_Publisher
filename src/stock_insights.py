@@ -12,6 +12,7 @@ boundary while the aggregation/formatting stays pure and fully tested.
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 
 from src.observability import get_client, observe
@@ -27,6 +28,68 @@ DEFAULT_INDICES = {
 }
 DEFAULT_PERIOD = "1mo"  # ~30 days of closes for a rich chart; the % move uses the last week
 
+# Theme-tailored charts (Phase 2.10c): map a podcast theme -> a REAL yfinance symbol so
+# the chart tracks what the post talks about. Always S&P-anchored; only these curated,
+# real symbols are ever charted (deterministic keyword match -> no invented tickers).
+CHART_ANCHOR = ("^GSPC", "S&P 500")
+# (symbol, display name, [keywords]) in priority order — earlier entries win the cap.
+# SPECIFIC, visually-distinct instruments first; AI/tech -> Semis (the tradeable AI
+# proxy, not another index line); broad indices LAST so themed cards stop looking like
+# the default S&P/Nasdaq/Dow card (Phase 2.10d).
+SYMBOL_MAP = [
+    (
+        "SMH",
+        "Semiconductors",
+        ["semi", "semis", "semiconductor", "chip", "chips", "nvidia", "gpu", "ai", "a.i.", "artificial intelligence"],
+    ),
+    ("CL=F", "Crude Oil", ["oil", "crude", "opec", "brent", "wti"]),
+    ("GC=F", "Gold", ["gold", "bullion"]),
+    ("EEM", "Emerging Markets", ["emerging market", "emerging markets", "china", "india"]),
+    (
+        "^TNX",
+        "10Y Treasury Yield",
+        ["yield", "yields", "treasury", "bond", "bonds", "rate", "rates", "fed", "interest rate"],
+    ),
+    ("^VIX", "Volatility (VIX)", ["volatility", "vix", "fear gauge"]),
+    ("DX=F", "US Dollar", ["dollar", "dxy", "greenback"]),
+    ("XLE", "Energy", ["energy sector", "energy stocks"]),
+    ("IWM", "Small Caps", ["small cap", "small caps", "small-cap", "russell"]),
+    # broad indices LAST — only on an explicit mention
+    ("^IXIC", "Nasdaq", ["nasdaq", "tech", "technology"]),
+    ("^DJI", "Dow Jones", ["dow", "industrials", "blue chip"]),
+]
+MAX_CHART_SYMBOLS = 3
+
+
+def select_chart_symbols(bullets: str | None) -> dict[str, str]:
+    """Pick the real yfinance symbols to chart from the week's podcast theme (C1).
+
+    Deterministic keyword match against the curated SYMBOL_MAP: always S&P-anchored,
+    then up to two theme symbols (priority order), capped at MAX_CHART_SYMBOLS. Falls
+    back to the 3 default indices when bullets are empty or no theme matches (today's
+    behavior). Truthful: only curated, real symbols are ever returned — never invented.
+    The SAME symbols feed both the post and the chart so they tell one story.
+    """
+    text = (bullets or "").lower()
+    if not text.strip():
+        return dict(DEFAULT_INDICES)
+
+    # Theme instruments LEAD (the story's instrument first, e.g. Semiconductors), up to
+    # MAX-1; S&P 500 is appended LAST as broad-market context. So the lead panel varies
+    # by theme instead of always being S&P (Phase 2.10d).
+    selected: dict[str, str] = {}
+    for symbol, name, keywords in SYMBOL_MAP:
+        if any(re.search(rf"\b{re.escape(kw)}\b", text) for kw in keywords):
+            selected[symbol] = name
+        if len(selected) >= MAX_CHART_SYMBOLS - 1:
+            break
+
+    if not selected:  # nothing themed -> the full default index card
+        return dict(DEFAULT_INDICES)
+    if CHART_ANCHOR[0] not in selected:
+        selected[CHART_ANCHOR[0]] = CHART_ANCHOR[1]  # S&P context, last
+    return selected
+
 
 @dataclass
 class IndexStat:
@@ -37,6 +100,9 @@ class IndexStat:
     last_close: float
     week_change_pct: float
     closes: list[float] = field(default_factory=list)
+    ohlc: list[list[float]] = field(default_factory=list)  # [[open,high,low,close], ...] (Phase 2.10e)
+    volume: list[float] = field(default_factory=list)
+    dates: list[str] = field(default_factory=list)  # ISO date per ohlc row (Batch B)
 
 
 @dataclass
@@ -68,20 +134,25 @@ def _fmt_pct(pct: float) -> str:
     return f"{'+' if pct >= 0 else ''}{pct:.1f}%"
 
 
-def _build_index_stat(symbol: str, name: str, closes: list[float]) -> IndexStat | None:
+def _build_index_stat(symbol: str, name: str, closes: list[float], ohlcv: dict | None = None) -> IndexStat | None:
     """Build an IndexStat from daily closes. None if not enough data.
 
     `closes` is the full series (~30 days, for the chart); the weekly % move is
-    computed from the last 5 trading days only.
+    computed from the last 5 trading days only. `ohlcv` (optional, Phase 2.10e) carries
+    real {"ohlc": [[o,h,l,c]...], "volume": [...]} for candlestick/volume layouts.
     """
     if len(closes) < 2:
         return None
+    ohlcv = ohlcv or {}
     return IndexStat(
         symbol=symbol,
         name=name,
         last_close=round(closes[-1], 2),
         week_change_pct=round(_pct_change(closes[-5:]), 2),
         closes=[round(c, 2) for c in closes],
+        ohlc=[[round(x, 2) for x in row] for row in ohlcv.get("ohlc", [])],
+        volume=[round(v, 2) for v in ohlcv.get("volume", [])],
+        dates=list(ohlcv.get("dates", [])),
     )
 
 
@@ -119,7 +190,15 @@ def build_stock_screenshot_fields(week: MarketWeek) -> dict:
     """Adapt a MarketWeek into kwargs for take_stock_screenshot (keeps formatting DRY)."""
     return {
         "indices": [
-            {"name": i.name, "last_close": i.last_close, "pct": i.week_change_pct, "closes": i.closes}
+            {
+                "name": i.name,
+                "last_close": i.last_close,
+                "pct": i.week_change_pct,
+                "closes": i.closes,
+                "ohlc": i.ohlc,
+                "volume": i.volume,
+                "dates": i.dates,
+            }
             for i in week.indices
         ],
         "date_range": f"{week.start_date} to {week.end_date}",
@@ -137,6 +216,7 @@ class StockInsights:
         self.indices = indices or DEFAULT_INDICES
         self.period = period
         self.market_week: MarketWeek | None = None
+        self._ohlcv: dict[str, dict] = {}  # {symbol: {"ohlc":[[o,h,l,c]...], "volume":[...]}}
 
     @observe()
     def get_market_pulse(self) -> ScrapedArticle | None:
@@ -153,7 +233,7 @@ class StockInsights:
 
         indices: list[IndexStat] = []
         for symbol, name in self.indices.items():
-            stat = _build_index_stat(symbol, name, closes_by_symbol.get(symbol, []))
+            stat = _build_index_stat(symbol, name, closes_by_symbol.get(symbol, []), self._ohlcv.get(symbol))
             if stat:
                 indices.append(stat)
 
@@ -198,6 +278,7 @@ class StockInsights:
 
         close = df["Close"]
         out: dict[str, list[float]] = {}
+        self._ohlcv = {}
         for symbol in symbols:
             try:
                 series = close[symbol] if hasattr(close, "columns") else close
@@ -206,6 +287,28 @@ class StockInsights:
                 values = []
             if values:
                 out[symbol] = values
+            # Stash real OHLC + volume from the SAME download (Phase 2.10e) — non-fatal.
+            try:
+
+                def _col(fieldname: str, sym: str = symbol):
+                    c = df[fieldname]
+                    return c[sym] if hasattr(c, "columns") else c
+
+                o, h, low, c, v = _col("Open"), _col("High"), _col("Low"), _col("Close"), _col("Volume")
+                idx_dates = [d.strftime("%Y-%m-%d") for d in df.index]
+                ohlc, vol, row_dates = [], [], []
+                for i in range(len(c)):
+                    cv = c.iloc[i]
+                    if cv != cv:  # NaN close -> skip the row
+                        continue
+                    ohlc.append([float(o.iloc[i]), float(h.iloc[i]), float(low.iloc[i]), float(cv)])
+                    vv = v.iloc[i]
+                    vol.append(float(vv) if vv == vv else 0.0)
+                    row_dates.append(idx_dates[i] if i < len(idx_dates) else "")
+                if ohlc:
+                    self._ohlcv[symbol] = {"ohlc": ohlc, "volume": vol, "dates": row_dates}
+            except Exception:
+                logger.debug("OHLCV extract failed for %s", symbol, exc_info=True)
 
         dates = [d.strftime("%Y-%m-%d") for d in df.index]
         return out, (dates[0] if dates else ""), (dates[-1] if dates else "")

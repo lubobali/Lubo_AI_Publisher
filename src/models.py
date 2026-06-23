@@ -1,4 +1,4 @@
-"""SQLAlchemy models for LuBot Publisher — 6 tables."""
+"""SQLAlchemy models for LuBot Publisher — 7 tables."""
 
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -100,4 +100,23 @@ class PublisherKnowledgeBase(Base):
     text = Column(Text, nullable=False)
     word_count = Column(Integer, nullable=False, default=0)
     embedding = Column(JSON, nullable=False)  # list[float], 2048-dim, L2-normalized
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class PublisherPodcastTranscript(Base):
+    """Cached podcast episode transcript + distilled bullets (Phase 2.10b).
+
+    Keyed by episode guid so a given episode is transcribed (paid for) only once;
+    `distilled` holds the P5.5 market-theme bullets, filled in after transcription.
+    """
+
+    __tablename__ = "publisher_podcast_transcripts"
+
+    id = Column(Integer, primary_key=True)
+    guid = Column(String(500), unique=True, nullable=False, index=True)  # cache key
+    podcast_name = Column(String(200), nullable=False, default="")
+    episode_title = Column(Text, nullable=False, default="")
+    audio_url = Column(Text, nullable=False, default="")
+    transcript = Column(Text, nullable=False)
+    distilled = Column(Text, nullable=True)  # P5.5 market-theme bullets
     created_at = Column(DateTime, server_default=func.now())

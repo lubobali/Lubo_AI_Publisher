@@ -34,6 +34,14 @@ NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
+# Nemotron-3 are REASONING models: they spend output tokens on hidden reasoning before
+# the answer. A small cap truncates them mid-reasoning -> EMPTY content (verified Jun 22:
+# max_tokens=2000 -> finish=length, content=0; ~3.5k tokens went to reasoning). Give
+# generous headroom so the answer always lands. And 550B reasoning is slow, so a 120s
+# timeout was tripping ("Request timed out"). (Writer-stability fix, P9, Jun 22.)
+MAX_OUTPUT_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "8000"))
+REQUEST_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "300"))
+
 
 @dataclass
 class WriterResult:
@@ -128,6 +136,7 @@ def build_user_prompt(
     articles: list[ScrapedArticle],
     performance_context: str | None = None,
     book_concepts: list[str] | None = None,
+    podcast_context: str | None = None,
 ) -> str:
     """Build the user message with today's topic + scraped articles."""
     rules = load_voice_rules()
@@ -202,7 +211,8 @@ def build_user_prompt(
             "The summary below has REAL stats from his WakaTime tracker.\n\n"
             "RULES:\n"
             "- Open with YOUR reaction to the week, not the raw numbers\n"
-            "- Use the EXACT numbers from the summary (hours, percentages, sessions, tokens, cost)\n"
+            "- Use the EXACT numbers from the summary (hours, percentages, sessions, tokens, cost), "
+            "INCLUDING decimals — never round (write 81.6h not '81 hours', 54.9h not '55 hours')\n"
             "- Lead with the most striking specific number — people love specifics\n"
             "- Be honest: heavy week or light week, say it straight\n"
             "- Always say 'I', never 'we' — Lubo is solo\n"
@@ -220,23 +230,34 @@ def build_user_prompt(
     # Stock Talk / Market Pulse — grounded in real yfinance market numbers
     if topic_key == "market_pulse":
         prompt_parts.append(
-            "\nThis is a STOCK TALK / MARKET PULSE post. The summary below has REAL "
-            "market numbers (index closes + weekly % moves) from market data.\n\n"
+            "\nThis is a MARKET PULSE post — a seasoned broker's quick read on the week, in "
+            "Lubo's casual ESL voice. The summary below has REAL market numbers.\n\n"
+            "VOICE: write like a pro who has watched markets for years — plain-spoken, specific, "
+            "evidence-based, calm, zero hype. Perspective, not a hot tip.\n\n"
             "RULES:\n"
-            "- Open with YOUR reaction or a principle, NOT the raw index number\n"
-            "- Use the EXACT numbers from the summary (closes, % moves) — invent nothing\n"
-            "- Frame as a calm long-term investor who BUILT an AI stock advisor (LuBot Stock mode)\n"
-            "- NOT financial advice: no buy/sell calls, no price targets, no predictions, no 'you should'\n"
-            "- Always 'I', never 'we'. Short lines, blank lines between thoughts\n"
-            "- No hype words: no 'to the moon', 'load up', 'next 10x', 'buy the dip', 'easy money'\n"
-            "- One honest or self-deprecating beat is welcome\n"
-            "- End with ONE clear question to the audience, and it MUST end with a question mark (?)\n\n"
-            "FORMATTING (LinkedIn readability):\n"
-            "- BLANK LINES between paragraphs; numbers get their own short lines\n"
-            "- The closing question gets its own paragraph\n\n"
-            "ANTI-HALLUCINATION (critical):\n"
-            "- The ONLY numbers allowed are the closes and weekly % moves in the summary above\n"
-            "- Do NOT invent other prices, percentages, dollar amounts, predictions, or targets"
+            "- VARY THE ANGLE every week. Do NOT reuse a standard opening, the same principles, or "
+            "the same closing. Rotate stance — some weeks calm/grounded, some weeks sharp/skeptical "
+            "(question the narrative, real-or-froth). Pick a different lens (breadth, rotation, "
+            "volatility, behavior, data-vs-feelings, a historical parallel). Never echo a past post\n"
+            "- Open with a fresh observation in your words, NOT the raw index number\n"
+            "- Be balanced: name the upside AND the risk, never one-sided\n"
+            "- NOT financial advice: no buy/sell, no targets, no predictions, no 'you should'. A pro gives perspective, not tips\n"
+            "- Reference LuBot Stock mode naturally and DIFFERENTLY (or not at all) — never the same 'built it to remove emotion' line\n"
+            "- Use at most ONE durable truth, said fresh — never a fixed list of three\n"
+            "- Always 'I', never 'we'. Short lines, blank lines\n"
+            "- No hype: no 'to the moon', 'load up', 'next 10x', 'buy the dip', 'easy money'\n"
+            "- End with ONE fresh question, ending with a question mark (?)\n\n"
+            "FORMATTING: blank lines between paragraphs; numbers on their own short lines; closing question its own paragraph.\n\n"
+            "ZERO-BS RULE (critical): EVERY number in your post must come from the summary above — "
+            "the index closes and weekly % moves, exactly as written. Invent NO other number: no made-up "
+            "price, percent, dollar amount, prediction, or target. If you have no real number for a point, "
+            "use words, not a fabricated figure.\n"
+            "DIGITS RULE: write numbers as DIGITS exactly as in the data (6.4%, 7,500.58, 70.79). "
+            "NEVER spell a number out in words (never 'six point four percent' or 'seventy point seventy nine'). "
+            "Digits only.\n"
+            "NO DERIVED NUMBERS: state only the exact figures from the data. Do NOT compute or "
+            "invent new ones — no gaps, spreads, sums, differences, ratios, or averages between "
+            "them (e.g. never 'the 2.7 point gap'). Describe a divergence in words, not a new number."
         )
 
     # Stock Talk / Investing Principle — calm evergreen wisdom, not a market recap
@@ -300,6 +321,22 @@ def build_user_prompt(
             "- Do NOT claim you built, applied, or benchmarked something unless you actually did\n"
             "- Open with YOUR reaction, never with this background\n"
             "- If it does not fit naturally, ignore it completely"
+        )
+
+    # Podcast angle (Phase 2.10b) — distilled bullets of what market commentators are
+    # debating. The SPARK for Lubo's take, never the source. Numbers stay yfinance-only.
+    if podcast_context:
+        prompt_parts.append(
+            "\nRECENT MARKET THINKING (what smart investors are debating right now — "
+            "use ONLY to shape YOUR angle, in your own words):\n"
+            f"{podcast_context}\n"
+            "RULES for this:\n"
+            "- This is the SPARK for your take, not the topic. React to it — agree, push back, or riff\n"
+            "- NEVER name or quote a podcast, show, host, or person. Never say 'I heard' or 'on a podcast'\n"
+            "- Do NOT parrot their analyst wording or jargon — say it in your own casual ESL voice\n"
+            "- Treat it as the general mood/debate, NOT 'this exact week'\n"
+            "- Take NO number from this. Every number comes ONLY from the market data above\n"
+            "- If a point does not fit naturally, ignore it"
         )
 
     prompt_parts.append(
@@ -445,7 +482,7 @@ def get_llm_client() -> AsyncOpenAI:
         base_url=NVIDIA_BASE_URL,
         api_key=os.environ.get("NVIDIA_API_KEY", ""),
         max_retries=2,  # fail over to OpenRouter sooner than burning 5 retries on a 429
-        timeout=120.0,
+        timeout=REQUEST_TIMEOUT,
     )
 
 
@@ -461,7 +498,7 @@ def get_fallback_client() -> AsyncOpenAI | None:
         base_url=os.environ.get("OPENROUTER_BASE_URL", OPENROUTER_BASE_URL),
         api_key=api_key,
         max_retries=1,
-        timeout=120.0,
+        timeout=REQUEST_TIMEOUT,
     )
 
 
@@ -480,7 +517,7 @@ async def _generate_once(
             {"role": "user", "content": user_prompt},
         ],
         temperature=0.8,
-        max_tokens=2000,
+        max_tokens=MAX_OUTPUT_TOKENS,
     )
 
     # Report generation metadata to Langfuse (best effort)
@@ -488,7 +525,7 @@ async def _generate_once(
         usage = response.usage
         get_client().update_current_generation(
             model=response.model or model,
-            model_parameters={"temperature": 0.8, "max_tokens": 2000},
+            model_parameters={"temperature": 0.8, "max_tokens": MAX_OUTPUT_TOKENS},
             usage_details={
                 "input": usage.prompt_tokens if usage else 0,
                 "output": usage.completion_tokens if usage else 0,
@@ -513,6 +550,7 @@ async def write_post(
     articles: list[ScrapedArticle],
     performance_context: str | None = None,
     book_concepts: list[str] | None = None,
+    podcast_context: str | None = None,
 ) -> WriterResult | None:
     """Generate a LinkedIn post. Tries NVIDIA NIM first, falls back to OpenRouter.
 
@@ -525,6 +563,7 @@ async def write_post(
         articles=articles,
         performance_context=performance_context,
         book_concepts=book_concepts,
+        podcast_context=podcast_context,
     )
 
     # Primary = free NIM; fallback = OpenRouter (only when a key is configured).
