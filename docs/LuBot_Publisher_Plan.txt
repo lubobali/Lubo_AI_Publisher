@@ -1897,14 +1897,12 @@ NEW BRANDED CARD TYPES (premium cards._shell; pure + tested; truthful)
 TRUTH: insight/principle cards render the post's own hook/words; headline card uses the
   real article title + source; build card uses real git numbers. No fabricated content.
 
-OPEN DESIGN DECISIONS (settle before building)
-  D1. ai_news: branded HEADLINE card (consistent brand) OR keep the real article
-      screenshot (source credibility)?  [recommend: branded headline card, with the
-      source domain shown, so it is consistent AND still cites the source]
-  D2. Statement source for INSIGHT cards: (a) the post's first line/hook (zero writer
-      change), or (b) a crafted short `card_headline` emitted by the writer (punchier,
-      small writer change).  [recommend: (b) a 4-8 word card_headline for a real pull-quote]
-  D3. my_agent: (showcase) is retired from rotation - confirm only my_agent_git needs a card.
+DESIGN DECISIONS (RESOLVED Jun 23 w/ Lubo)
+  D1. ai_news -> branded HEADLINE card (article title + source domain + AI NEWS kicker).
+      Consistent brand AND still cites the source. (No more third-party screenshots.)
+  D2. INSIGHT-card statement -> writer emits a crafted short `card_headline` (4-8 word
+      pull-quote) in WriterResult. Card renders that; card<->post stay in sync.
+  D3. Only my_agent_git needs a card (my_agent showcase is retired from rotation).
 
 BUILD STEPS (RECR, test-first)
   A1. cards.py: build_insight_card, build_headline_card, build_build_card (premium shell,
@@ -1915,7 +1913,7 @@ BUILD STEPS (RECR, test-first)
   A4. Tests (builders + scheduler wiring per category) + render-verify each looks premium.
   A5. Deploy + regenerate one post per category; eyeball that the whole feed is consistent.
 
-STATUS: planned Jun 23, 2026. Settle D1-D3, then build A1.
+STATUS: planned Jun 23, 2026. Decisions D1-D3 RESOLVED. Build A1 next.
 
 ==============================================================================
 PHASE 2.13 (B): POLISH & MULTI-WEEK EVAL (planned Jun 23, 2026)
