@@ -874,6 +874,59 @@ async def take_stock_lwc_screenshot(
         Path(tmp_path).unlink(missing_ok=True)
 
 
+async def take_card_screenshot(
+    indices: list[dict], date_range: str = "", layout_index: int = 0
+) -> ScreenshotResult | None:
+    """Render a rotating LUXURY Market Pulse card (Phase 2.10e) to a PNG.
+
+    Picks the layout via cards.select_card_layout(layout_index) — rotates per post over
+    the catalog (ECharts variety + TradingView candlestick). Injects the layout's engine
+    lib. NON-FATAL: falls back to the prior LWC card, then the SVG card.
+    """
+    from src import cards
+
+    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    layout = cards.select_card_layout(layout_index)
+    lib_js = cards.lwc_lib() if layout["engine"] == "lwc" else cards.echarts_lib()
+    if not lib_js:
+        logger.info("Card engine lib missing for %s — falling back to LWC card", layout["name"])
+        return await take_stock_lwc_screenshot(indices, date_range)
+
+    palette = cards.PALETTES[layout["palette"] % len(cards.PALETTES)]
+    page_html = layout["builder"](indices, date_range, palette, lib_js, cards._logo_data_uri())
+
+    with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
+        f.write(page_html)
+        tmp_path = f.name
+
+    try:
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            try:
+                context = await browser.new_context(
+                    viewport={"width": SCREENSHOT_WIDTH, "height": SCREENSHOT_HEIGHT},
+                    device_scale_factor=2,
+                )
+                page = await context.new_page()
+                await page.goto(f"file://{tmp_path}", wait_until="networkidle")
+                await page.wait_for_timeout(1200)  # let the chart engine paint
+
+                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                filepath = SCREENSHOT_DIR / f"{timestamp}-card-{layout['name']}.png"
+                filepath.write_bytes(await page.screenshot(full_page=False))
+                logger.info("Card screenshot (%s) saved: %s", layout["name"], filepath)
+                return ScreenshotResult(
+                    path=str(filepath), url="stock:market", width=SCREENSHOT_WIDTH, height=SCREENSHOT_HEIGHT
+                )
+            finally:
+                await browser.close()
+    except Exception as e:
+        logger.warning("Card screenshot (%s) failed: %s — falling back", layout["name"], e)
+        return await take_stock_lwc_screenshot(indices, date_range)
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
 async def take_stock_screenshot(indices: list[dict], date_range: str = "") -> ScreenshotResult | None:
     """Render the Market Pulse card to a PNG with Playwright (real charts + logo)."""
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)

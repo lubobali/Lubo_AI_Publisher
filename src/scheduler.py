@@ -17,10 +17,9 @@ from src.post_processor import numbers_grounded, process_post, validate_post
 from src.publisher import get_publisher
 from src.scraper import ScrapedArticle, scrape_topic
 from src.screenshotter import (
-    select_chart_style,
+    take_card_screenshot,
     take_git_screenshot,
     take_screenshot,
-    take_stock_lwc_screenshot,
     take_wakatime_screenshot,
 )
 from src.self_learner import SelfLearner
@@ -191,14 +190,14 @@ class Pipeline:
             # Render our own market card from real data (never screenshot a finance site).
             if self._stock and self._stock.market_week:
                 fields = build_stock_screenshot_fields(self._stock.market_week)
-                # Rotate the chart style PER POST (by how many market_pulse posts exist),
-                # so consecutive posts differ in type + color even within the same week.
-                style_idx = self.session.query(PublisherPost).filter_by(topic_category="market_pulse").count()
-                style = select_chart_style(style_idx)
-                screenshot = await take_stock_lwc_screenshot(**fields, style=style)
+                # Rotate the LUXURY card LAYOUT per post (by how many market_pulse posts
+                # exist) so consecutive posts differ in layout + colors (Phase 2.10e). The
+                # SAME MarketWeek feeds the writer summary AND the card -> numbers match.
+                layout_idx = self.session.query(PublisherPost).filter_by(topic_category="market_pulse").count()
+                screenshot = await take_card_screenshot(**fields, layout_index=layout_idx)
                 if screenshot:
                     image_path = screenshot.path
-                    logger.info("Stock market-card screenshot: %s", image_path)
+                    logger.info("Market-pulse card screenshot: %s", image_path)
         elif category == "stock_talk":
             # Investing Principle: show Lubo's own product, never screenshot the finance article.
             screenshot = await take_screenshot("https://staging.lubot.ai")

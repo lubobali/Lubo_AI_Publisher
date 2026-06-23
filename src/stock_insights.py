@@ -100,6 +100,8 @@ class IndexStat:
     last_close: float
     week_change_pct: float
     closes: list[float] = field(default_factory=list)
+    ohlc: list[list[float]] = field(default_factory=list)  # [[open,high,low,close], ...] (Phase 2.10e)
+    volume: list[float] = field(default_factory=list)
 
 
 @dataclass
@@ -131,20 +133,24 @@ def _fmt_pct(pct: float) -> str:
     return f"{'+' if pct >= 0 else ''}{pct:.1f}%"
 
 
-def _build_index_stat(symbol: str, name: str, closes: list[float]) -> IndexStat | None:
+def _build_index_stat(symbol: str, name: str, closes: list[float], ohlcv: dict | None = None) -> IndexStat | None:
     """Build an IndexStat from daily closes. None if not enough data.
 
     `closes` is the full series (~30 days, for the chart); the weekly % move is
-    computed from the last 5 trading days only.
+    computed from the last 5 trading days only. `ohlcv` (optional, Phase 2.10e) carries
+    real {"ohlc": [[o,h,l,c]...], "volume": [...]} for candlestick/volume layouts.
     """
     if len(closes) < 2:
         return None
+    ohlcv = ohlcv or {}
     return IndexStat(
         symbol=symbol,
         name=name,
         last_close=round(closes[-1], 2),
         week_change_pct=round(_pct_change(closes[-5:]), 2),
         closes=[round(c, 2) for c in closes],
+        ohlc=[[round(x, 2) for x in row] for row in ohlcv.get("ohlc", [])],
+        volume=[round(v, 2) for v in ohlcv.get("volume", [])],
     )
 
 
@@ -182,7 +188,14 @@ def build_stock_screenshot_fields(week: MarketWeek) -> dict:
     """Adapt a MarketWeek into kwargs for take_stock_screenshot (keeps formatting DRY)."""
     return {
         "indices": [
-            {"name": i.name, "last_close": i.last_close, "pct": i.week_change_pct, "closes": i.closes}
+            {
+                "name": i.name,
+                "last_close": i.last_close,
+                "pct": i.week_change_pct,
+                "closes": i.closes,
+                "ohlc": i.ohlc,
+                "volume": i.volume,
+            }
             for i in week.indices
         ],
         "date_range": f"{week.start_date} to {week.end_date}",
@@ -200,6 +213,7 @@ class StockInsights:
         self.indices = indices or DEFAULT_INDICES
         self.period = period
         self.market_week: MarketWeek | None = None
+        self._ohlcv: dict[str, dict] = {}  # {symbol: {"ohlc":[[o,h,l,c]...], "volume":[...]}}
 
     @observe()
     def get_market_pulse(self) -> ScrapedArticle | None:
@@ -216,7 +230,7 @@ class StockInsights:
 
         indices: list[IndexStat] = []
         for symbol, name in self.indices.items():
-            stat = _build_index_stat(symbol, name, closes_by_symbol.get(symbol, []))
+            stat = _build_index_stat(symbol, name, closes_by_symbol.get(symbol, []), self._ohlcv.get(symbol))
             if stat:
                 indices.append(stat)
 
@@ -261,6 +275,7 @@ class StockInsights:
 
         close = df["Close"]
         out: dict[str, list[float]] = {}
+        self._ohlcv = {}
         for symbol in symbols:
             try:
                 series = close[symbol] if hasattr(close, "columns") else close
@@ -269,6 +284,26 @@ class StockInsights:
                 values = []
             if values:
                 out[symbol] = values
+            # Stash real OHLC + volume from the SAME download (Phase 2.10e) — non-fatal.
+            try:
+
+                def _col(fieldname: str, sym: str = symbol):
+                    c = df[fieldname]
+                    return c[sym] if hasattr(c, "columns") else c
+
+                o, h, low, c, v = _col("Open"), _col("High"), _col("Low"), _col("Close"), _col("Volume")
+                ohlc, vol = [], []
+                for i in range(len(c)):
+                    cv = c.iloc[i]
+                    if cv != cv:  # NaN close -> skip the row
+                        continue
+                    ohlc.append([float(o.iloc[i]), float(h.iloc[i]), float(low.iloc[i]), float(cv)])
+                    vv = v.iloc[i]
+                    vol.append(float(vv) if vv == vv else 0.0)
+                if ohlc:
+                    self._ohlcv[symbol] = {"ohlc": ohlc, "volume": vol}
+            except Exception:
+                logger.debug("OHLCV extract failed for %s", symbol, exc_info=True)
 
         dates = [d.strftime("%Y-%m-%d") for d in df.index]
         return out, (dates[0] if dates else ""), (dates[-1] if dates else "")

@@ -120,6 +120,16 @@ class TestBuildIndexStat:
     def test_none_when_too_few_closes(self):
         assert _build_index_stat("^GSPC", "S&P 500", [7400.0]) is None
 
+    def test_attaches_real_ohlc_and_volume(self):
+        ohlcv = {"ohlc": [[10, 11, 9, 10], [10, 12, 10, 11], [11, 13, 11, 12]], "volume": [5, 6, 7]}
+        stat = _build_index_stat("X", "X", [10, 11, 12], ohlcv)
+        assert stat.ohlc[-1] == [11, 13, 11, 12]
+        assert stat.volume == [5.0, 6.0, 7.0]
+
+    def test_ohlc_defaults_empty_without_data(self):
+        stat = _build_index_stat("X", "X", [10, 11, 12])
+        assert stat.ohlc == [] and stat.volume == []
+
 
 class TestBuildSummaryAndTitle:
     def _week(self):
@@ -210,5 +220,5 @@ class TestBuildStockScreenshotFields:
         assert fields["date_range"] == "2026-06-15 to 2026-06-18"
         assert len(fields["indices"]) == 3
         first = fields["indices"][0]
-        assert set(first) == {"name", "last_close", "pct", "closes"}
+        assert {"name", "last_close", "pct", "closes", "ohlc", "volume"} <= set(first)
         assert first["name"] == "S&P 500"

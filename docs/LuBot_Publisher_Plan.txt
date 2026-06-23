@@ -1682,17 +1682,100 @@ LAYOUT IDEAS (seed list — expand to 10-20)
   - Vertical stacked cards
   (+ palette + type variety layered on top of each layout)
 
-DESIGN PRINCIPLES
-  - FLEXIBLE: adapt to N instruments (1-3+) and any symbols (revisit the data model
-    so a layout can take a variable number of series cleanly).
-  - PROFESSIONAL, not cartoon: real charts (Lightweight Charts / inline SVG), clean
-    typography, fintech dark (and maybe a light variant), LuBot logo. No emoji/clipart.
-  - Rotate per post (extend select_chart_style -> select_card_layout); deterministic.
-  - Each layout is a pure, unit-tested HTML builder + a Playwright render; verify each
-    actually paints (remember the locale-blank-chart bug).
+TECH DECISION (researched Jun 23, 2026 — current best, not amateur)
+  Engine = Apache ECharts (vendored offline, MIT). WHY over our current Lightweight
+  Charts: LWC is purpose-built for price time-series only (line/area/candlestick) and
+  CANNOT do bar-rankings, combined overlays, radial gauges, heatmaps, small-multiples
+  — the variety this phase needs. ECharts does EVERY chart type with premium gradients,
+  shadows, rounded bars, rich theming; MIT-licensed; ~300KB vendored locally so the
+  Playwright render stays offline (like we vendor lightweight-charts.js today).
+  - Build new layouts on ECharts as a parallel module (src/cards/ or screenshotter
+    additions); keep LWC vendored as a fallback until the ECharts layouts are verified,
+    then switch the scheduler over. De-risks the swap.
+  - Candlestick / OHLC layouts: extend stock_insights to OPTIONALLY fetch OHLC (yfinance
+    already returns it) into the data model, so candle layouts are real, not faked.
 
-STATUS: PLANNED — not started. Pick it up next session (Lubo: "think about flexibility
-  too"). Everything through 2.10d is committed + live.
+LUXURY DESIGN LANGUAGE (researched Jun 23 — premium fintech 2026, NOT cartoon)
+  - Restraint = exclusivity. Deep charcoal/near-black canvas (#0a0e14), high-contrast
+    typography, generous whitespace, minimal borders, soft shadows. No bright primary
+    clipart colors, no emoji.
+  - Soft gradient fills, subtle glassmorphism (frosted panels) for depth.
+  - Refined palettes: deep-green + gold; ink + electric-blue; charcoal + teal; mono +
+    single accent. Up/down stays semantic but tasteful.
+  - Bold BIG numbers (the close/%); small uppercase labels; tracked letter-spacing.
+  - Data STORYTELLING per layout (e.g. "who won the week", divergence), not just a plot.
+  - Consistent premium header (kicker + date) + real LuBot logo on every card.
+
+FLEXIBLE DATA MODEL (the "think about flexibility" ask)
+  Normalize to a list of Series: {name, last_close, pct, closes:[float], ohlc?:[...],
+  volume?:[float]}. Every layout takes N series (1..3+) and renders cleanly regardless
+  of count. This is the contract so adding a layout never touches the pipeline.
+  select_card_layout(n) rotates per post (by market_pulse post count).
+
+DATA INTEGRITY — chart numbers MUST equal post numbers, every time (HARD REQ, Lubo)
+  ONE yfinance pull -> ONE MarketWeek/series list -> feeds BOTH (a) the writer summary
+  (the only numbers the post may state) AND (b) the card render. They are drawn from the
+  same values so they cannot drift. Enforced by:
+   - identical FORMATTING in card + summary: close = 2 decimals, % = 1 decimal, signed.
+   - numbers_grounded(post, summary) still rejects any post number not in the data.
+   - candlestick shows REAL OHLC, but the HEADLINE numbers (last_close, %) are the
+     authoritative series values = what the post says. Post only states close + % (not
+     OHLC highs/lows), so stated numbers always match.
+   - TEST: assert each layout's displayed close/% equals the series' close/% (same
+     formatting), for the same series the writer summarized.
+  Candles/bars are the VISUAL; the stated numbers are the contract. Never two sources.
+
+LAYOUT CATALOG (target 12-16 distinct; rotate -> hits the "10-20" ask)
+  panel-trio (refined area+gradient) · combined-overlay (+legend) · bar-ranking
+  (rounded gradient bars, winner top) · hero-standout (one big + sparkline strip) ·
+  small-multiples grid · scoreboard (big % deltas + micro sparklines) · divergence
+  (two series, shaded gap) · radial-gauge (weekly moves) · candlestick-hero (OHLC) ·
+  fullwidth-area · slope/dumbbell (start->end) · bullet/heat-strip. (+palette variants)
+
+BUILD STEPS (RECR, test-first; mock external = yfinance/render where possible)
+  E1. Vendor ECharts (static/vendor/echarts.min.js) + a shared premium BASE theme
+      (canvas, fonts, header, logo, palettes). Prove one ECharts card renders via
+      Playwright (verify it actually paints).
+  E2. Flexible data model + adapt build_stock_screenshot_fields/MarketWeek -> series
+      list (incl. optional OHLC fetch in stock_insights).
+  E3. Layout builders in BATCHES (pure, unit-tested HTML builders), render real samples
+      after each batch for Lubo to eyeball; iterate on taste.
+  E4. select_card_layout(n) rotation + scheduler wiring (replace select_chart_style call);
+      non-fatal fallback to LWC/SVG.
+  E5. Render-verify EVERY layout paints on real data (no blank-chart regressions).
+  E6. Commit, CI green, redeploy, regenerate samples across layouts.
+
+STATUS: SPEC READY (Jun 23). Tech = ECharts + TradingView Lightweight Charts (hybrid).
+  E1 done (ECharts vendored, premium shell, 5 layouts rendered + previewed on dashboard:
+  bar-ranking, combined-overlay, treemap, radial, heatmap). Candlestick: ECharts looked
+  generic -> switched price/candle layouts to TradingView Lightweight Charts; enriched
+  with volume + moving-average + watermark (#31) = real trading-chart look, Lubo-approved.
+
+ENGINE SPLIT (decided Jun 23): TradingView Lightweight Charts for PRICE/CANDLE layouts
+  (authentic TV look); ECharts for the variety TV can't do (treemap/heatmap/radial/bar/
+  overlay/waterfall...). Each layout declares its engine; the right lib is injected.
+
+================ BATCH A — ship 6 layouts, prove it live (Jun 23) ================
+  Goal: get a rotating, luxury, NUMBERS-MATCHED Market Pulse card LIVE with 6 layouts,
+  then expand to 10-20. The 6: bar-ranking · combined-overlay · treemap · radial ·
+  heatmap (ECharts) + candlestick-pro (LWC: candles+volume+MA+watermark).
+  A1. Data model: stock_insights fetch REAL OHLC + volume (yfinance already returns them);
+      add ohlc/volume to IndexStat + build_stock_screenshot_fields. Backward compatible.
+  A2. src/cards.py: finalize 6 pure builders (port candlestick-pro to LWC in-module);
+      LAYOUTS registry {name, builder, engine} + select_card_layout(n) rotation (+palette).
+  A3. take_card_screenshot(series, date_range, layout) — render via Playwright, inject the
+      layout's engine lib, verify it paints; NON-FATAL (fall back to old card / generated img).
+  A4. INTEGRITY: card headline close/% uses the SAME formatting as the summary (2dp / 1dp
+      signed); test asserts card numbers == series numbers for the same MarketWeek.
+  A5. Scheduler: market_pulse uses take_card_screenshot(select_card_layout(post_count), …)
+      on the SAME MarketWeek the writer summarized; non-fatal fallback kept.
+  A6. Tests: builders (data+lib+layout markers) · rotation · integrity · OHLC fetch (mock
+      yfinance) · scheduler wiring. Full suite green, lint, requirements (no new pip dep —
+      ECharts/LWC are vendored JS).
+  A7. Deploy: rebuild + restart; regenerate a real Market Pulse post; verify the rendered
+      card's numbers EXACTLY match the post text; clean up preview posts #24-#31.
+  A8. THEN expand (Batch B): waterfall, slope/dumbbell, scoreboard, hero, small-multiples
+      -> 10-20 total.
 
 ==============================================================================
   END OF PLAN
