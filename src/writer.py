@@ -253,7 +253,10 @@ def build_user_prompt(
             "use words, not a fabricated figure.\n"
             "DIGITS RULE: write numbers as DIGITS exactly as in the data (6.4%, 7,500.58, 70.79). "
             "NEVER spell a number out in words (never 'six point four percent' or 'seventy point seventy nine'). "
-            "Digits only."
+            "Digits only.\n"
+            "NO DERIVED NUMBERS: state only the exact figures from the data. Do NOT compute or "
+            "invent new ones — no gaps, spreads, sums, differences, ratios, or averages between "
+            "them (e.g. never 'the 2.7 point gap'). Describe a divergence in words, not a new number."
         )
 
     # Stock Talk / Investing Principle — calm evergreen wisdom, not a market recap
