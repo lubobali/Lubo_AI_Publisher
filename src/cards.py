@@ -330,7 +330,7 @@ const chart = LightweightCharts.createChart(document.getElementById('c'), {
   watermark:{visible:true, text:'__WM__', color:'rgba(255,255,255,0.05)', fontSize:90, fontStyle:'bold', horzAlign:'center', vertAlign:'center'},
   grid:{vertLines:{color:'rgba(255,255,255,0.04)'}, horzLines:{color:'rgba(255,255,255,0.05)'}},
   rightPriceScale:{borderColor:'rgba(255,255,255,0.08)', scaleMargins:{top:0.08, bottom:0.28}},
-  timeScale:{borderColor:'rgba(255,255,255,0.08)'}, crosshair:{mode:0}, handleScroll:false, handleScale:false
+  timeScale:{visible:false}, crosshair:{mode:0}, handleScroll:false, handleScale:false
 });
 const cs = chart.addCandlestickSeries({upColor:'__UP__',downColor:'__DOWN__',borderUpColor:'__UP__',borderDownColor:'__DOWN__',wickUpColor:'__UP__',wickDownColor:'__DOWN__'});
 cs.setData(__CANDLES__);

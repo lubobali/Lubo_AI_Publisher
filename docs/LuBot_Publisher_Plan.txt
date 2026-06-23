@@ -1777,6 +1777,15 @@ ENGINE SPLIT (decided Jun 23): TradingView Lightweight Charts for PRICE/CANDLE l
   A8. THEN expand (Batch B): waterfall, slope/dumbbell, scoreboard, hero, small-multiples
       -> 10-20 total.
 
+  PROGRESS (Jun 23): A1-A6 DONE. ECharts vendored; src/cards.py = 6 layouts (bar-ranking,
+  combined-overlay, treemap, radial, heatmap [ECharts] + candlestick-pro [LWC: candles+
+  volume+SMA+watermark]) + LAYOUTS registry + select_card_layout. stock_insights now
+  stashes real OHLC+volume from the same download. screenshotter.take_card_screenshot
+  renders the rotated layout (non-fatal fallback). scheduler rotates layout per post on the
+  SAME MarketWeek (numbers match). Integrity test: card headline == series (659.88 / +6.4%).
+  711 tests green, lint clean. Treemap tile-clip fixed. Committed. A7 (deploy + live
+  regenerate + verify numbers match + clean previews) IN PROGRESS.
+
 ==============================================================================
   END OF PLAN
 ==============================================================================
