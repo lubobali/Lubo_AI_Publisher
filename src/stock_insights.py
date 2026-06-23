@@ -102,6 +102,7 @@ class IndexStat:
     closes: list[float] = field(default_factory=list)
     ohlc: list[list[float]] = field(default_factory=list)  # [[open,high,low,close], ...] (Phase 2.10e)
     volume: list[float] = field(default_factory=list)
+    dates: list[str] = field(default_factory=list)  # ISO date per ohlc row (Batch B)
 
 
 @dataclass
@@ -151,6 +152,7 @@ def _build_index_stat(symbol: str, name: str, closes: list[float], ohlcv: dict |
         closes=[round(c, 2) for c in closes],
         ohlc=[[round(x, 2) for x in row] for row in ohlcv.get("ohlc", [])],
         volume=[round(v, 2) for v in ohlcv.get("volume", [])],
+        dates=list(ohlcv.get("dates", [])),
     )
 
 
@@ -195,6 +197,7 @@ def build_stock_screenshot_fields(week: MarketWeek) -> dict:
                 "closes": i.closes,
                 "ohlc": i.ohlc,
                 "volume": i.volume,
+                "dates": i.dates,
             }
             for i in week.indices
         ],
@@ -292,7 +295,8 @@ class StockInsights:
                     return c[sym] if hasattr(c, "columns") else c
 
                 o, h, low, c, v = _col("Open"), _col("High"), _col("Low"), _col("Close"), _col("Volume")
-                ohlc, vol = [], []
+                idx_dates = [d.strftime("%Y-%m-%d") for d in df.index]
+                ohlc, vol, row_dates = [], [], []
                 for i in range(len(c)):
                     cv = c.iloc[i]
                     if cv != cv:  # NaN close -> skip the row
@@ -300,8 +304,9 @@ class StockInsights:
                     ohlc.append([float(o.iloc[i]), float(h.iloc[i]), float(low.iloc[i]), float(cv)])
                     vv = v.iloc[i]
                     vol.append(float(vv) if vv == vv else 0.0)
+                    row_dates.append(idx_dates[i] if i < len(idx_dates) else "")
                 if ohlc:
-                    self._ohlcv[symbol] = {"ohlc": ohlc, "volume": vol}
+                    self._ohlcv[symbol] = {"ohlc": ohlc, "volume": vol, "dates": row_dates}
             except Exception:
                 logger.debug("OHLCV extract failed for %s", symbol, exc_info=True)
 

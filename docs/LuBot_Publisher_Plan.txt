@@ -1777,6 +1777,21 @@ ENGINE SPLIT (decided Jun 23): TradingView Lightweight Charts for PRICE/CANDLE l
   A8. THEN expand (Batch B): waterfall, slope/dumbbell, scoreboard, hero, small-multiples
       -> 10-20 total.
 
+================ BATCH B — expand to ~11 layouts + real candle dates (Jun 23) ================
+  B1. REAL per-day dates for the candlestick: stock_insights stashes df.index dates;
+      thread to the series; candlestick shows a real time axis (un-hide it). Aligns dates
+      to OHLC length.
+  B2. 5 NEW layouts (pure builders, flexible over N series):
+      - waterfall: lead instrument's daily % steps building to the weekly total (ECharts).
+      - slope/dumbbell: each instrument open(0%) -> close(pct), slope lines (ECharts).
+      - scoreboard: big % deltas + relative bars, number-forward (pure HTML, no lib).
+      - hero-standout: biggest mover as a big area chart + others as stat chips (ECharts).
+      - small-multiples: grid of mini area sparklines, one per instrument (ECharts).
+  B3. Register in LAYOUTS (now 11) -> select_card_layout rotates over all.
+  B4. take_card_screenshot supports engine 'html' (no lib) for scoreboard.
+  B5. Tests (new builders + integrity + rotation count) + render-verify each paints.
+  B6. Deploy + regenerate; numbers still == post. Then assess if more (toward 20) wanted.
+
   PROGRESS (Jun 23): A1-A6 DONE. ECharts vendored; src/cards.py = 6 layouts (bar-ranking,
   combined-overlay, treemap, radial, heatmap [ECharts] + candlestick-pro [LWC: candles+
   volume+SMA+watermark]) + LAYOUTS registry + select_card_layout. stock_insights now

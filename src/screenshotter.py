@@ -887,8 +887,14 @@ async def take_card_screenshot(
 
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
     layout = cards.select_card_layout(layout_index)
-    lib_js = cards.lwc_lib() if layout["engine"] == "lwc" else cards.echarts_lib()
-    if not lib_js:
+    engine = layout["engine"]
+    if engine == "lwc":
+        lib_js = cards.lwc_lib()
+    elif engine == "echarts":
+        lib_js = cards.echarts_lib()
+    else:  # "html" layouts (e.g. scoreboard) need no chart lib
+        lib_js = ""
+    if engine != "html" and not lib_js:
         logger.info("Card engine lib missing for %s — falling back to LWC card", layout["name"])
         return await take_stock_lwc_screenshot(indices, date_range)
 

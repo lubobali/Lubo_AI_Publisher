@@ -330,7 +330,7 @@ const chart = LightweightCharts.createChart(document.getElementById('c'), {
   watermark:{visible:true, text:'__WM__', color:'rgba(255,255,255,0.05)', fontSize:90, fontStyle:'bold', horzAlign:'center', vertAlign:'center'},
   grid:{vertLines:{color:'rgba(255,255,255,0.04)'}, horzLines:{color:'rgba(255,255,255,0.05)'}},
   rightPriceScale:{borderColor:'rgba(255,255,255,0.08)', scaleMargins:{top:0.08, bottom:0.28}},
-  timeScale:{visible:false}, crosshair:{mode:0}, handleScroll:false, handleScale:false
+  timeScale:__TIMESCALE__, crosshair:{mode:0}, handleScroll:false, handleScale:false
 });
 const cs = chart.addCandlestickSeries({upColor:'__UP__',downColor:'__DOWN__',borderUpColor:'__UP__',borderDownColor:'__DOWN__',wickUpColor:'__UP__',wickDownColor:'__DOWN__'});
 cs.setData(__CANDLES__);
@@ -353,19 +353,23 @@ def build_candlestick_pro(series: list[dict], date_range: str, palette: dict, li
     closes = list(s["closes"]) or [0.0]
     ohlc = s.get("ohlc") or _derive_ohlc(closes)
     vols = list(s.get("volume") or [])
+    # Real per-day dates when available (Batch B) -> real time axis; else numeric + hidden axis.
+    dates = list(s.get("dates") or [])
+    real_dates = len(dates) == len(ohlc) and len(dates) > 0
     base = 1700000000
+
+    def _t(i: int):
+        return dates[i] if real_dates else base + i * 86400
+
     candles, vold = [], []
     for i, row in enumerate(ohlc):
         o, h, low_, c = row
-        t = base + i * 86400
-        candles.append({"time": t, "open": o, "high": h, "low": low_, "close": c})
+        candles.append({"time": _t(i), "open": o, "high": h, "low": low_, "close": c})
         v = vols[i] if i < len(vols) and vols[i] else round(abs(c - o) * 1.5 + 8, 1)
-        vold.append({"time": t, "value": round(v, 2), "color": palette["up"] if c >= o else palette["down"]})
-    sma = [
-        {"time": base + i * 86400, "value": round(sum(closes[i - 4 : i + 1]) / 5, 2)}
-        for i in range(len(closes))
-        if i >= 4
-    ]
+        vold.append({"time": _t(i), "value": round(v, 2), "color": palette["up"] if c >= o else palette["down"]})
+    # SMA aligned to the OHLC timeline (use ohlc closes so times line up with the candles)
+    oc = [row[3] for row in ohlc]
+    sma = [{"time": _t(i), "value": round(sum(oc[i - 4 : i + 1]) / 5, 2)} for i in range(len(oc)) if i >= 4]
     accent = palette["up"] if s["pct"] >= 0 else palette["down"]
     head = (
         f'<div style="display:flex;align-items:baseline;gap:18px;padding:6px 6px 14px">'
@@ -386,18 +390,195 @@ def build_candlestick_pro(series: list[dict], date_range: str, palette: dict, li
         .replace("__DOWN__", palette["down"])
         .replace("__ACCENT__", palette["accent"])
         .replace("__WM__", html_lib.escape(str(s["name"]).upper()[:14]))
+        .replace(
+            "__TIMESCALE__",
+            "{borderColor:'rgba(255,255,255,0.08)', timeVisible:false}" if real_dates else "{visible:false}",
+        )
     )
     return _shell(palette=palette, date_range=date_range, body=body, script=script, lib_js=lib_js, logo_uri=logo_uri)
 
 
-# Layout registry — rotate per post. engine = which vendored lib to inject.
+def _heading(name: str, pct: float, palette: dict) -> str:
+    """Small in-panel heading: instrument name + signed % (matches summary formatting)."""
+    col = palette["up"] if pct >= 0 else palette["down"]
+    return (
+        f'<div style="display:flex;align-items:baseline;gap:16px;padding:4px 4px 12px">'
+        f'<span style="font-size:20px;font-weight:800;color:{palette["text"]}">{html_lib.escape(str(name))}</span>'
+        f'<span style="font-size:19px;font-weight:800;color:{col}">{_fmt_pct(pct)}</span></div>'
+    )
+
+
+def build_waterfall(series: list[dict], date_range: str, palette: dict, lib_js: str, logo_uri: str = "") -> str:
+    """Layout: lead instrument's daily % steps building to the weekly total (ECharts)."""
+    s = series[0]
+    # Weekly window (last 5 closes) so the cumulative endpoint == the stated weekly % —
+    # a waterfall makes the running total explicit, so it must match the header number.
+    closes = (list(s["closes"]) or [0.0])[-5:]
+    b = closes[0] or 1.0
+    path = [(c - b) / b * 100 for c in closes]
+    ph, bars, cols = [], [], []
+    prev = 0.0
+    for cur in path:
+        lo, hi = min(prev, cur), max(prev, cur)
+        ph.append(round(lo, 3))
+        bars.append(round(hi - lo, 3))
+        cols.append(palette["up"] if cur >= prev else palette["down"])
+        prev = cur
+    body = (
+        f'<div class="panel" style="flex:1;display:flex;flex-direction:column;padding:18px 24px 12px">'
+        f'{_heading(s["name"], s["pct"], palette)}<div id="c" style="flex:1;width:100%"></div></div>'
+    )
+    script = (
+        (
+            """
+const P=__P__, ph=__PH__, bars=__BARS__, cols=__COLS__;
+const ch=echarts.init(document.getElementById('c'),null,{renderer:'canvas',devicePixelRatio:2});
+ch.setOption({animation:false,backgroundColor:'transparent',
+ grid:{left:56,right:20,top:14,bottom:18},
+ xAxis:{type:'category',data:bars.map((_,i)=>i),axisLine:{lineStyle:{color:P.grid}},axisTick:{show:false},axisLabel:{show:false}},
+ yAxis:{type:'value',axisLabel:{formatter:'{value}%',color:P.muted},axisLine:{show:false},splitLine:{lineStyle:{color:P.grid}}},
+ series:[
+  {type:'bar',stack:'t',data:ph,itemStyle:{color:'transparent'},emphasis:{disabled:true}},
+  {type:'bar',stack:'t',barWidth:'58%',data:bars.map((v,i)=>({value:v,itemStyle:{color:cols[i],borderRadius:3}}))}
+ ]});
+"""
+        )
+        .replace("__P__", json.dumps(palette))
+        .replace("__PH__", json.dumps(ph))
+        .replace("__BARS__", json.dumps(bars))
+        .replace("__COLS__", json.dumps(cols))
+    )
+    return _shell(palette=palette, date_range=date_range, body=body, script=script, lib_js=lib_js, logo_uri=logo_uri)
+
+
+def build_slope(series: list[dict], date_range: str, palette: dict, lib_js: str, logo_uri: str = "") -> str:
+    """Layout: slope chart — each instrument from week open (0%) to its close (% move)."""
+    body = '<div class="panel" style="flex:1;padding:20px 28px 14px"><div id="c" style="width:100%;height:100%"></div></div>'
+    script = (
+        (
+            """
+const S=__S__, P=__P__;
+const COLORS=[P.accent,P.up,P.down,'#b794f6','#f6ad55'];
+const ch=echarts.init(document.getElementById('c'),null,{renderer:'canvas',devicePixelRatio:2});
+ch.setOption({animation:false,backgroundColor:'transparent',color:COLORS,
+ grid:{left:30,right:150,top:24,bottom:30},
+ xAxis:{type:'category',data:['Week open','Now'],boundaryGap:false,axisLine:{lineStyle:{color:P.grid}},axisTick:{show:false},axisLabel:{color:P.muted,fontWeight:700}},
+ yAxis:{type:'value',axisLabel:{formatter:'{value}%',color:P.muted},axisLine:{show:false},splitLine:{lineStyle:{color:P.grid}}},
+ series:S.map((s,i)=>({name:s.name,type:'line',data:[0,s.pct],symbolSize:11,lineStyle:{width:3,color:(s.pct>=0?P.up:P.down)},
+   itemStyle:{color:(s.pct>=0?P.up:P.down)},
+   endLabel:{show:true,color:P.text,fontWeight:800,formatter:s.name+'  '+(s.pct>=0?'+':'')+s.pct.toFixed(1)+'%'}}))
+});
+"""
+        )
+        .replace("__S__", _norm(series))
+        .replace("__P__", json.dumps(palette))
+    )
+    return _shell(palette=palette, date_range=date_range, body=body, script=script, lib_js=lib_js, logo_uri=logo_uri)
+
+
+def build_scoreboard(series: list[dict], date_range: str, palette: dict, lib_js: str = "", logo_uri: str = "") -> str:
+    """Layout: number-forward scoreboard — big % deltas + relative bars (pure HTML, no lib)."""
+    ranked = sorted(series, key=lambda s: s["pct"], reverse=True)
+    maxabs = max((abs(s["pct"]) for s in series), default=1) or 1
+    rows = ""
+    for s in ranked:
+        col = palette["up"] if s["pct"] >= 0 else palette["down"]
+        w = max(4, int(abs(s["pct"]) / maxabs * 100))
+        rows += (
+            f'<div style="display:flex;align-items:center;gap:26px;padding:20px 6px;border-bottom:1px solid {palette["stroke"]}">'
+            f'<div style="flex:0 0 250px;font-size:22px;font-weight:800;color:{palette["text"]}">{html_lib.escape(str(s["name"]))}</div>'
+            f'<div style="flex:0 0 150px;font-size:34px;font-weight:800;color:{col}">{_fmt_pct(s["pct"])}</div>'
+            f'<div style="flex:0 0 150px;font-size:20px;color:{palette["muted"]}">{s["last_close"]:,.2f}</div>'
+            f'<div style="flex:1;height:16px;background:rgba(255,255,255,0.05);border-radius:8px;overflow:hidden">'
+            f'<div style="height:100%;width:{w}%;background:{col};border-radius:8px"></div></div></div>'
+        )
+    body = f'<div class="panel" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:8px 32px">{rows}</div>'
+    return _shell(palette=palette, date_range=date_range, body=body, script="", lib_js=lib_js, logo_uri=logo_uri)
+
+
+def build_hero(series: list[dict], date_range: str, palette: dict, lib_js: str, logo_uri: str = "") -> str:
+    """Layout: biggest mover as a big area chart + the others as stat chips (ECharts)."""
+    hero = max(series, key=lambda s: abs(s["pct"]))
+    others = [s for s in series if s["name"] != hero["name"]]
+    chips = ""
+    for s in others:
+        col = palette["up"] if s["pct"] >= 0 else palette["down"]
+        chips += (
+            f'<div style="background:{palette["panel"]};border:1px solid {palette["stroke"]};border-radius:14px;padding:16px 18px;margin-bottom:14px">'
+            f'<div style="font-size:14px;font-weight:700;color:{palette["muted"]};text-transform:uppercase;letter-spacing:1px">{html_lib.escape(str(s["name"]))}</div>'
+            f'<div style="font-size:26px;font-weight:800;color:{palette["text"]};margin-top:6px">{s["last_close"]:,.2f}</div>'
+            f'<div style="font-size:17px;font-weight:800;color:{col};margin-top:2px">{_fmt_pct(s["pct"])}</div></div>'
+        )
+    body = (
+        f'<div style="flex:1;display:flex;gap:20px">'
+        f'<div class="panel" style="flex:1.9;display:flex;flex-direction:column;padding:18px 22px 12px">'
+        f'{_heading(hero["name"], hero["pct"], palette)}<div id="c" style="flex:1;width:100%"></div></div>'
+        f'<div style="flex:1;display:flex;flex-direction:column;justify-content:center">{chips}</div></div>'
+    )
+    script = (
+        (
+            """
+const H=__H__, P=__P__;
+const up = H.pct>=0; const c = up?P.up:P.down;
+const ch=echarts.init(document.getElementById('c'),null,{renderer:'canvas',devicePixelRatio:2});
+ch.setOption({animation:false,backgroundColor:'transparent',
+ grid:{left:56,right:18,top:14,bottom:18},
+ xAxis:{type:'category',boundaryGap:false,data:H.closes.map((_,i)=>i),axisLine:{show:false},axisTick:{show:false},axisLabel:{show:false}},
+ yAxis:{type:'value',scale:true,axisLabel:{color:P.muted},axisLine:{show:false},splitLine:{lineStyle:{color:P.grid}}},
+ series:[{type:'line',data:H.closes,smooth:true,showSymbol:false,lineStyle:{width:3,color:c},
+   areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:c+'66'},{offset:1,color:c+'05'}])}}]});
+"""
+        )
+        .replace(
+            "__H__", json.dumps({"name": hero["name"], "pct": round(hero["pct"], 2), "closes": list(hero["closes"])})
+        )
+        .replace("__P__", json.dumps(palette))
+    )
+    return _shell(palette=palette, date_range=date_range, body=body, script=script, lib_js=lib_js, logo_uri=logo_uri)
+
+
+def build_small_multiples(series: list[dict], date_range: str, palette: dict, lib_js: str, logo_uri: str = "") -> str:
+    """Layout: a row of mini area sparklines, one per instrument, each labeled (ECharts)."""
+    body = '<div class="panel" style="flex:1;padding:14px 18px"><div id="c" style="width:100%;height:100%"></div></div>'
+    script = (
+        (
+            """
+const S=__S__, P=__P__;
+const n=S.length, gap=5, w=(100-gap*(n+1))/n;
+const grids=[],xs=[],ys=[],sers=[],titles=[];
+S.forEach((s,i)=>{
+ const left=gap+i*(w+gap), cx=left+w/2, c=(s.pct>=0?P.up:P.down);
+ grids.push({left:left+'%',top:84,width:w+'%',bottom:24});
+ xs.push({type:'category',gridIndex:i,show:false,data:s.path.map((_,k)=>k)});
+ ys.push({type:'value',gridIndex:i,show:false,scale:true});
+ sers.push({type:'line',xAxisIndex:i,yAxisIndex:i,data:s.path,smooth:true,showSymbol:false,lineStyle:{width:2,color:c},
+   areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:c+'55'},{offset:1,color:c+'04'}])}});
+ titles.push({text:s.name,left:cx+'%',top:32,textAlign:'center',textStyle:{color:P.text,fontSize:15,fontWeight:700}});
+ titles.push({text:(s.pct>=0?'+':'')+s.pct.toFixed(1)+'%',left:cx+'%',top:54,textAlign:'center',textStyle:{color:c,fontSize:17,fontWeight:800}});
+});
+const ch=echarts.init(document.getElementById('c'),null,{renderer:'canvas',devicePixelRatio:2});
+ch.setOption({animation:false,backgroundColor:'transparent',grid:grids,xAxis:xs,yAxis:ys,series:sers,title:titles});
+"""
+        )
+        .replace("__S__", _norm(series))
+        .replace("__P__", json.dumps(palette))
+    )
+    return _shell(palette=palette, date_range=date_range, body=body, script=script, lib_js=lib_js, logo_uri=logo_uri)
+
+
+# Layout registry — defined AFTER all builders. Rotates per post; engine = vendored lib.
 LAYOUTS = [
-    {"name": "bar-ranking", "builder": build_bar_ranking, "engine": "echarts", "palette": 0},
     {"name": "candlestick", "builder": build_candlestick_pro, "engine": "lwc", "palette": 1},
-    {"name": "combined-overlay", "builder": build_combined_overlay, "engine": "echarts", "palette": 2},
+    {"name": "bar-ranking", "builder": build_bar_ranking, "engine": "echarts", "palette": 0},
+    {"name": "hero-standout", "builder": build_hero, "engine": "echarts", "palette": 1},
     {"name": "treemap", "builder": build_treemap, "engine": "echarts", "palette": 0},
+    {"name": "combined-overlay", "builder": build_combined_overlay, "engine": "echarts", "palette": 2},
+    {"name": "scoreboard", "builder": build_scoreboard, "engine": "html", "palette": 0},
     {"name": "radial", "builder": build_radial, "engine": "echarts", "palette": 1},
+    {"name": "small-multiples", "builder": build_small_multiples, "engine": "echarts", "palette": 2},
+    {"name": "waterfall", "builder": build_waterfall, "engine": "echarts", "palette": 0},
     {"name": "heatmap", "builder": build_heatmap, "engine": "echarts", "palette": 2},
+    {"name": "slope", "builder": build_slope, "engine": "echarts", "palette": 1},
 ]
 
 

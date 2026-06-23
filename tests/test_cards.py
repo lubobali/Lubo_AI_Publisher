@@ -47,7 +47,11 @@ class TestSelectCardLayout:
 
     def test_engine_is_valid(self):
         for layout in cards.LAYOUTS:
-            assert layout["engine"] in ("echarts", "lwc")
+            assert layout["engine"] in ("echarts", "lwc", "html")
+
+    def test_has_expanded_catalog(self):
+        assert len(cards.LAYOUTS) >= 11  # Batch B expanded the catalog
+        assert len({layout["name"] for layout in cards.LAYOUTS}) == len(cards.LAYOUTS)  # unique names
 
 
 class TestNumberIntegrity:
