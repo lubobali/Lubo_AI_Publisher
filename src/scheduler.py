@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime
 
 from sqlalchemy.orm import Session
 
+from src.devtrack_insights import DevTrackInsights, build_devtrack_screenshot_fields
 from src.duplicate_checker import DuplicateChecker
 from src.git_insights import GitInsights
 from src.image_generator import generate_image
@@ -18,6 +19,7 @@ from src.publisher import get_publisher
 from src.scraper import ScrapedArticle, scrape_topic
 from src.screenshotter import (
     take_card_screenshot,
+    take_devtrack_screenshot,
     take_git_screenshot,
     take_screenshot,
     take_wakatime_screenshot,
@@ -51,6 +53,7 @@ class Pipeline:
         self.session = session
         self._git_insights: GitInsights | None = None
         self._wakatime: WakaTimeInsights | None = None
+        self._devtrack: DevTrackInsights | None = None
         self._stock: StockInsights | None = None
         self._podcast: PodcastInsights | None = None
 
@@ -77,9 +80,10 @@ class Pipeline:
             if waka_article is not None:
                 extra_articles.append(waka_article)
         elif category == "wakatime":
-            selected_article = self._get_wakatime_article()
+            # Building in Public: prefer the rich DevTrack weekly report, fall back to raw WakaTime.
+            selected_article = self._get_building_article()
             if selected_article is None:
-                return PipelineResult(success=False, error="No WakaTime archives found for weekly stats")
+                return PipelineResult(success=False, error="No DevTrack report or WakaTime archives for the week")
         elif category == "market_pulse":
             # Theme leads (Phase 2.10c): get the podcast angle first, pick the chart's
             # symbols from it, then pull yfinance data for THOSE symbols so the post and
@@ -179,8 +183,14 @@ class Pipeline:
                 image_path = screenshot.path
                 logger.info("Screenshot from staging: %s", image_path)
         elif category == "wakatime":
-            # Dashboard URL is login-walled — render our own stat card (never screenshot the URL).
-            if self._wakatime and self._wakatime.weekly_stats:
+            # Render our own stat card. Prefer the luxury DevTrack card; else the WakaTime card.
+            if self._devtrack and self._devtrack.report:
+                fields = build_devtrack_screenshot_fields(self._devtrack.report)
+                screenshot = await take_devtrack_screenshot(**fields)
+                if screenshot:
+                    image_path = screenshot.path
+                    logger.info("DevTrack build-report card: %s", image_path)
+            elif self._wakatime and self._wakatime.weekly_stats:
                 fields = build_screenshot_fields(self._wakatime.weekly_stats, self._wakatime.include_costs)
                 screenshot = await take_wakatime_screenshot(**fields)
                 if screenshot:
@@ -261,6 +271,17 @@ class Pipeline:
         """Fetch this week's coding stats from WakaTime archives on staging."""
         self._wakatime = WakaTimeInsights()
         return self._wakatime.get_weekly_stats()
+
+    def _get_building_article(self) -> ScrapedArticle | None:
+        """Building-in-Public source: the rich DevTrack weekly report first (Phase 2.11),
+        then raw WakaTime as fallback. Sets self._devtrack when the report is used so the
+        screenshot step renders the luxury build-report card from the SAME numbers."""
+        self._devtrack = DevTrackInsights()
+        article = self._devtrack.get_weekly_report()
+        if article is not None:
+            return article
+        self._devtrack = None
+        return self._get_wakatime_article()
 
     def _get_stock_article(self, indices: dict[str, str] | None = None) -> ScrapedArticle | None:
         """Fetch this week's market pulse (real index data) from yfinance.

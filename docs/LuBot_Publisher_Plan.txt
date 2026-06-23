@@ -1792,6 +1792,12 @@ ENGINE SPLIT (decided Jun 23): TradingView Lightweight Charts for PRICE/CANDLE l
   B5. Tests (new builders + integrity + rotation count) + render-verify each paints.
   B6. Deploy + regenerate; numbers still == post. Then assess if more (toward 20) wanted.
 
+  BATCH B DONE (Jun 23): 11 layouts live — candlestick (real dates now), bar-ranking,
+  hero-standout, treemap, combined-overlay, scoreboard (pure HTML), radial, small-
+  multiples, waterfall (weekly-window so endpoint == weekly %), heatmap, slope. All
+  render-verified luxury + flexible over N series; numbers match. 'html' engine added.
+  717 tests green, lint clean, committed, deploying. Catalog hits the "10-20" goal.
+
   PROGRESS (Jun 23): A1-A6 DONE. ECharts vendored; src/cards.py = 6 layouts (bar-ranking,
   combined-overlay, treemap, radial, heatmap [ECharts] + candlestick-pro [LWC: candles+
   volume+SMA+watermark]) + LAYOUTS registry + select_card_layout. stock_insights now
@@ -1808,6 +1814,56 @@ ENGINE SPLIT (decided Jun 23): TradingView Lightweight Charts for PRICE/CANDLE l
   -> Batch B); (2) writer forbids DERIVED numbers after the guardrail caught a computed
   "2.7 point gap" (committed; deploy on next rebuild). PROVEN: rotating luxury cards,
   real data, chart numbers == post numbers. 711 tests green. Ready to push + Batch B.
+
+==============================================================================
+PHASE 2.11: DEVTRACK WEEKLY REPORT -> BUILDING IN PUBLIC (planned Jun 23, 2026)
+==============================================================================
+
+CONTEXT / WHY (Lubo, Jun 23)
+  The Building in Public post showed raw WakaTime (47.7h, trailing-7) while Lubo's
+  REAL weekly report (DevTrack-AI) says 81.6h total / 54.9h code & build for the
+  Mon-Sun week, plus 82 commits, +25922/-3949 lines, 428 tests, 18 AI sessions,
+  25.3M output tokens. The publisher was ignoring the richer, trusted report. Switch
+  Building in Public to read the DevTrack report -> accurate + far more impressive.
+
+SOURCE (already on the box; worker mounts /srv/lubot-staging:ro)
+  DevTrack-AI generates a weekly report saved as clean MARKDOWN (+ html + pdf) at
+  /srv/lubot-staging/.wakatime-archive/reports/wakatime-weekly-YYYY-Www.md (W23/24/25..).
+  Parse the MARKDOWN (clean `| Metric | Value |` tables), NOT the PDF. Pick the latest.
+
+WHAT THE REPORT HAS (parse)
+  Executive Summary table: Total Working Hours, Code & Build Time, Planning/Research,
+  Days Worked, Avg/day, Goal vs target, Code&Build vs prior week (momentum), Git
+  Commits, Lines Shipped (+/-/files), Tests Written, Test Files, Total Tests, Plans
+  updated, AI Orchestration Sessions, AI Output tokens, AI Context tokens, Staging/
+  Prod deploys. Plus "Hours by Technology", "Hours by Project", period (Week N, dates).
+
+BUILD STEPS (RECR, test-first; parse real W23/W24/W25 fixtures)
+  F1. src/devtrack_insights.py — find latest weekly .md, parse Executive Summary +
+      tech/project lists + period -> DevTrackReport dataclass (typed: total_hours,
+      code_hours, commits, lines_added/deleted/files, tests_added, ai_sessions,
+      ai_output_tokens, days_worked, momentum, by_tech, by_project, period_label) +
+      ScrapedArticle (summary = exact numbers + anti-hallucination). NON-FATAL.
+  F2. LUXURY stat-card (cards.py premium shell): big-number scoreboard of the headline
+      metrics (hours, commits, lines, tests, AI sessions/tokens), glassmorphism, logo.
+      Render-verified. Numbers == summary (integrity).
+  F3. Writer building_in_public block: use the DevTrack summary; exact numbers only.
+  F4. Scheduler wakatime branch: DevTrackInsights PRIMARY (read report) -> WakaTimeInsights
+      FALLBACK if no report; render the luxury DevTrack card.
+  F5. Tests + deploy + regenerate the Building in Public post; verify numbers match the
+      report (81.6h / 54.9h / 82 commits / 428 tests / 18 AI sessions...).
+
+STATUS: planned Jun 23, 2026. Building F1 next.
+  - DONE (Jun 23): F1 src/devtrack_insights.py (parse latest weekly .md -> DevTrackReport +
+    ScrapedArticle; verified on REAL W25 = 81.6h/54.9h/82 commits/+25922-3949/428 tests/18 AI
+    sessions/25.3M tokens — matches the PDF exactly). F2 cards.build_devtrack_card luxury
+    6-tile scoreboard (glassmorphism, real numbers, logo); _shell kicker+footer parametrized.
+    F3 writer building_in_public uses the DevTrack summary (exact numbers). F4 scheduler
+    wakatime branch: DevTrackInsights PRIMARY -> WakaTime FALLBACK; renders the DevTrack card
+    from the SAME report numbers (chart == post). 726 tests green, lint clean, committed,
+    deployed. F5 DONE: regenerated Building in Public (post #52) live — DevTrack card +
+    post numbers match the report exactly (81.6h/54.9h/82 commits/428 tests/25.3M tokens).
+    PHASE 2.11 COMPLETE & LIVE. (Minor: writer prose rounded 81.6h->"81 hours"; card exact.)
 
 ==============================================================================
   END OF PLAN

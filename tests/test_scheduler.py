@@ -47,6 +47,15 @@ def _default_topic():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _devtrack_off_by_default():
+    """Building in Public defaults to the WakaTime fallback in tests (no real DevTrack
+    report read from /srv). The DevTrack-specific test overrides this within its own `with`."""
+    with patch("src.scheduler.DevTrackInsights") as m:
+        m.return_value.get_weekly_report.return_value = None
+        yield m
+
+
 def _make_articles():
     return [
         ScrapedArticle(
@@ -1040,3 +1049,59 @@ class TestStockPipeline:
         assert captured["indices"] is not None
         assert "CL=F" in captured["indices"]  # oil theme -> crude charted
         assert "^GSPC" in captured["indices"]  # always anchored
+
+
+class TestDevTrackPipeline:
+    """Phase 2.11: Building in Public uses the DevTrack weekly report (primary) + luxury card."""
+
+    @pytest.mark.asyncio
+    async def test_uses_devtrack_report_and_card(self, db_session):
+        from src.devtrack_insights import DevTrackReport
+
+        report = DevTrackReport(
+            period_label="Week 25",
+            date_range="Jun 15 to Jun 21, 2026",
+            total_hours=81.6,
+            code_hours=54.9,
+            commits=82,
+            lines_added=25922,
+            lines_deleted=3949,
+            files_changed=128,
+            tests_added=428,
+            ai_sessions=18,
+            ai_output_tokens=25298310,
+            days_worked="7 of 7",
+            momentum="-8.9h (-14%)",
+        )
+        art = ScrapedArticle(
+            title="Build week: Week 25",
+            url="",
+            summary="MY BUILD WEEK: 81.6h, 82 commits",
+            source="devtrack:weekly",
+            published_at=None,
+        )
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "Building in Public", "sources_key": "wakatime", "description": "test"},
+            ),
+            patch("src.scheduler.DevTrackInsights") as mdt,
+            patch(
+                "src.scheduler.take_devtrack_screenshot",
+                new_callable=AsyncMock,
+                return_value=MagicMock(path="/tmp/dt.png"),
+            ) as mshot,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()) as mwrite,
+            patch("src.scheduler.SelfLearner") as mlearn,
+        ):
+            inst = mdt.return_value
+            inst.get_weekly_report.return_value = art
+            inst.report = report
+            mreport = MagicMock()
+            mreport.format_for_writer.return_value = ""
+            mlearn.return_value.generate_performance_report.return_value = mreport
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 23))
+
+        assert result.success is True
+        assert mwrite.call_args.kwargs["articles"][0].source == "devtrack:weekly"  # DevTrack summary used
+        mshot.assert_awaited_once()  # luxury DevTrack card rendered

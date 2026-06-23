@@ -933,6 +933,41 @@ async def take_card_screenshot(
         Path(tmp_path).unlink(missing_ok=True)
 
 
+async def take_devtrack_screenshot(metrics: dict, date_range: str = "") -> ScreenshotResult | None:
+    """Render the luxury Building-in-Public stat-card (Phase 2.11) to a PNG. Non-fatal."""
+    from src import cards
+
+    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    page_html = cards.build_devtrack_card(metrics, date_range, cards.PALETTES[0], logo_uri=cards._logo_data_uri())
+    with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
+        f.write(page_html)
+        tmp_path = f.name
+    try:
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            try:
+                context = await browser.new_context(
+                    viewport={"width": SCREENSHOT_WIDTH, "height": SCREENSHOT_HEIGHT}, device_scale_factor=2
+                )
+                page = await context.new_page()
+                await page.goto(f"file://{tmp_path}", wait_until="networkidle")
+                await page.wait_for_timeout(500)
+                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                filepath = SCREENSHOT_DIR / f"{timestamp}-devtrack.png"
+                filepath.write_bytes(await page.screenshot(full_page=False))
+                logger.info("DevTrack card screenshot saved: %s", filepath)
+                return ScreenshotResult(
+                    path=str(filepath), url="devtrack:weekly", width=SCREENSHOT_WIDTH, height=SCREENSHOT_HEIGHT
+                )
+            finally:
+                await browser.close()
+    except Exception as e:
+        logger.warning("DevTrack card screenshot failed: %s", e)
+        return None
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
 async def take_stock_screenshot(indices: list[dict], date_range: str = "") -> ScreenshotResult | None:
     """Render the Market Pulse card to a PNG with Playwright (real charts + logo)."""
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)

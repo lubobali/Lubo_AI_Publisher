@@ -87,7 +87,17 @@ def _fmt_pct(p: float) -> str:
     return f"{'+' if p >= 0 else ''}{p:.1f}%"
 
 
-def _shell(*, palette: dict, date_range: str, body: str, script: str, lib_js: str, logo_uri: str = "") -> str:
+def _shell(
+    *,
+    palette: dict,
+    date_range: str,
+    body: str,
+    script: str,
+    lib_js: str,
+    logo_uri: str = "",
+    kicker: str = "Market Pulse",
+    foot: str = "Weekly close · real market data · LuBot Stock",
+) -> str:
     """Shared premium shell: charcoal canvas, header (kicker+date+logo), footer."""
     p = palette
     brand = (
@@ -111,10 +121,10 @@ body{{width:1200px;height:627px;font-family:'Inter','Segoe UI','Helvetica Neue',
 .panel{{background:{p["panel"]};border:1px solid {p["stroke"]};border-radius:18px;
   box-shadow:0 10px 40px rgba(0,0,0,.35)}}
 </style></head><body><div class="card">
-  <div class="head"><div><div class="kicker">Market Pulse</div>
+  <div class="head"><div><div class="kicker">{html_lib.escape(kicker)}</div>
     <div class="range">{html_lib.escape(date_range)}</div></div>{brand}</div>
   <div class="body">{body}</div>
-  <div class="foot">Weekly close · real market data · LuBot Stock</div>
+  <div class="foot">{html_lib.escape(foot)}</div>
 </div>
 <script>{lib_js}</script>
 <script>{script}</script>
@@ -585,3 +595,58 @@ LAYOUTS = [
 def select_card_layout(n: int) -> dict:
     """Pick the card layout for this post, round-robin (by market_pulse post count)."""
     return LAYOUTS[n % len(LAYOUTS)]
+
+
+def _fmt_tokens(n: int) -> str:
+    """25298310 -> '25.3M'; smaller -> comma form."""
+    if n >= 1_000_000_000:
+        return f"{n / 1e9:.1f}B"
+    if n >= 1_000_000:
+        return f"{n / 1e6:.1f}M"
+    return f"{n:,}"
+
+
+def build_devtrack_card(m: dict, date_range: str, palette: dict, lib_js: str = "", logo_uri: str = "") -> str:
+    """Luxury Building-in-Public stat-card (Phase 2.11) — big-number scoreboard of the
+    real DevTrack weekly metrics. Pure HTML/CSS premium tiles (no chart lib)."""
+    p = palette
+
+    def tile(big: str, label: str, sub: str, accent: bool = False) -> str:
+        col = p["accent"] if accent else p["text"]
+        return (
+            '<div class="panel" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:22px 28px">'
+            f'<div style="font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:{p["muted"]}">{html_lib.escape(label)}</div>'
+            f'<div style="font-size:44px;font-weight:800;color:{col};line-height:1.05;margin-top:10px">{html_lib.escape(big)}</div>'
+            f'<div style="font-size:15px;color:{p["muted"]};margin-top:8px">{html_lib.escape(sub)}</div></div>'
+        )
+
+    days = str(m.get("days_worked", "")).replace(" of ", "/")
+    row1 = (
+        tile(f"{m.get('total_hours', 0):g}h", "Total Working", f"{m.get('code_hours', 0):g}h code & build", accent=True)
+        + tile(str(m.get("commits", 0)), "Git Commits", f"{m.get('files_changed', 0)} files touched")
+        + tile(f"+{m.get('lines_added', 0):,}", "Lines Shipped", f"-{m.get('lines_deleted', 0):,} removed")
+    )
+    row2 = (
+        tile(str(m.get("tests_added", 0)), "New Tests", "test-first (RECR)", accent=True)
+        + tile(
+            _fmt_tokens(int(m.get("ai_output_tokens", 0))),
+            "AI Output Tokens",
+            f"{m.get('ai_sessions', 0)} orchestration sessions",
+        )
+        + tile(days or "—", "Days Shipped", f"{m.get('momentum', '')} vs last week".strip())
+    )
+    body = (
+        '<div style="flex:1;display:flex;flex-direction:column;gap:18px">'
+        f'<div style="flex:1;display:flex;gap:18px">{row1}</div>'
+        f'<div style="flex:1;display:flex;gap:18px">{row2}</div></div>'
+    )
+    return _shell(
+        palette=p,
+        date_range=date_range,
+        body=body,
+        script="",
+        lib_js="",
+        logo_uri=logo_uri,
+        kicker="Building in Public",
+        foot="Weekly build report · real data: WakaTime + Git · LuBot",
+    )
