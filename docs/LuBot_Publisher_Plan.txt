@@ -1947,6 +1947,38 @@ PHASE 2.14 (C): CONTENT & ENGAGEMENT (planned Jun 23, 2026)
   driven self-learning loop (lean into what performs). STATUS: planned (after A/B).
 
 ==============================================================================
+PHASE 2.15 (D): DASHBOARD EDIT BEFORE APPROVE (planned Jun 25, 2026)
+==============================================================================
+  GOAL: from the dashboard, optionally EDIT a pending post's text AND change/regenerate
+  its image before approving — for the times the auto draft is 95% right and you want a
+  small tweak instead of a full reject + re-run.
+
+  PHILOSOPHY (reconcile with full-automation, see memory feedback_full_automation):
+  auto stays the DEFAULT — generation is untouched. Editing is an OPTIONAL manual
+  OVERRIDE on the approval screen, never required. The approval gate stays
+  (edit != publish; you still press Approve, then the worker posts).
+
+  TRUTH/INTEGRITY (hard): editing must not silently break truth.
+  - Stock categories (market_pulse): the post numbers must still match the chart. On a
+    text edit, re-run numbers_grounded against the SAME market data; block/​warn the save
+    if an edited number no longer matches. Never let edited text and the card disagree.
+  - On save, re-run process_post + validate_post (length, compliance) like generation does.
+
+  BUILD STEPS (RECR, test-first)
+  D1. API: PATCH /posts/{id} — update post_text; re-run process_post + validate_post
+      (+ numbers_grounded for stock categories). Reject/warn on integrity failure.
+  D2. API: image controls — (a) re-render the category's branded card (for market_pulse,
+      re-roll layout/palette; for ai_news, re-render the headline card), and/or (b) accept
+      an uploaded replacement image. Returns the new image_path (shared screenshots volume).
+  D3. Dashboard UI: an "Edit" button on each pending card -> editable text area + image
+      actions (Regenerate / Re-roll layout / Upload) -> Save. Approve still separate.
+  D4. Guardrails + audit: log that a post was hand-edited (edited_at / edited flag on
+      PublisherPost) so analytics can tell edited vs pure-auto performance apart.
+  D5. Tests (API update, validation + integrity re-run, image swap) + deploy + live eyeball.
+
+  STATUS: planned Jun 25, 2026. Build after Phase A (or pull forward if Lubo wants it sooner).
+
+==============================================================================
 SHIPPED & LIVE — STATUS (Jun 23, 2026)
 ==============================================================================
 
@@ -1974,6 +2006,7 @@ OPEN / NEXT (not blocking):
       [ ] my_agent_git -> luxury build card.
 [ ] Phase 2.13 (B) — polish + multi-week eval of the card library.
 [ ] Phase 2.14 (C) — content & engagement (hooks, link-in-comments, analytics learning).
+[ ] Phase 2.15 (D) — dashboard EDIT before approve (tweak text + change/regenerate image).
 [ ] app should run create_tables() on startup (new tables needed a manual create on deploy).
 [ ] (could grow card catalog toward 20 layouts later; 11 already meets the goal.)
 
