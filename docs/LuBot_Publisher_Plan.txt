@@ -1913,7 +1913,23 @@ BUILD STEPS (RECR, test-first)
   A4. Tests (builders + scheduler wiring per category) + render-verify each looks premium.
   A5. Deploy + regenerate one post per category; eyeball that the whole feed is consistent.
 
-STATUS: planned Jun 23, 2026. Decisions D1-D3 RESOLVED. Build A1 next.
+STATUS: planned Jun 23, 2026. Decisions D1-D3 RESOLVED.
+
+PROGRESS (Jun 25): ai_news SLICE DONE & LIVE.
+  - cards.build_headline_card: premium HEADLINE card (AI NEWS kicker, length-adaptive
+    headline, optional dek, source chip, LuBot logo) on the luxury _shell. Pure + tested
+    (tests/test_cards.py TestHeadlineCard).
+  - screenshotter.take_headline_screenshot: renders it to a 1200x627 PNG (non-fatal).
+  - scheduler: ai_news branch renders the card from article title/source/summary instead
+    of take_screenshot(article.url). Tests: test_ai_news_uses_branded_headline_card +
+    test_generic_category_screenshots_article_url (regression).
+  - Deployed (new image, web+worker recreated); 731 tests green; committed c313d2c, pushed
+    to Forgejo + GitHub. Lubo approved the live card on post #56 ("much better").
+  - Triggered by real feedback: see memory feedback_branded_cards_over_screenshots.
+
+  REMAINING: A1 build_insight_card + build_build_card; A2 writer card_headline; A3 wire
+  tech_talk / biohacker / Investing Principle (insight card) + my_agent_git (build card);
+  A4 tests; A5 deploy + per-category eyeball. (ai_news A1/A3/A4/A5 already done above.)
 
 ==============================================================================
 PHASE 2.13 (B): POLISH & MULTI-WEEK EVAL (planned Jun 23, 2026)
@@ -1952,7 +1968,10 @@ SHIPPED & LIVE — STATUS (Jun 23, 2026)
     Proven live: post #53 auto-published to LinkedIn on approval.
 
 OPEN / NEXT (not blocking):
-[ ] Phase 2.12 (A) — unify premium visuals across all 7 categories (NEXT).
+[~] Phase 2.12 (A) — unify premium visuals across all 7 categories (IN PROGRESS).
+      [x] ai_news -> branded headline card (DONE & LIVE Jun 25, commit c313d2c).
+      [ ] tech_talk / biohacker / Investing Principle -> insight card (+ writer card_headline).
+      [ ] my_agent_git -> luxury build card.
 [ ] Phase 2.13 (B) — polish + multi-week eval of the card library.
 [ ] Phase 2.14 (C) — content & engagement (hooks, link-in-comments, analytics learning).
 [ ] app should run create_tables() on startup (new tables needed a manual create on deploy).
