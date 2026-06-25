@@ -650,3 +650,53 @@ def build_devtrack_card(m: dict, date_range: str, palette: dict, lib_js: str = "
         kicker="Building in Public",
         foot="Weekly build report · real data: WakaTime + Git · LuBot",
     )
+
+
+def build_headline_card(
+    headline: str,
+    source: str = "",
+    date_range: str = "",
+    palette: dict | None = None,
+    lib_js: str = "",
+    logo_uri: str = "",
+    dek: str = "",
+    kicker: str = "AI News",
+) -> str:
+    """Branded headline card (Phase 2.12 A) for ai_news.
+
+    Instead of screenshotting a third-party article page (generic, leaks nav junk),
+    render the article's HEADLINE + source as a premium LuBot-branded card. Pure
+    HTML/CSS, no chart lib. Headline font-size adapts to length so it always fits.
+    """
+    p = palette or PALETTES[2]
+    h = " ".join(headline.split())
+    size = 66 if len(h) <= 36 else 56 if len(h) <= 58 else 46 if len(h) <= 88 else 38
+    dek_html = (
+        f'<div style="font-size:23px;line-height:1.45;color:{p["muted"]};margin-top:24px;max-width:92%">'
+        f"{html_lib.escape(' '.join(dek.split()))}</div>"
+        if dek.strip()
+        else ""
+    )
+    src_html = (
+        '<div style="display:flex;align-items:center;gap:11px;margin-top:34px">'
+        f'<span style="width:9px;height:9px;border-radius:50%;background:{p["accent"]};box-shadow:0 0 14px {p["accent"]}"></span>'
+        f'<span style="font-size:16px;font-weight:700;letter-spacing:1.5px;color:{p["accent"]}">{html_lib.escape(source.lower())}</span>'
+        "</div>"
+        if source.strip()
+        else ""
+    )
+    body = (
+        '<div class="panel" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:46px 56px">'
+        f'<div style="font-size:{size}px;font-weight:800;line-height:1.12;letter-spacing:-0.6px;color:{p["text"]}">'
+        f"{html_lib.escape(h)}</div>{dek_html}{src_html}</div>"
+    )
+    return _shell(
+        palette=p,
+        date_range=date_range,
+        body=body,
+        script="",
+        lib_js=lib_js,
+        logo_uri=logo_uri,
+        kicker=kicker,
+        foot="AI news, curated and explained · LuBot",
+    )

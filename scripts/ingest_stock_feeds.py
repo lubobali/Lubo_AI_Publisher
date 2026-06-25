@@ -22,6 +22,7 @@ FEEDS = [
     ("https://ofdollarsanddata.com/feed/", "Of Dollars and Data", "blog-odad"),
     ("https://awealthofcommonsense.com/feed/", "A Wealth of Common Sense", "blog-awocs"),
     ("https://jlcollinsnh.com/feed/", "JL Collins", "blog-jlcollins"),
+    ("https://igorpejic.substack.com/feed", "The New Frontier", "blog-pejic"),
 ]
 
 

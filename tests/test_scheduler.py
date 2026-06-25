@@ -659,15 +659,15 @@ class TestMyAgentScreenshots:
         mock_screenshot.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_non_my_agent_screenshots_article_url(self, db_session):
-        """Non-my_agent categories should screenshot the article URL."""
+    async def test_generic_category_screenshots_article_url(self, db_session):
+        """Generic scraper categories (not special-cased) screenshot the article URL."""
         articles = _make_articles()
         writer_result = _make_writer_result()
 
         with (
             patch(
                 "src.scheduler.get_todays_topic",
-                return_value={"name": "AI News", "sources_key": "ai_news", "description": "test"},
+                return_value={"name": "Biohacker", "sources_key": "biohacker", "description": "test"},
             ),
             patch("src.scheduler.scrape_topic", new_callable=AsyncMock, return_value=articles),
             patch("src.scheduler.DuplicateChecker") as mock_dedup_cls,
@@ -694,6 +694,45 @@ class TestMyAgentScreenshots:
 
         # Should use the article URL, not staging
         mock_screenshot.assert_called_once_with("https://example.com/ai-chip")
+
+    @pytest.mark.asyncio
+    async def test_ai_news_uses_branded_headline_card(self, db_session):
+        """ai_news renders a branded headline card, NOT a third-party site screenshot (Phase 2.12 A)."""
+        articles = _make_articles()
+        writer_result = _make_writer_result()
+
+        with (
+            patch(
+                "src.scheduler.get_todays_topic",
+                return_value={"name": "AI News", "sources_key": "ai_news", "description": "test"},
+            ),
+            patch("src.scheduler.scrape_topic", new_callable=AsyncMock, return_value=articles),
+            patch("src.scheduler.DuplicateChecker") as mock_dedup_cls,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=writer_result),
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock) as mock_url_shot,
+            patch("src.scheduler.take_headline_screenshot", new_callable=AsyncMock) as mock_card,
+            patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_card.return_value = MagicMock(path="/tmp/headline.png")
+
+            mock_dedup = MagicMock()
+            mock_dedup.check_article = AsyncMock(return_value=MagicMock(is_duplicate=False))
+            mock_dedup.record_url = MagicMock()
+            mock_dedup_cls.return_value = mock_dedup
+
+            mock_learner = MagicMock()
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner.generate_performance_report.return_value = mock_report
+            mock_learner_cls.return_value = mock_learner
+
+            pipeline = Pipeline(session=db_session)
+            await pipeline.generate_post(target_date=date(2026, 3, 23))
+
+        # Branded card used; the third-party article URL is NOT screenshotted
+        mock_card.assert_called_once()
+        mock_url_shot.assert_not_called()
 
 
 class TestApprovalWorkflow:

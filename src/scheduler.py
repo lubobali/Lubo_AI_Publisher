@@ -21,6 +21,7 @@ from src.screenshotter import (
     take_card_screenshot,
     take_devtrack_screenshot,
     take_git_screenshot,
+    take_headline_screenshot,
     take_screenshot,
     take_wakatime_screenshot,
 )
@@ -214,6 +215,23 @@ class Pipeline:
             if screenshot:
                 image_path = screenshot.path
                 logger.info("Screenshot from staging (stock principle): %s", image_path)
+        elif category == "ai_news":
+            # Branded headline card — never screenshot the third-party article page,
+            # which looks generic and leaks nav/login junk (Phase 2.12 A).
+            from urllib.parse import urlparse
+
+            source = urlparse(selected_article.url or "").netloc.replace("www.", "")
+            summary = (getattr(selected_article, "summary", "") or "").strip()
+            dek = summary.split(". ")[0][:150] if summary else ""
+            screenshot = await take_headline_screenshot(
+                headline=selected_article.title,
+                source=source,
+                date_range=datetime.now().strftime("%B %d, %Y"),
+                dek=dek,
+            )
+            if screenshot:
+                image_path = screenshot.path
+                logger.info("AI News headline card: %s", image_path)
         elif selected_article.url:
             screenshot = await take_screenshot(selected_article.url)
             if screenshot:

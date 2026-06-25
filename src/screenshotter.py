@@ -319,7 +319,7 @@ body {{
             <span class="cmd"> git log --oneline -1</span>
         </div>
         <div style="margin: 8px 0 4px;">
-            <span class="hash">{html_lib.escape(commit_hash or 'HEAD')}</span>
+            <span class="hash">{html_lib.escape(commit_hash or "HEAD")}</span>
             <span class="msg"> {html_lib.escape(commit_message)}</span>
         </div>
         <div class="date">{html_lib.escape(commit_date)}</div>
@@ -428,7 +428,7 @@ def _build_wakatime_html(
     else:
         momentum_badge = ""
     cost_stat = (
-        f'<div class="stat"><div class="snum">${ai_cost:,.0f}</div>' '<div class="slabel">AI agent cost</div></div>'
+        f'<div class="stat"><div class="snum">${ai_cost:,.0f}</div><div class="slabel">AI agent cost</div></div>'
         if ai_cost is not None
         else ""
     )
@@ -929,6 +929,49 @@ async def take_card_screenshot(
     except Exception as e:
         logger.warning("Card screenshot (%s) failed: %s — falling back", layout["name"], e)
         return await take_stock_lwc_screenshot(indices, date_range)
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+async def take_headline_screenshot(
+    headline: str, source: str = "", date_range: str = "", dek: str = "", kicker: str = "AI News"
+) -> ScreenshotResult | None:
+    """Render the branded headline card (Phase 2.12 A) to a PNG. Non-fatal.
+
+    Used for ai_news instead of screenshotting a third-party article page (which looks
+    generic and leaks nav/login junk). Returns None on failure so the caller can fall back.
+    """
+    from src import cards
+
+    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    page_html = cards.build_headline_card(
+        headline, source, date_range, cards.PALETTES[2], logo_uri=cards._logo_data_uri(), dek=dek, kicker=kicker
+    )
+    with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
+        f.write(page_html)
+        tmp_path = f.name
+    try:
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            try:
+                context = await browser.new_context(
+                    viewport={"width": SCREENSHOT_WIDTH, "height": SCREENSHOT_HEIGHT}, device_scale_factor=2
+                )
+                page = await context.new_page()
+                await page.goto(f"file://{tmp_path}", wait_until="networkidle")
+                await page.wait_for_timeout(400)
+                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                filepath = SCREENSHOT_DIR / f"{timestamp}-headline.png"
+                filepath.write_bytes(await page.screenshot(full_page=False))
+                logger.info("Headline card screenshot saved: %s", filepath)
+                return ScreenshotResult(
+                    path=str(filepath), url="card:headline", width=SCREENSHOT_WIDTH, height=SCREENSHOT_HEIGHT
+                )
+            finally:
+                await browser.close()
+    except Exception as e:
+        logger.warning("Headline card screenshot failed: %s", e)
+        return None
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 

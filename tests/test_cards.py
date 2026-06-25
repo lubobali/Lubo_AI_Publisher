@@ -37,6 +37,32 @@ class TestLayoutBuilders:
         assert "addCandlestickSeries" in html  # renders even without real OHLC (derived)
 
 
+class TestHeadlineCard:
+    """Phase 2.12 A: branded headline card for ai_news (no third-party screenshots)."""
+
+    def test_emits_html_with_headline_source_and_kicker(self):
+        html = cards.build_headline_card(
+            "How agents are transforming work", source="openai.com", date_range="2026-06-25"
+        )
+        assert "<html" in html
+        assert "How agents are transforming work" in html
+        assert "openai.com" in html
+        assert "AI News" in html  # the kicker
+
+    def test_escapes_headline(self):
+        html = cards.build_headline_card("Tools & <agents> win", source="x.com")
+        assert "&amp;" in html and "&lt;agents&gt;" in html
+        assert "<agents>" not in html  # not raw HTML
+
+    def test_optional_dek_included(self):
+        html = cards.build_headline_card("Title", source="x.com", dek="A short summary line.")
+        assert "A short summary line." in html
+
+    def test_works_with_only_a_headline(self):
+        html = cards.build_headline_card("Just a title")
+        assert "<html" in html and "Just a title" in html
+
+
 class TestSelectCardLayout:
     def test_rotates_through_all(self):
         names = [cards.select_card_layout(i)["name"] for i in range(len(cards.LAYOUTS))]
