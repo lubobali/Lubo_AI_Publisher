@@ -428,6 +428,35 @@ class TestParseResponse:
         result = parse_response(raw)
         assert result.hashtags == []
 
+    def test_parse_extracts_card_headline(self):
+        raw = '{"post_text": "Long post body.", "card_headline": "Ship the boring parts"}'
+        result = parse_response(raw)
+        assert result.card_headline == "Ship the boring parts"
+
+    def test_parse_card_headline_defaults_empty(self):
+        raw = '{"post_text": "No card headline here."}'
+        result = parse_response(raw)
+        assert result.card_headline == ""
+
+
+class TestDeriveCardHeadline:
+    def test_uses_first_sentence_trimmed(self):
+        from src.writer import derive_card_headline
+
+        text = "Time in the market beats timing the market. The rest is noise."
+        assert derive_card_headline(text) == "Time in the market beats timing the market"
+
+    def test_caps_word_count(self):
+        from src.writer import derive_card_headline
+
+        text = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen"
+        assert len(derive_card_headline(text, max_words=5).split()) == 5
+
+    def test_empty_text_safe(self):
+        from src.writer import derive_card_headline
+
+        assert derive_card_headline("") == ""
+
     def test_parse_invalid_json_returns_none(self):
         raw = "This is not JSON at all, just a regular post."
         result = parse_response(raw)

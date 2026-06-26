@@ -976,6 +976,50 @@ async def take_headline_screenshot(
         Path(tmp_path).unlink(missing_ok=True)
 
 
+async def take_insight_screenshot(
+    headline: str, kicker: str = "Insight", date_range: str = "", palette_index: int = 0, foot: str = ""
+) -> ScreenshotResult | None:
+    """Render the branded INSIGHT card (Phase 2.12 A) to a PNG. Non-fatal.
+
+    Used for opinion categories (tech_talk, biohacker, Investing Principle) instead of
+    screenshotting a third-party article or the staging site. Returns None on failure.
+    """
+    from src import cards
+
+    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    palette = cards.PALETTES[palette_index % len(cards.PALETTES)]
+    page_html = cards.build_insight_card(
+        headline, kicker=kicker, date_range=date_range, palette=palette, logo_uri=cards._logo_data_uri(), foot=foot
+    )
+    with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
+        f.write(page_html)
+        tmp_path = f.name
+    try:
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            try:
+                context = await browser.new_context(
+                    viewport={"width": SCREENSHOT_WIDTH, "height": SCREENSHOT_HEIGHT}, device_scale_factor=2
+                )
+                page = await context.new_page()
+                await page.goto(f"file://{tmp_path}", wait_until="networkidle")
+                await page.wait_for_timeout(400)
+                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                filepath = SCREENSHOT_DIR / f"{timestamp}-insight.png"
+                filepath.write_bytes(await page.screenshot(full_page=False))
+                logger.info("Insight card screenshot saved: %s", filepath)
+                return ScreenshotResult(
+                    path=str(filepath), url="card:insight", width=SCREENSHOT_WIDTH, height=SCREENSHOT_HEIGHT
+                )
+            finally:
+                await browser.close()
+    except Exception as e:
+        logger.warning("Insight card screenshot failed: %s", e)
+        return None
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
 async def take_devtrack_screenshot(metrics: dict, date_range: str = "") -> ScreenshotResult | None:
     """Render the luxury Building-in-Public stat-card (Phase 2.11) to a PNG. Non-fatal."""
     from src import cards

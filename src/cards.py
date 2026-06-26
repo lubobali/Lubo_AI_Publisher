@@ -700,3 +700,43 @@ def build_headline_card(
         kicker=kicker,
         foot="AI news, curated and explained · LuBot",
     )
+
+
+def build_insight_card(
+    headline: str,
+    kicker: str = "Insight",
+    date_range: str = "",
+    palette: dict | None = None,
+    lib_js: str = "",
+    logo_uri: str = "",
+    attribution: str = "Lubo Bali",
+    foot: str = "",
+) -> str:
+    """Branded INSIGHT card (Phase 2.12 A) for opinion categories (tech_talk, biohacker,
+    Investing Principle) — render the post's core take as a big editorial pull-quote, not
+    a third-party screenshot. Pure HTML/CSS. Pull-quote font-size adapts to length."""
+    p = palette or PALETTES[0]
+    h = " ".join(headline.split())
+    size = 60 if len(h) <= 40 else 50 if len(h) <= 64 else 42 if len(h) <= 95 else 34
+    attribution_html = (
+        f'<div style="margin-top:30px;font-size:17px;font-weight:700;letter-spacing:1px;color:{p["accent"]}">'
+        f"— {html_lib.escape(attribution)}</div>"
+        if attribution.strip()
+        else ""
+    )
+    body = (
+        '<div class="panel" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:40px 56px;position:relative">'
+        f'<div style="position:absolute;top:8px;left:40px;font-size:140px;line-height:1;color:{p["accent"]};opacity:.18;font-family:Georgia,serif">&ldquo;</div>'
+        f'<div style="position:relative;font-size:{size}px;font-weight:800;line-height:1.16;letter-spacing:-0.5px;color:{p["text"]}">'
+        f"{html_lib.escape(h)}</div>{attribution_html}</div>"
+    )
+    return _shell(
+        palette=p,
+        date_range=date_range,
+        body=body,
+        script="",
+        lib_js=lib_js,
+        logo_uri=logo_uri,
+        kicker=kicker,
+        foot=foot or "Field notes from building in AI · LuBot",
+    )

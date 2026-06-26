@@ -63,6 +63,31 @@ class TestHeadlineCard:
         assert "<html" in html and "Just a title" in html
 
 
+class TestInsightCard:
+    """Phase 2.12 A: editorial pull-quote card for opinion categories (no screenshots)."""
+
+    def test_emits_html_with_quote_kicker_and_attribution(self):
+        html = cards.build_insight_card(
+            "Most AI demos die in production because nobody owns the boring parts",
+            kicker="Tech Talk",
+            date_range="2026-06-26",
+        )
+        assert "<html" in html
+        assert "Most AI demos die in production" in html
+        assert "Tech Talk" in html  # kicker
+        assert "Lubo Bali" in html  # default attribution
+
+    def test_escapes_headline(self):
+        html = cards.build_insight_card("Risk & <reward> are not the same", kicker="Investing Principle")
+        assert "&amp;" in html and "&lt;reward&gt;" in html
+        assert "<reward>" not in html
+
+    def test_attribution_optional(self):
+        html = cards.build_insight_card("Sleep is the cheapest performance drug", attribution="")
+        assert "Lubo Bali" not in html
+        assert "Sleep is the cheapest performance drug" in html
+
+
 class TestSelectCardLayout:
     def test_rotates_through_all(self):
         names = [cards.select_card_layout(i)["name"] for i in range(len(cards.LAYOUTS))]

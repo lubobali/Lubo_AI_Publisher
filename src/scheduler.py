@@ -22,6 +22,7 @@ from src.screenshotter import (
     take_devtrack_screenshot,
     take_git_screenshot,
     take_headline_screenshot,
+    take_insight_screenshot,
     take_screenshot,
     take_wakatime_screenshot,
 )
@@ -29,13 +30,21 @@ from src.self_learner import SelfLearner
 from src.stock_insights import StockInsights, build_stock_screenshot_fields, select_chart_symbols
 from src.topic_rotator import get_todays_topic, get_week_number
 from src.wakatime_insights import WakaTimeInsights, build_screenshot_fields
-from src.writer import WriterResult, write_post
+from src.writer import WriterResult, derive_card_headline, write_post
 
 logger = logging.getLogger(__name__)
 
 # Only technical/finance posts get knowledge grounding. Both stock variants
 # (market_pulse + stock_talk) ground in finance wisdom for fresh angles (Phase 2.10).
 GROUNDED_CATEGORIES = {"tech_talk", "my_agent_git", "ai_news", "stock_talk", "market_pulse"}
+
+# Opinion categories that render a branded INSIGHT card (Phase 2.12 A) instead of a
+# third-party / staging screenshot. Value: (kicker, palette index, footer line).
+INSIGHT_CARDS = {
+    "tech_talk": ("Tech Talk", 2, "Field notes from building in AI · LuBot"),
+    "biohacker": ("Biohacker", 1, "What I actually do, not medical advice · LuBot"),
+    "stock_talk": ("Investing Principle", 0, "Not financial advice · LuBot"),
+}
 
 
 @dataclass
@@ -209,12 +218,21 @@ class Pipeline:
                 if screenshot:
                     image_path = screenshot.path
                     logger.info("Market-pulse card screenshot: %s", image_path)
-        elif category == "stock_talk":
-            # Investing Principle: show Lubo's own product, never screenshot the finance article.
-            screenshot = await take_screenshot("https://staging.lubot.ai")
+        elif category in INSIGHT_CARDS:
+            # Opinion categories (tech_talk / biohacker / Investing Principle): render Lubo's
+            # own branded pull-quote card, never a third-party / staging screenshot (Phase 2.12 A).
+            kicker, palette_index, foot = INSIGHT_CARDS[category]
+            headline = writer_result.card_headline or derive_card_headline(writer_result.post_text)
+            screenshot = await take_insight_screenshot(
+                headline,
+                kicker=kicker,
+                date_range=datetime.now().strftime("%B %d, %Y"),
+                palette_index=palette_index,
+                foot=foot,
+            )
             if screenshot:
                 image_path = screenshot.path
-                logger.info("Screenshot from staging (stock principle): %s", image_path)
+                logger.info("%s insight card: %s", kicker, image_path)
         elif category == "ai_news":
             # Branded headline card — never screenshot the third-party article page,
             # which looks generic and leaks nav/login junk (Phase 2.12 A).

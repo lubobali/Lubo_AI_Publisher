@@ -50,6 +50,7 @@ class WriterResult:
     post_text: str
     screenshot_url: str | None
     hashtags: list[str] = field(default_factory=list)
+    card_headline: str = ""  # short pull-quote for the insight card (opinion categories)
 
 
 def load_voice_rules() -> dict:
@@ -121,9 +122,10 @@ HASHTAGS:
 
 RESPONSE FORMAT:
 You MUST respond with valid JSON only. No text before or after. Format:
-{{"post_text": "the full post text here", "screenshot_url": "https://url-for-screenshot-or-null", "hashtags": ["#Tag1", "#Tag2", "#Tag3"]}}
+{{"post_text": "the full post text here", "screenshot_url": "https://url-for-screenshot-or-null", "hashtags": ["#Tag1", "#Tag2", "#Tag3"], "card_headline": "4-8 word punchy pull-quote of your core point"}}
 
 Do NOT include hashtags inside post_text. Put them only in the hashtags array.
+card_headline: a short, punchy 4-8 word version of your single core point — for the post's image card. Plain words, no hashtags, no quotes, no markdown. It should be able to stand alone as a strong one-liner.
 
 STYLE REFERENCE — these are Lubo's real posts. Match this voice exactly:
 
@@ -448,7 +450,16 @@ def parse_response(raw_text: str) -> WriterResult | None:
         post_text=post_text,
         screenshot_url=screenshot_url,
         hashtags=data.get("hashtags", []),
+        card_headline=(data.get("card_headline") or "").strip(),
     )
+
+
+def derive_card_headline(post_text: str, max_words: int = 12) -> str:
+    """Fallback pull-quote for the insight card when the LLM didn't supply one:
+    the post's first sentence, trimmed to a short headline."""
+    first = re.split(r"(?<=[.!?])\s", post_text.strip())[0] if post_text.strip() else ""
+    words = first.split()
+    return " ".join(words[:max_words]).rstrip(".,;:—- ")
 
 
 def _parse_plain_text(text: str) -> WriterResult | None:
