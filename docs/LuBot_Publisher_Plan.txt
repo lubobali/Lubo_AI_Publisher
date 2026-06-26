@@ -2006,8 +2006,9 @@ SHIPPED & LIVE — STATUS (Jun 23, 2026)
 OPEN / NEXT (not blocking):
 [~] Phase 2.12 (A) — unify premium visuals across all 7 categories (IN PROGRESS).
       [x] ai_news -> branded headline card (DONE & LIVE Jun 25, commit c313d2c).
-      [ ] tech_talk / biohacker / Investing Principle -> insight card (+ writer card_headline).
-      [ ] my_agent_git -> luxury build card.
+      [x] tech_talk / biohacker / Investing Principle -> insight card + writer card_headline
+          (DONE & LIVE Jun 26, commit 3db5aa9; verified live: writer pull-quote -> rendered card).
+      [ ] my_agent_git -> luxury build card (LAST one — currently a terminal git screenshot).
 [ ] Phase 2.13 (B) — polish + multi-week eval of the card library.
 [ ] Phase 2.14 (C) — content & engagement (hooks, link-in-comments, analytics learning).
 [ ] Phase 2.15 (D) — dashboard EDIT before approve (tweak text + change/regenerate image).
