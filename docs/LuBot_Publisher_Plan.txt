@@ -1994,6 +1994,10 @@ SHIPPED & LIVE — STATUS (Jun 23, 2026)
     weekly report (81.6h/82 commits/428 tests/25.3M tokens), luxury scoreboard card,
     numbers == report. DevTrack primary, WakaTime fallback. (LIVE)
 
+[x] Backups (Jun 26) — nightly Backblaze B2: full pg_dump->gzip db-dumps/ (30d retention,
+    restores posts+KB) + per-post posts/<id>/post.json+screenshot (kept forever). cron
+    _run_backup 04:00 CT; src/backup.py (boto3, S3-compatible). Verified live (85MB dump +
+    post files in bucket lubo-publisher). Closes the Jun 26 wipe gap (no backups existed).
 [x] Merged to main (PR #2, CI green) + GitHub mirror in sync.
 [x] App live + scheduled: daily generation (weekday 3-5 PM / weekend 11 AM CT, random
     time, 7-category rotation) -> pending; publish loop every 5 min auto-posts approved.
