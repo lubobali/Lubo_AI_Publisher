@@ -11,7 +11,7 @@ CI: sets DATABASE_URL to its own fresh service container, which we respect.
 """
 
 import os
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import psycopg2
 from psycopg2 import sql
@@ -39,6 +39,17 @@ def _ensure_database(url: str) -> None:
 
 # Respect an explicit DATABASE_URL (CI), otherwise use the dedicated test DB.
 os.environ.setdefault("DATABASE_URL", DEFAULT_TEST_DB)
+
+# HARD SAFETY GUARD: test fixtures drop_all()/delete(), so tests must NEVER run against a
+# non-test database. If DATABASE_URL points at a DB whose name does not end in "_test"
+# (e.g. the prod "publisher" DB — which is the value baked into the container env), redirect
+# to its "_test" sibling instead of wiping real data. This makes `pytest` safe even when run
+# inside the app container with the production DATABASE_URL set. (Learned the hard way.)
+_parsed = urlparse(os.environ["DATABASE_URL"])
+_dbname = _parsed.path.lstrip("/")
+if not _dbname.endswith("_test"):
+    os.environ["DATABASE_URL"] = urlunparse(_parsed._replace(path=f"/{_dbname}_test"))
+
 _ensure_database(os.environ["DATABASE_URL"])
 
 # Langfuse is OFF in production by default; tests turn it on to validate the
