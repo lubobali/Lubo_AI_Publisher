@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 
+from src.backup import run_backup
 from src.db import SessionLocal
 from src.scheduler import Pipeline, publish_approved_posts
 from src.topic_rotator import get_random_post_time
@@ -78,6 +79,18 @@ def _run_publish() -> None:
     asyncio.run(_go())
 
 
+def _run_backup() -> None:
+    """Nightly backup to Backblaze B2 (DB dump + per-post files). No-op if B2 unconfigured."""
+
+    session = SessionLocal()
+    try:
+        run_backup(session)
+    except Exception:
+        logger.exception("Nightly backup failed")
+    finally:
+        session.close()
+
+
 def _schedule_todays_generation(sched: BlockingScheduler) -> None:
     """Pick a random time within today's window and schedule generation for it.
 
@@ -105,6 +118,7 @@ def build_scheduler() -> BlockingScheduler:
     sched = BlockingScheduler(timezone=TIMEZONE)
     sched.add_job(lambda: _schedule_todays_generation(sched), "cron", hour=0, minute=1, id="daily_planner")
     sched.add_job(_run_publish, "interval", minutes=PUBLISH_INTERVAL_MIN, id="publish_approved")
+    sched.add_job(_run_backup, "cron", hour=4, minute=0, id="nightly_backup")
     return sched
 
 

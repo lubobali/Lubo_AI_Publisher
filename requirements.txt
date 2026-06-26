@@ -33,6 +33,9 @@ yfinance==1.4.1
 # Scheduling
 apscheduler==3.11.0
 
+# Backups (Backblaze B2 — S3-compatible)
+boto3==1.43.36
+
 # Config
 pyyaml==6.0.2
 python-dotenv==1.0.1
