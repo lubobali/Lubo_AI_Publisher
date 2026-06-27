@@ -1979,6 +1979,95 @@ PHASE 2.15 (D): DASHBOARD EDIT BEFORE APPROVE (planned Jun 25, 2026)
   STATUS: planned Jun 25, 2026. Build after Phase A (or pull forward if Lubo wants it sooner).
 
 ==============================================================================
+PHASE 2.16 (E): CARD DESIGN SYSTEM — universal luxury frame + bespoke interior (planned Jun 27)
+==============================================================================
+  GOAL: every card = art-grade, 100% deterministic, instantly recognizable as Lubo's.
+  Architecture = universal FRAME (constant chrome) + bespoke luxury INTERIOR per topic.
+  FULL LOCKED SPEC: memory project_card_design_system (exact colors/fonts/sizes/grain seed).
+  Decisions locked Jun 27 w/ Lubo (long live design session, ~30 prototype renders):
+   - BLUE-STEEL brand palette matching the logo (BLUE #4f8cf0 / STEEL #c3c9d4); DROPPED gold-leaf.
+   - Fraunces 400 serif headline (the "art"); Space Grotesk labels/signature.
+   - Signature = TECH wordmark "— Lubo Bali" (blue, small dash in FRONT only, no dot, no handwriting).
+   - Logo +30% (70px); footer bumped to 16px/#aab6cc so it reads without zoom on a 14" Mac.
+   - Film grain (SVG feTurbulence fixed seed 11) + inset vignette. Magazine masthead.
+   - BUILD VISUAL FIRST (before podcasts). No rush — must NOT break the live daily pipeline.
+
+  FRAME (constant every card): topic kicker (L) + logo 70px (R); blue->steel accent rail + 60px
+  hairline; "— Lubo Bali" signature; footer "No. N · date | accent-dot + disclaimer/tagline".
+  INTERIOR (per topic): tech_talk/biohacker/stock_talk = serif pull-quote; ai_news = headline+source;
+  market_pulse = chart (recolored blue-steel); wakatime = stat scoreboard; my_agent_git = build stats.
+
+  SUBSTEPS (RECR, test-first):
+  E1. Commit static/fonts/*.woff2. cards: _font_css() (base64 @font-face), _grain()/_vignette()
+      (fixed seed), BRAND palette consts. Pure + unit-tested.
+  E2. Rebuild cards._shell -> the universal FRAME (kicker 17px gradient, logo 70px, rail, hairline,
+      signature dash-front, footer 16px). Migrate/shim existing builders so nothing breaks.
+      Folio "No. N" = a REAL running issue number (e.g., global post count), not hardcoded "No. 27".
+  E3. Restyle build_insight_card (serif pull-quote) + build_headline_card (ai_news) to the frame.
+  E4. CHARTS = max variety + pro quality, in-frame (Lubo Jun 27: "absolutely different charts like
+      the big players, in our frame"). KEEP rotating chart TYPES and EXPAND the catalog with MORE
+      professional charts (more TradingView Lightweight-Charts types + ECharts; evaluate additional
+      viz libs — ApexCharts / Plotly / D3 — where they add real pro value). Every chart wrapped in
+      the blue-steel FRAME (chrome/fonts/grain consistent; the CHART varies). COLORS: financial data
+      MUST follow MARKET STANDARD — green up / red down (instant comprehension); blue-steel is for the
+      FRAME/accents ONLY, never the up/down semantics. build_devtrack_card recolored to the frame.
+      numbers_grounded integrity UNCHANGED (one data source feeds post + chart).
+  E5. my_agent_git: luxury build-stats interior within the frame (retire the terminal git screenshot).
+  E6. Readability gate: helper to downscale a render to 400px (mobile) + eyeball each type; full
+      suite green; deploy; regenerate one post per topic; clear [PREVIEW] posts.
+  DETERMINISM (hard): fonts embedded, grain fixed-seed, content-driven layout -> identical pixels.
+  SAFETY (don't break the live pipeline): build E BEHIND the existing non-fatal fallbacks — a card
+   render failure must fall back, never block a post; deploy + verify, THEN retire old card paths.
+   Adaptive headline/quote sizing + overflow guard (long text never clips). Fonts are SIL OFL (ok to
+   commit); ensure .dockerignore keeps static/fonts/. Update existing card tests to the new structure.
+
+==============================================================================
+PHASE 2.17 (F): PODCAST-GROUNDED CONTENT — real expert podcasts per topic (planned Jun 27)
+==============================================================================
+  GOAL: "read what the experts actually say." Ground each topic in REAL podcast transcripts
+  (Deepgram), so posts carry current, specific, valuable angles. Lubo: "this is gold." The
+  podcast->transcript->distill pipeline EXISTS but is wired ONLY to Market Pulse today.
+  Build AFTER Phase E. No rush.
+  SCOPE (Lubo Jun 27): wire EVERY topic that has a relevant Spotify/podcast with a readable
+  transcript — Biohacker (Dave Asprey "The Human Upgrade" + Saladino + Brecka, see
+  feedback_biohacker_sources), Tech Talk (AI/eng shows), AI News (AI shows), Market Pulse
+  (already: Animal Spirits + 3 finance shows; keep/expand). NOT my_agent_git / wakatime
+  (own-work, already grounded in real git/WakaTime data).
+
+  KEY TECH NOTES:
+   - Need each show's RSS feed WITH an mp3 enclosure — a Spotify link ALONE cannot be transcribed.
+     Source/verify the RSS per show (Dave Asprey's show is publicly distributed -> has RSS).
+   - Deepgram ~$0.25-0.40 per full episode; cache by GUID (built), one episode/post, skip
+     AMA/"talk your book"/mailbag (built). Log spend.
+
+  SUBSTEPS (RECR):
+  F1. Per-topic podcast registry (config): topic -> rotation of show RSS feeds + display names.
+      Source + verify each RSS feed (incl. Dave Asprey "The Human Upgrade").
+  F2. Make podcast_insights topic-aware: get_episode_article(topic, ...) picks from that topic's
+      feeds (today Market Pulse only). Weekly rotation; GUID cache (exists). Per topic, the podcast
+      can be PRIMARY content (Biohacker = the episode IS the substance, may need no news article) or
+      a SECONDARY angle layered on the scraped news (AI News = news article + podcast take).
+  F3. Scheduler: podcast-enabled topics fetch the distilled angle -> writer podcast_context
+      (plumbing exists). Non-fatal if no episode/transcript.
+  F4. Writer: per-topic prompt uses the podcast ANGLE as Lubo's informed take — never quote, name,
+      or claim he was on it. Extend the existing market_pulse pattern.
+  F4b. Per-topic DISTILLATION prompts — extract the RIGHT kind of insight per topic (a biohacking
+      angle != a finance angle != a tech angle). HEALTH topics (Biohacker): frame as general
+      interest / OPINION, NEVER medical advice, NEVER a personal experiment or claim. LEGAL: never
+      reproduce transcript text — only a derived angle (same stance as the book DRM line).
+  F5. Ops/cost: cache hard, skip already-transcribed, episode pick = recency + relevance, log cost
+      (~$5-10/month total across topics). Spotify-EXCLUSIVE shows have no RSS -> can't transcribe;
+      only shows with a public RSS + mp3 enclosure qualify.
+  F6. Tests + deploy + verify one real post per podcast topic.
+  COMBINED VALUE: podcast angle + RSS-KB book/blog concepts + the news/data = the richest posts
+  (the $300k bar). See [[project_positioning_goal]].
+
+  ACCEPTANCE (both phases): E = all 7 cards share the frame + readable at 400px + tests green +
+  deployed; F = each podcast topic ships a post with a real distilled angle, verified live. Then
+  MEASURE the follower/engagement delta after E+F (ties to Phase 2.14 C analytics) — confirm the
+  upgrade actually moved the needle (currently +3-5 followers/day on the working pipeline).
+
+==============================================================================
 SHIPPED & LIVE — STATUS (Jun 23, 2026)
 ==============================================================================
 
@@ -2012,6 +2101,8 @@ OPEN / NEXT (not blocking):
 [ ] Phase 2.13 (B) — polish + multi-week eval of the card library.
 [ ] Phase 2.14 (C) — content & engagement (hooks, link-in-comments, analytics learning).
 [ ] Phase 2.15 (D) — dashboard EDIT before approve (tweak text + change/regenerate image).
+[ ] Phase 2.16 (E) — CARD DESIGN SYSTEM: universal luxury frame + bespoke interior (VISUAL, do FIRST). Spec locked.
+[ ] Phase 2.17 (F) — PODCAST-GROUNDED CONTENT: real expert podcasts per topic (CONTEXT, after E).
 [ ] app should run create_tables() on startup (new tables needed a manual create on deploy).
 [ ] (could grow card catalog toward 20 layouts later; 11 already meets the goal.)
 
