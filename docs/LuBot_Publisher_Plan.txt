@@ -2155,7 +2155,7 @@ PHASE 2.18 (G): X (TWITTER) MULTI-PLATFORM PUBLISHING (planned Jun 27, 2026)
   publish loop never double-posts; X outage degrades to LinkedIn-only; tests green; deployed.
 
 ==============================================================================
-SHIPPED & LIVE — STATUS (Jun 23, 2026)
+SHIPPED & LIVE — STATUS (Jun 27, 2026)
 ==============================================================================
 
 [x] Phase 2.10b — Podcast -> Market Pulse: Deepgram transcribe -> distill -> writer
@@ -2175,9 +2175,9 @@ SHIPPED & LIVE — STATUS (Jun 23, 2026)
     _run_backup 04:00 CT; src/backup.py (boto3, S3-compatible). Verified live (85MB dump +
     post files in bucket lubo-publisher). Closes the Jun 26 wipe gap (no backups existed).
 [x] Merged to main (PR #2, CI green) + GitHub mirror in sync.
-[x] App live + scheduled: daily generation (weekday 3-5 PM / weekend 11 AM CT, random
-    time, 7-category rotation) -> pending; publish loop every 5 min auto-posts approved.
-    Proven live: post #53 auto-published to LinkedIn on approval.
+[x] App live + scheduled: 9 posts/week (Phase 2.19) — biohacker 3x (Sun/Wed/Fri) + 6 others
+    1x, randomized times per config/schedule.yaml weekly_plan -> pending; publish loop every
+    5 min auto-posts approved to LinkedIn + X. Proven live: post #53 auto-published on approval.
 
 OPEN / NEXT (not blocking):
 [~] Phase 2.12 (A) — unify premium visuals across all 7 categories (IN PROGRESS).
@@ -2194,10 +2194,32 @@ OPEN / NEXT (not blocking):
       green/red), Building in Public, My Agent Build. Signature on every card. Built on a branch
       (PR #3), verified by host-render, merged + deployed atomically. CI Postgres health hardened.
       Optional follow-up: chart-expansion (Pejic-inspired alpha etc. — see project_chart_expansion).
-[ ] Phase 2.17 (F) — PODCAST-GROUNDED CONTENT: real expert podcasts per topic (CONTEXT, after E).
-[~] Phase 2.18 (G) — X (Twitter) multi-platform publishing: one approval -> LinkedIn + X, link in X self-reply. Setup DONE; BUILDING NOW on feature/x-publisher.
+[~] Phase 2.17 (F) — PODCAST-GROUNDED CONTENT: started with BIOHACKER. DONE & LIVE Jun 27
+      (merge aeed9ae, PR #5):
+      [x] F2a config podcasts: section keyed by topic; biohacker feeds (Asprey/Saladino/Brecka,
+          all RSS+mp3 verified); scraper load_sources() excludes podcasts:.
+      [x] F2b podcast_insights topic-aware: load_podcast_feeds(topic), distill_transcript(system),
+          _DISTILL_BIOHACKER + _DISTILL_BY_TOPIC, get_episode_article(topic).
+      [x] F3 biohacker is PODCAST-PRIMARY (episode IS the article; news-scrape fallback) + writer
+          biohacker block (the brief) + plain-typing (writer rule + post_processor strip_special_chars
+          + arrow-free X link). Verified live in-container twice (real Deepgram+550B).
+      [x] BONUS anti-repeat memory (all topics): scheduler._get_recent_posts -> writer reads its last
+          3 posts in-category, told to vary hook/structure/personal lines (kills the "46/feel 35"
+          repeat). Biohacker brief reframed as a WORLDVIEW to think from, not a script.
+          (See memory feedback_brief_as_worldview.)
+      [ ] STILL TODO: extend podcasts to Tech Talk / AI News (more topics); apply worldview reframe
+          to the other writer blocks.
+[x] Phase 2.18 (G) — X (Twitter) multi-platform publishing: one approval -> LinkedIn + X, link in
+      X self-reply. DONE & LIVE Jun 27 (merge c1c2a1b). First double post #32 live.
+[x] Phase 2.19 — 9 POSTS/WEEK: biohacker bumped to 3x (Sun AM / Wed AM / Fri 3-5PM CT, each a
+      DIFFERENT show via show_offset 0/1/2); other 6 topics 1x each. Two double-days (Sun, Wed),
+      2nd post kept >=8h after the 1st. DONE & LIVE Jun 27 (merge f453829, PR #6). Schedule now
+      driven by config/schedule.yaml weekly_plan + windows; topic_rotator.get_todays_posts(d) ->
+      list; cron schedules one job per slot; scheduler.generate_post(topic, show_offset). NOTE:
+      these are GENERATION times — posts go live on approval (per-post scheduled-publish = future).
 [ ] app should run create_tables() on startup (new tables needed a manual create on deploy).
 [ ] (could grow card catalog toward 20 layouts later; 11 already meets the goal.)
+[ ] FUTURE: scheduled per-post PUBLISH (so same-day posts go LIVE 8h apart, not just drafted apart).
 
 ==============================================================================
   END OF PLAN
