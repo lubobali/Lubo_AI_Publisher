@@ -863,6 +863,38 @@ class TestMyAgentScreenshots:
         mock_url_shot.assert_not_called()
 
 
+class TestRecentPostsMemory:
+    """Anti-repeat: the writer is fed this category's recent posts to avoid repeating itself."""
+
+    def _add(self, session, category, text):
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category=category,
+            topic_title="t",
+            post_text=text,
+            status="pending",
+        )
+        session.add(post)
+        session.flush()
+        return post
+
+    def test_returns_category_posts_newest_first(self, db_session):
+        self._add(db_session, "biohacker", "oldest")
+        self._add(db_session, "biohacker", "middle")
+        self._add(db_session, "biohacker", "newest")
+        recent = Pipeline(session=db_session)._get_recent_posts("biohacker", limit=2)
+        assert recent == ["newest", "middle"]  # newest first, capped at limit
+
+    def test_filters_by_category(self, db_session):
+        self._add(db_session, "biohacker", "bio post")
+        self._add(db_session, "ai_news", "news post")
+        recent = Pipeline(session=db_session)._get_recent_posts("biohacker")
+        assert recent == ["bio post"]
+
+    def test_empty_when_no_history(self, db_session):
+        assert Pipeline(session=db_session)._get_recent_posts("biohacker") == []
+
+
 class TestApprovalWorkflow:
     def test_approve_post(self, db_session):
         post = PublisherPost(

@@ -418,19 +418,35 @@ class TestBiohackerBlock:
     def test_has_biohacker_block(self):
         assert "BIOHACKER" in self._prompt()
 
-    def test_leads_with_what_to_stop(self):
-        assert "STOP" in self._prompt()
+    def test_frames_brief_as_worldview_not_template(self):
+        """The brief must be a base to think from, NOT a checklist to recite."""
+        p = self._prompt().lower()
+        assert "worldview" in p or "think from" in p
+        assert "not a checklist" in p or "not a template" in p
+        assert "do not copy" in p or "do not list" in p
+
+    def test_forces_one_idea_and_variety(self):
+        p = self._prompt().lower()
+        assert "one idea" in p
+        assert "different facet" in p or "rotate" in p
+
+    def test_leads_with_removing_harm(self):
+        p = self._prompt().lower()
+        assert "removing harm" in p or "stop" in p
 
     def test_includes_age_framework(self):
-        p = self._prompt()
-        assert "Biological age" in p and "Chronological age" in p
+        p = self._prompt().lower()
+        assert "biological age" in p and "chronological age" in p
 
     def test_includes_longevity_tests_tiers(self):
         p = self._prompt().lower()
         assert "free" in p and "epigenetic" in p
 
-    def test_uses_real_credibility(self):
-        assert "46" in self._prompt()  # true: 46, feels 35
+    def test_credibility_is_sparing_not_a_crutch(self):
+        p = self._prompt()
+        assert "46" in p  # true: 46, feels 35
+        assert "crutch" in p.lower() or "sparingly" in p.lower()
+        assert "do not repeat it" in p.lower() or "not as a crutch" in p.lower()
 
     def test_no_hard_biohacking_product_pitch(self):
         # LuBot has no biohacking feature yet; the block must say so
@@ -439,6 +455,49 @@ class TestBiohackerBlock:
     def test_not_present_for_other_topics(self):
         prompt = build_user_prompt(topic_name="Tech Talk", topic_description="x", articles=SAMPLE_ARTICLES)
         assert "BIOHACKER / LONGEVITY post" not in prompt
+
+
+class TestAntiRepeatMemory:
+    """Recent posts are fed back so the writer never runs the same play twice (all topics)."""
+
+    _RECENT = [
+        "Been at this 5 years. Im 46 and feel 35. Stop seed oils today.",
+        "Morning light is the most underrated free biohack. What is yours?",
+    ]
+
+    def test_block_present_with_recent_posts(self):
+        prompt = build_user_prompt(
+            topic_name="Biohacker",
+            topic_description="x",
+            articles=SAMPLE_ARTICLES,
+            recent_posts=self._RECENT,
+        )
+        assert "YOUR RECENT POSTS IN THIS CATEGORY" in prompt
+        assert "Morning light is the most underrated" in prompt  # the actual past text is shown
+
+    def test_block_warns_against_repeating_age_and_hooks(self):
+        prompt = build_user_prompt(
+            topic_name="Biohacker",
+            topic_description="x",
+            articles=SAMPLE_ARTICLES,
+            recent_posts=self._RECENT,
+        ).lower()
+        assert "anti-repeat" in prompt
+        assert "do not reuse the same opening" in prompt
+        assert "age or years" in prompt  # specifically guards the credibility line
+
+    def test_no_block_without_recent_posts(self):
+        prompt = build_user_prompt(topic_name="Biohacker", topic_description="x", articles=SAMPLE_ARTICLES)
+        assert "YOUR RECENT POSTS IN THIS CATEGORY" not in prompt
+
+    def test_works_for_any_topic(self):
+        prompt = build_user_prompt(
+            topic_name="Tech Talk",
+            topic_description="x",
+            articles=SAMPLE_ARTICLES,
+            recent_posts=["A past tech take about databases."],
+        )
+        assert "YOUR RECENT POSTS IN THIS CATEGORY" in prompt
 
 
 # ---------------------------------------------------------------------------

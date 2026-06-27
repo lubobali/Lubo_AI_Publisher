@@ -142,6 +142,7 @@ def build_user_prompt(
     performance_context: str | None = None,
     book_concepts: list[str] | None = None,
     podcast_context: str | None = None,
+    recent_posts: list[str] | None = None,
 ) -> str:
     """Build the user message with today's topic + scraped articles."""
     rules = load_voice_rules()
@@ -288,40 +289,45 @@ def build_user_prompt(
     # Biohacker / longevity — Lubo's lived philosophy (memory project_biohacker_brief)
     if topic_key == "biohacker":
         prompt_parts.append(
-            "\nThis is a BIOHACKER / LONGEVITY post. The material below is the distilled takeaway "
-            "from a longevity expert (the source name is shown with it). Turn it into ONE genuinely "
-            "useful nugget a busy person can act on today, in Lubo's voice.\n\n"
-            "LUBO'S REAL CREDIBILITY (true, you MAY use it authentically):\n"
-            "- He has lived this for 5+ years. He is 46 and feels and looks about 35.\n"
-            "- 'been at this 5 years, im 46 and feel 35' is honest and powerful. Use it naturally, not every post.\n"
-            "- Do NOT invent a specific tested age number (no 'my biological age is 32') unless it is a REAL result in the material. 'feel and look 35' is subjective and fine.\n\n"
-            "WHAT BIOHACKING MEANS (his definition): optimizing the WHOLE body as one system - food, "
-            "environment, stress, work, the people around you, sleep, light, movement, time outdoors, "
-            "and mind. It is NOT just supplements.\n\n"
-            "RULES:\n"
-            "- Open with YOUR take or the one idea, not the expert's name and not a headline.\n"
-            "- LEAD with what to STOP (seed oils, ultra-processed food, plastics, toxins) before what to add. Most disease comes from bad habits, not genetics.\n"
-            "- Always give BOTH a FREE/accessible way AND a premium/paid option, so people with and without money both get value.\n"
-            "- Give the brief WHY (the mechanism) in plain words. No hype. Flag what is solid vs what is marketing.\n"
-            "- Generous, practical, helping-a-friend tone. Not preachy, not salesy.\n"
-            "- Always 'I', never 'we'. Short lines, blank lines between thoughts.\n"
-            "- End with ONE real question, ending with a question mark (?).\n\n"
-            "THE AGE FRAMEWORK (weave in when it fits, not every post):\n"
-            "- Chronological age = your birthday number (fixed). Biological age = how old your body actually functions (you control it). Epigenetic age = biological age MEASURED by DNA-methylation clocks.\n"
-            "- The whole point: drive biological age BELOW chronological by daily habits. Empowering message - your birthday is fixed, your biological age is not.\n\n"
-            "LONGEVITY TESTS (give tiers when relevant):\n"
-            "- FREE at-home markers (resting heart rate, grip strength, waist-to-height, how fast you recover, VO2max if you can).\n"
-            "- CHEAP bloodwork (ApoB, hs-CRP, fasting insulin, HbA1c, lipids).\n"
-            "- PREMIUM epigenetic clocks (TruDiagnostic TruAge, GrimAge, DunedinPACE) that measure actual biological age and aging speed.\n\n"
+            "\nThis is a BIOHACKER / LONGEVITY post. Below is everything Lubo believes about health "
+            "and a distilled takeaway from a longevity expert. This is his WORLDVIEW and KNOWLEDGE BASE "
+            "to think from - it is NOT a checklist to recite and NOT a template to fill in.\n\n"
+            "HOW TO USE THIS (read carefully):\n"
+            "- Write ONE post about ONE idea. Go deep on a single thing, do not dump the whole philosophy.\n"
+            "- Each post should pick a DIFFERENT facet: maybe a thing to stop, maybe one free habit, maybe a "
+            "single test, maybe the age idea, maybe a mindset shift, maybe a myth you bust. Rotate. Never the same shape twice.\n"
+            "- Internalize these beliefs and say them YOUR way, fresh, like a real person who lives this - "
+            "do NOT copy these sentences or list them out. If a post reads like the brief, you failed.\n"
+            "- Use only what serves today's one idea. Leave the rest out. Less is more.\n\n"
+            "LUBO'S PHILOSOPHY (his real beliefs - the base to think from):\n"
+            "- Biohacking = optimizing the WHOLE body as one system: food, environment, stress, work, the "
+            "people around you, sleep, light, movement, time outdoors, mind. NOT just supplements.\n"
+            "- Most disease comes from bad habits, not genetics. The biggest wins come from REMOVING harm "
+            "(seed oils, ultra-processed food, plastics, toxins) before adding anything.\n"
+            "- Everyone can start FREE - knowledge, not money, is the barrier. Money buys precision and speed, "
+            "not the basics. So serve BOTH the no-money and the money audience.\n"
+            "- The age idea: chronological age is fixed, biological age is not - you bend it with daily habits. "
+            "Epigenetic clocks just MEASURE it. Empowering, not preachy.\n"
+            "- Tone: generous, practical, helping a friend. No hype, no preaching, no selling. Flag solid science vs marketing.\n\n"
+            "FACTS YOU MAY DRAW ON (only if they serve today's one idea - do not list them):\n"
+            "- Free ways to gauge aging: resting heart rate, grip strength, waist-to-height, recovery speed, VO2max.\n"
+            "- Cheap bloodwork: ApoB, hs-CRP, fasting insulin, HbA1c, lipids.\n"
+            "- Premium epigenetic clocks: TruDiagnostic TruAge, GrimAge, DunedinPACE (measure biological age + aging speed).\n\n"
+            "LUBO'S REAL CREDIBILITY (true - use SPARINGLY and only when it fits, never as a crutch):\n"
+            "- He has lived this 5+ years; he is 46 and feels/looks about 35. This is powerful BUT do not open "
+            "with it every time and do not repeat it across posts. If a recent post already used his age or "
+            "years, do NOT use them again - find another way to show he lives it, or skip it entirely.\n"
+            "- Never invent a tested age number ('my biological age is 32') unless it is a REAL result. "
+            "'feel and look 35' is subjective and fine.\n\n"
             "HONEST FRAMING:\n"
-            "- You MAY cite the expert / show by name ('Asprey covered this on The Human Upgrade', 'Saladino made the case that...'). Citing is good and credible.\n"
-            "- But do NOT claim Lubo personally listened to this exact episode (the pipeline picked it, not him). 'I have spent years on this' is true; 'I just listened to this new episode' is not.\n\n"
-            "ANTI-HALLUCINATION:\n"
-            "- Use NO numbers, studies, or dosages that are not in the material above. No invented percentages or 'studies show 40%'.\n"
-            "- Do NOT fabricate a personal experiment or result.\n\n"
-            "MARKETING (soft, honest): LuBot does NOT have a biohacking feature yet (only stock, website, "
-            "and my-files modes exist). Do NOT market a LuBot biohacking product. Keep any mention soft and "
-            "general at most. The post's job here is value and authority, not a hard sell."
+            "- You MAY cite the expert/show by name ('Asprey made the case that...', 'Saladino argues...'). Citing is credible.\n"
+            "- Do NOT claim Lubo listened to this exact episode (the pipeline picked it, not him). "
+            "'I have spent years on this' is true; 'I just listened to this episode' is not.\n\n"
+            "CRAFT:\n"
+            "- Always 'I', never 'we'. Short lines, blank lines between thoughts. End with ONE real question (?).\n"
+            "- Use NO numbers, studies, or dosages that are not in the material above. Do NOT fabricate a personal experiment.\n\n"
+            "MARKETING (soft, honest): LuBot has no biohacking feature yet (only stock, website, my-files modes). "
+            "Do NOT market a LuBot biohacking product. Any mention stays soft and general. The job is value and authority, not a sell."
         )
 
     # Add scraped articles as context
@@ -381,6 +387,23 @@ def build_user_prompt(
             "- Treat it as the general mood/debate, NOT 'this exact week'\n"
             "- Take NO number from this. Every number comes ONLY from the market data above\n"
             "- If a point does not fit naturally, ignore it"
+        )
+
+    # Anti-repeat memory — your own recent posts in this category. The single most
+    # important rule for sounding human: never run the same play twice.
+    if recent_posts:
+        recent_text = "\n\n".join(f"PAST POST {i}:\n{p.strip()[:900]}" for i, p in enumerate(recent_posts, 1))
+        prompt_parts.append(
+            "\nYOUR RECENT POSTS IN THIS CATEGORY (read them, then deliberately do something DIFFERENT):\n"
+            f"{recent_text}\n"
+            "ANTI-REPEAT RULES (critical — repetition is the fastest way to look like a bot):\n"
+            "- Do NOT reuse the same opening line or hook pattern as any post above\n"
+            "- Do NOT repeat the same personal lines, catchphrases, or signature sentences "
+            "(e.g. if a recent post already said your age or years of experience, do NOT say it again this time)\n"
+            "- Do NOT lead with the same idea, the same example, or the same structure\n"
+            "- Pick a genuinely different angle, a different facet of the topic, a different emotion\n"
+            "- Vary the closing question — never echo a question you already asked above\n"
+            "- These are your past work, not a template. Move the conversation forward, do not restate it"
         )
 
     prompt_parts.append(
@@ -604,6 +627,7 @@ async def write_post(
     performance_context: str | None = None,
     book_concepts: list[str] | None = None,
     podcast_context: str | None = None,
+    recent_posts: list[str] | None = None,
 ) -> WriterResult | None:
     """Generate a LinkedIn post. Tries NVIDIA NIM first, falls back to OpenRouter.
 
@@ -617,6 +641,7 @@ async def write_post(
         performance_context=performance_context,
         book_concepts=book_concepts,
         podcast_context=podcast_context,
+        recent_posts=recent_posts,
     )
 
     # Primary = free NIM; fallback = OpenRouter (only when a key is configured).

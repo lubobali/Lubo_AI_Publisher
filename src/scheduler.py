@@ -161,6 +161,7 @@ class Pipeline:
             performance_context=feedback,
             book_concepts=book_concepts,
             podcast_context=podcast_context,
+            recent_posts=self._get_recent_posts(category),
         )
 
         if writer_result is None:
@@ -382,6 +383,25 @@ class Pipeline:
             return [c.text for c in KnowledgeBase(self.session).search(query)]
         except Exception:
             logger.warning("Knowledge-base search failed for %s — skipping grounding", category, exc_info=True)
+            return []
+
+    def _get_recent_posts(self, category: str, limit: int = 3) -> list[str]:
+        """Last few post texts in this category (newest first) so the writer never repeats itself.
+
+        Anti-repeat memory: the writer reads these and is told to take a different angle, hook,
+        and personal lines. Never fatal — a query failure just means no memory this run.
+        """
+        try:
+            rows = (
+                self.session.query(PublisherPost)
+                .filter(PublisherPost.topic_category == category)
+                .order_by(PublisherPost.created_at.desc(), PublisherPost.id.desc())
+                .limit(limit)
+                .all()
+            )
+            return [r.post_text for r in rows if r.post_text]
+        except Exception:
+            logger.warning("Recent-posts lookup failed for %s — no anti-repeat memory", category, exc_info=True)
             return []
 
     async def _find_non_duplicate(
