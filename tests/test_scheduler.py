@@ -458,6 +458,31 @@ class TestBiohackerPipeline:
         mock_scrape.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_explicit_topic_and_show_offset_override_rotation(self, db_session):
+        """generate_post(topic=..., show_offset=N) uses that slot, not get_todays_topic."""
+        with (
+            # rotation says something else — the explicit topic must win
+            patch("src.scheduler.get_todays_topic", return_value={"name": "AI News", "sources_key": "ai_news"}),
+            patch.object(Pipeline, "_get_podcast_article", return_value=self._podcast_article()) as mock_pod,
+            patch("src.scheduler.scrape_topic", new_callable=AsyncMock) as mock_scrape,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()),
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/s.png")),
+            patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
+
+            result = await Pipeline(session=db_session).generate_post(
+                target_date=date(2026, 6, 27), topic=self._BIO_TOPIC, show_offset=2
+            )
+
+        assert result.success is True
+        mock_scrape.assert_not_called()  # took the biohacker path, not ai_news scrape
+        assert mock_pod.call_args.kwargs.get("show_offset") == 2
+
+    @pytest.mark.asyncio
     async def test_biohacker_falls_back_to_scrape_when_no_episode(self, db_session):
         """No usable episode -> the news scraper keeps the post flowing."""
         with (

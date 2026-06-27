@@ -69,13 +69,17 @@ class Pipeline:
         self._podcast: PodcastInsights | None = None
 
     @observe()
-    async def generate_post(self, target_date: date) -> PipelineResult:
+    async def generate_post(self, target_date: date, topic: dict | None = None, show_offset: int = 0) -> PipelineResult:
         """Run the full pipeline: topic → scrape → dedup → write → screenshot → save.
 
-        Saves post as PENDING (not auto-published). Returns PipelineResult.
+        `topic` lets the caller (cron) pick the exact topic for a slot, since a day can
+        have more than one post; if omitted it falls back to the day's primary topic.
+        `show_offset` biases podcast show selection for topics that post multiple times a
+        week (biohacker), so each slot pulls a different show. Saves post as PENDING.
         """
-        # 1. Pick today's topic
-        topic = get_todays_topic(target_date)
+        # 1. Pick the topic (explicit slot topic, or the day's primary)
+        if topic is None:
+            topic = get_todays_topic(target_date)
         category = topic["sources_key"]
         logger.info("Topic for %s: %s (%s)", target_date, topic["name"], category)
 
@@ -114,7 +118,7 @@ class Pipeline:
             # Podcast-primary (Phase F): the week's longevity episode IS the article,
             # distilled to actionable bullets in Lubo's lens. Fall back to the news
             # scraper if no episode is usable, so the post still generates.
-            selected_article = self._get_podcast_article(target_date, topic="biohacker")
+            selected_article = self._get_podcast_article(target_date, topic="biohacker", show_offset=show_offset)
             if selected_article is None:
                 logger.info("No biohacker podcast episode this week — falling back to news scrape")
                 articles = await scrape_topic(category)
@@ -351,16 +355,19 @@ class Pipeline:
         self._stock = StockInsights(indices=indices) if indices else StockInsights()
         return self._stock.get_market_pulse()
 
-    def _get_podcast_article(self, target_date: date, topic: str) -> ScrapedArticle | None:
+    def _get_podcast_article(self, target_date: date, topic: str, show_offset: int = 0) -> ScrapedArticle | None:
         """This week's rotated podcast episode for a topic, distilled. Never fatal.
 
         Rotates to the week's show, transcribes + distills (cached) with the topic's lens,
-        and returns the episode as a ScrapedArticle (summary = bullets). Any failure (no API
-        key, dead feed, etc.) returns None so the caller can fall back.
+        and returns the episode as a ScrapedArticle (summary = bullets). `show_offset` biases
+        which show is picked (so a topic posting 3x/week pulls 3 different shows). Any failure
+        (no API key, dead feed, etc.) returns None so the caller can fall back.
         """
         try:
             self._podcast = PodcastInsights()
-            return self._podcast.get_episode_article(self.session, get_week_number(target_date), topic=topic)
+            return self._podcast.get_episode_article(
+                self.session, get_week_number(target_date), topic=topic, show_offset=show_offset
+            )
         except Exception:
             logger.warning("Podcast fetch failed for %s", topic, exc_info=True)
             return None

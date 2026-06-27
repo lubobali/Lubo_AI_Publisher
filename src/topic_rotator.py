@@ -41,39 +41,81 @@ def get_week_number(d: date) -> int:
 def get_todays_topic(d: date) -> dict:
     """Get today's topic category based on weekly rotation.
 
-    Topics shift by 1 position each week. Day of week determines
-    which topic within the shifted sequence. Full cycle repeats
-    after 7 weeks. Weeks run Sunday-Saturday.
+    Thin accessor over get_todays_posts: returns the day's PRIMARY (first) topic.
+    Kept for single-topic callers/tests; the full daily schedule is get_todays_posts.
     """
-    categories = load_topic_categories()
-    n = len(categories)  # 7
+    posts = get_todays_posts(d)
+    if posts:
+        return posts[0]["topic"]
+    return load_topic_categories()[0]
 
+
+# Days run Sunday -> Saturday (matches get_week_number's Sunday-start weeks).
+WEEKDAY_NAMES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
+BIOHACKER_KEY = "biohacker"
+
+
+def get_week_plan(week: int) -> dict[str, list[dict]]:
+    """Build the full week's post plan from schedule.yaml `weekly_plan`.
+
+    Returns {weekday_name: [ {topic, window, show_offset}, ... ]}. Biohacker is
+    pinned to its slots (3x/week) and each occurrence gets an incrementing
+    show_offset (0,1,2) so the 3 posts pull different shows. The 6 non-biohacker
+    topics fill the `rotate` slots in week-order and shift by week for variety,
+    so each appears exactly once and Monday is not always the same topic.
+    """
+    plan_cfg = load_schedule_config()["weekly_plan"]
+    categories = load_topic_categories()
+    bio = next(c for c in categories if c["sources_key"] == BIOHACKER_KEY)
+    others = [c for c in categories if c["sources_key"] != BIOHACKER_KEY]
+
+    n = len(others)  # 6
+    shift = week % n if n else 0
+    rotated = others[shift:] + others[:shift]
+
+    plan: dict[str, list[dict]] = {}
+    rotate_idx = 0
+    show_offset = 0
+    for day in WEEKDAY_NAMES:
+        day_posts: list[dict] = []
+        for slot in plan_cfg.get(day, []):
+            window = slot["window"]
+            if slot["topic"] == BIOHACKER_KEY:
+                day_posts.append({"topic": bio, "window": window, "show_offset": show_offset})
+                show_offset += 1
+            else:  # rotate
+                day_posts.append({"topic": rotated[rotate_idx % n], "window": window, "show_offset": 0})
+                rotate_idx += 1
+        plan[day] = day_posts
+    return plan
+
+
+def get_todays_posts(d: date) -> list[dict]:
+    """Today's scheduled posts: a list of {topic, window, show_offset} (1 or 2 entries)."""
     week = get_week_number(d)
     weekday = (d.weekday() + 1) % 7  # Sun=0, Mon=1, ..., Sat=6
-
-    # Shift by week number, wrap around after 7 weeks
-    offset = (week % n) + weekday
-    index = offset % n
-
-    return categories[index]
+    return get_week_plan(week)[WEEKDAY_NAMES[weekday]]
 
 
 def get_random_post_time(
     d: date,
     previous_time: time | None = None,
     min_hour_diff: int = 1,
+    window: str | None = None,
 ) -> time:
-    """Generate a random posting time within the day's window.
+    """Generate a random posting time within a window.
 
-    Windows come from schedule.yaml (weekday 4-5:59 PM CT, weekend 11 PM-midnight CT).
-    If previous_time is given, ensures at least min_hour_diff hours difference.
+    `window` names a posting_windows entry (weekday, weekend, morning,
+    late_morning, evening). If omitted, falls back to weekday/weekend by the
+    date. If previous_time is given, ensures at least min_hour_diff hours diff.
     """
     config = load_schedule_config()
-    is_weekend = d.weekday() >= 5
+    if window is None:
+        window = "weekend" if d.weekday() >= 5 else "weekday"
 
-    window = config["posting_windows"]["weekend" if is_weekend else "weekday"]
-    start_hour = window["start_hour"]
-    end_hour = window["end_hour"]
+    win = config["posting_windows"][window]
+    start_hour = win["start_hour"]
+    end_hour = win["end_hour"]
 
     # Generate random minute within window (start_hour:00 to end_hour-1:59)
     total_minutes = (end_hour - start_hour) * 60

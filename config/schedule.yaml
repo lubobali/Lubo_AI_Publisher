@@ -1,4 +1,12 @@
-# Posting schedule — randomized within windows
+# Posting schedule — randomized within windows.
+#
+# 9 posts/week (Phase 2.19): Biohacker is pinned 3x (Sun/Wed/Fri); the other 6
+# topics rotate weekly across the remaining slots, 1x each. Two days carry a
+# second post (Sun, Wed); on those days the posts are kept >= 8h apart.
+# NOTE: these are GENERATION times (when the draft is built, saved PENDING). A
+# post goes live only after Lubo approves on the dashboard.
+
+timezone: America/Chicago
 
 posting_windows:
   weekday:
@@ -7,10 +15,40 @@ posting_windows:
   weekend:
     start_hour: 11  # 11 AM CT
     end_hour: 13    # through 12:59 PM CT (11 AM - 12 PM window)
+  # Extra windows for the 9-post plan
+  morning:
+    start_hour: 6   # early AM (Wed biohacker)
+    end_hour: 8     # through 7:59 AM CT
+  late_morning:
+    start_hour: 10  # Sunday biohacker
+    end_hour: 12    # through 11:59 AM CT
+  evening:
+    start_hour: 19  # Sunday 2nd post (8h+ after the morning biohacker)
+    end_hour: 21    # through 8:59 PM CT
 
-timezone: America/Chicago
+# Weekly plan, days run Sunday -> Saturday. Each day lists its posts in time order.
+#   topic: biohacker = pinned to this slot
+#   topic: rotate    = next of the 6 non-biohacker topics (rotates weekly)
+#   window           = which posting_windows entry to randomize the time within
+weekly_plan:
+  sun:
+    - {topic: biohacker, window: late_morning}
+    - {topic: rotate,    window: evening}
+  mon:
+    - {topic: rotate,    window: weekday}
+  tue:
+    - {topic: rotate,    window: weekday}
+  wed:
+    - {topic: biohacker, window: morning}
+    - {topic: rotate,    window: weekday}
+  thu:
+    - {topic: rotate,    window: weekday}
+  fri:
+    - {topic: biohacker, window: weekday}
+  sat:
+    - {topic: rotate,    window: weekend}
 
 rules:
-  max_posts_per_day: 1
-  min_hour_difference: 1  # Minimum 1hr between consecutive days' post times
-  pre_calculate: true     # Calculate tomorrow's time the night before
+  min_hours_between_same_day: 8  # 2nd post on a double day is >= 8h after the 1st
+  min_hour_difference: 1         # min gap between consecutive days' post times
+  pre_calculate: true            # calculate tomorrow's time the night before

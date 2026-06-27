@@ -163,6 +163,33 @@ class TestPodcastInsightsOrchestration:
             art = PodcastInsights().get_episode_article(db_session, week=0, feeds=self.FEEDS)
         assert art is None  # non-fatal: caller falls back to yfinance-only
 
+    def test_show_offset_picks_a_different_show(self, db_session):
+        """show_offset biases the rotation so a 3x/week topic pulls different shows."""
+        feeds = [{"name": "ShowA", "url": "a"}, {"name": "ShowB", "url": "b"}, {"name": "ShowC", "url": "c"}]
+
+        def fake_fetch(self, url):
+            # each feed yields a uniquely-named episode so we can see which show was chosen
+            name = {"a": "ShowA", "b": "ShowB", "c": "ShowC"}[url]
+            return f"""<rss version="2.0"><channel><item>
+                <title>{name} weekly</title>
+                <enclosure url="https://cdn/{name}.mp3" type="audio/mpeg"/>
+                <guid>g-{name}</guid>
+                <pubDate>Wed, 17 Jun 2026 08:00:00 +0000</pubDate>
+            </item></channel></rss>"""
+
+        chosen = []
+        with (
+            patch.object(PodcastInsights, "_fetch_feed", fake_fetch),
+            patch("src.podcast_insights.transcribe_audio", return_value="t"),
+            patch("src.podcast_insights.distill_transcript", return_value="- b"),
+        ):
+            for offset in range(3):
+                art = PodcastInsights().get_episode_article(
+                    db_session, week=0, topic="biohacker", feeds=feeds, show_offset=offset
+                )
+                chosen.append(art.source)
+        assert len(set(chosen)) == 3  # 3 offsets -> 3 distinct shows
+
     @patch("src.podcast_insights.transcribe_audio", return_value="raw transcript")
     def test_biohacker_topic_uses_its_feeds_and_distill_lens(self, mock_tx, db_session):
         """topic='biohacker' loads the biohacker feeds and distills with the biohacker prompt."""
