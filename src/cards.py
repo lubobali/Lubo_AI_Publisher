@@ -878,3 +878,50 @@ def build_insight_card(
         logo_uri=logo_uri,
         brand=brand,
     )
+
+
+def build_build_card(
+    commit: dict,
+    date_range: str = "",
+    logo_uri: str = "",
+    issue: int | None = None,
+    brand: dict = BRAND,
+) -> str:
+    """BUILD card (Phase 2.16 E5) for my_agent_git — what Lubo shipped, from REAL git data,
+    inside the universal frame. Retires the old terminal-style screenshot. The commit message
+    is the headline; real diff stats are luxury tiles. numbers come straight from git_insights."""
+    p = brand
+    msg = " ".join(str(commit.get("message", "")).split())
+    size = 46 if len(msg) <= 50 else 38 if len(msg) <= 92 else 32
+    added = int(commit.get("lines_added", 0))
+    deleted = int(commit.get("lines_deleted", 0))
+    files = int(commit.get("files_changed", 0))
+    chash = str(commit.get("hash", "")).strip()
+
+    def tile(big: str, label: str, sub: str, accent: bool = False) -> str:
+        col = p["blue"] if accent else p["text"]
+        return (
+            '<div class="panel" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:20px 26px">'
+            f'<div style="font-family:Grotesk;font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:{p["footer"]}">{html_lib.escape(label)}</div>'
+            f'<div style="font-family:Grotesk;font-size:40px;font-weight:700;color:{col};line-height:1.05;margin-top:8px">{html_lib.escape(big)}</div>'
+            f'<div style="font-family:Grotesk;font-size:14px;color:{p["footer"]};margin-top:6px">{html_lib.escape(sub)}</div></div>'
+        )
+
+    tiles = (
+        tile(f"+{added:,}", "Lines Shipped", f"-{deleted:,} removed", accent=True)
+        + tile(str(files), "Files Touched", "this build")
+        + tile(chash or "—", "Commit", "real git log")
+    )
+    body = (
+        f'<div style="font-family:Fraunces;font-weight:400;font-size:{size}px;line-height:1.1;'
+        f'letter-spacing:-0.5px;color:{p["headline"]};text-shadow:0 2px 30px rgba(0,0,0,.4)">{html_lib.escape(msg)}</div>'
+        f'<div style="display:flex;gap:18px;margin-top:28px">{tiles}</div>'
+    )
+    return _frame(
+        kicker="My Agent Build",
+        body=body,
+        disclaimer="Build log · real git · LuBot",
+        folio=_folio(issue, date_range),
+        logo_uri=logo_uri,
+        brand=brand,
+    )

@@ -158,6 +158,21 @@ class TestChartCardsUseFrame:
         html = cards.build_devtrack_card({"total_hours": 80, "commits": 5}, "Week 25", cards.CHART_COLORS)
         assert "Lubo Bali" in html and "Building in Public" in html
 
+    def test_build_card_renders_real_git_stats(self):
+        commit = {
+            "message": "Merge Stock Talk: yfinance market card + prompts",
+            "lines_added": 1905,
+            "lines_deleted": 1457,
+            "files_changed": 34,
+            "hash": "b7d1f96",
+        }
+        html = cards.build_build_card(commit, date_range="June 24, 2026", issue=11)
+        assert "My Agent Build" in html  # kicker
+        assert "+1,905" in html and "-1,457 removed" in html and "34" in html  # real diff stats
+        assert "b7d1f96" in html  # commit hash
+        assert "Merge Stock Talk" in html  # commit message headline
+        assert "Lubo Bali" in html  # signature
+
 
 class TestInsightCard:
     """Phase 2.12 A: editorial pull-quote card for opinion categories (no screenshots)."""

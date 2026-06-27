@@ -185,10 +185,11 @@ class Pipeline:
                 changed_files=bc.changed_files,
                 commit_hash=bc.hash,
                 commit_date=bc.date.strftime("%B %d, %Y"),
+                issue=issue_no,
             )
             if screenshot:
                 image_path = screenshot.path
-                logger.info("Git screenshot: %s", image_path)
+                logger.info("My Agent Build card: %s", image_path)
         elif category == "my_agent":
             screenshot = await take_screenshot("https://staging.lubot.ai")
             if screenshot:
