@@ -14,6 +14,7 @@ from src.post_processor import (
     strip_json_wrapper,
     strip_markdown,
     strip_model_meta,
+    strip_special_chars,
     validate_post,
 )
 
@@ -126,6 +127,35 @@ class TestStripDashes:
         result = strip_dashes("AI — fast — cheap — good")
         assert "—" not in result
         assert "–" not in result
+
+
+# ---------------------------------------------------------------------------
+# strip_special_chars — plain human typing (no arrows/fancy unicode)
+# ---------------------------------------------------------------------------
+
+
+class TestStripSpecialChars:
+    def test_replaces_ascii_arrow(self):
+        assert "->" not in strip_special_chars("free way -> premium way")
+
+    def test_replaces_unicode_arrow(self):
+        out = strip_special_chars("free way → premium way")
+        assert "→" not in out
+
+    def test_replaces_ellipsis_and_bullet(self):
+        out = strip_special_chars("wait… • do this")
+        assert "…" not in out and "•" not in out
+
+    def test_strips_smart_quotes(self):
+        out = strip_special_chars("he said “hi” to me")
+        assert "“" not in out and "”" not in out
+
+    def test_leaves_plain_text_alone(self):
+        assert strip_special_chars("just normal text here") == "just normal text here"
+
+    def test_process_post_strips_arrows(self):
+        text, _ = process_post("Stop seed oils -> feel better. What did you change?", [])
+        assert "->" not in text and "→" not in text
 
 
 # ---------------------------------------------------------------------------

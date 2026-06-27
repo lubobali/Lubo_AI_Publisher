@@ -116,6 +116,8 @@ TRUTH (this is the most important rule — one fake detail destroys credibility 
 
 PLAIN TEXT ONLY: No markdown. No ** bold **, no # headers, no backticks, no "* " bullets (use "- " if you must list). LinkedIn renders markdown as literal symbols and it looks broken.
 
+PLAIN HUMAN TYPING: Write like a real person on a normal keyboard. NO em-dashes (the long "—"), NO en-dashes, NO arrows (no "->", no unicode arrows), NO fancy/special unicode symbols or smart quotes. Use only a normal hyphen (-), comma, period, colon, and regular letters. This applies to post_text AND card_headline.
+
 HASHTAGS:
 - {hashtag_rules["min_count"]}-{hashtag_rules["max_count"]} hashtags at the very end of the post
 - Mix broad and specific: {hashtag_rules["mix"]}
@@ -281,6 +283,45 @@ def build_user_prompt(
             "ANTI-HALLUCINATION (critical):\n"
             "- Invent NO numbers, percentages, prices, returns, or dates\n"
             "- Do NOT fabricate personal trading results or holdings"
+        )
+
+    # Biohacker / longevity — Lubo's lived philosophy (memory project_biohacker_brief)
+    if topic_key == "biohacker":
+        prompt_parts.append(
+            "\nThis is a BIOHACKER / LONGEVITY post. The material below is the distilled takeaway "
+            "from a longevity expert (the source name is shown with it). Turn it into ONE genuinely "
+            "useful nugget a busy person can act on today, in Lubo's voice.\n\n"
+            "LUBO'S REAL CREDIBILITY (true, you MAY use it authentically):\n"
+            "- He has lived this for 5+ years. He is 46 and feels and looks about 35.\n"
+            "- 'been at this 5 years, im 46 and feel 35' is honest and powerful. Use it naturally, not every post.\n"
+            "- Do NOT invent a specific tested age number (no 'my biological age is 32') unless it is a REAL result in the material. 'feel and look 35' is subjective and fine.\n\n"
+            "WHAT BIOHACKING MEANS (his definition): optimizing the WHOLE body as one system - food, "
+            "environment, stress, work, the people around you, sleep, light, movement, time outdoors, "
+            "and mind. It is NOT just supplements.\n\n"
+            "RULES:\n"
+            "- Open with YOUR take or the one idea, not the expert's name and not a headline.\n"
+            "- LEAD with what to STOP (seed oils, ultra-processed food, plastics, toxins) before what to add. Most disease comes from bad habits, not genetics.\n"
+            "- Always give BOTH a FREE/accessible way AND a premium/paid option, so people with and without money both get value.\n"
+            "- Give the brief WHY (the mechanism) in plain words. No hype. Flag what is solid vs what is marketing.\n"
+            "- Generous, practical, helping-a-friend tone. Not preachy, not salesy.\n"
+            "- Always 'I', never 'we'. Short lines, blank lines between thoughts.\n"
+            "- End with ONE real question, ending with a question mark (?).\n\n"
+            "THE AGE FRAMEWORK (weave in when it fits, not every post):\n"
+            "- Chronological age = your birthday number (fixed). Biological age = how old your body actually functions (you control it). Epigenetic age = biological age MEASURED by DNA-methylation clocks.\n"
+            "- The whole point: drive biological age BELOW chronological by daily habits. Empowering message - your birthday is fixed, your biological age is not.\n\n"
+            "LONGEVITY TESTS (give tiers when relevant):\n"
+            "- FREE at-home markers (resting heart rate, grip strength, waist-to-height, how fast you recover, VO2max if you can).\n"
+            "- CHEAP bloodwork (ApoB, hs-CRP, fasting insulin, HbA1c, lipids).\n"
+            "- PREMIUM epigenetic clocks (TruDiagnostic TruAge, GrimAge, DunedinPACE) that measure actual biological age and aging speed.\n\n"
+            "HONEST FRAMING:\n"
+            "- You MAY cite the expert / show by name ('Asprey covered this on The Human Upgrade', 'Saladino made the case that...'). Citing is good and credible.\n"
+            "- But do NOT claim Lubo personally listened to this exact episode (the pipeline picked it, not him). 'I have spent years on this' is true; 'I just listened to this new episode' is not.\n\n"
+            "ANTI-HALLUCINATION:\n"
+            "- Use NO numbers, studies, or dosages that are not in the material above. No invented percentages or 'studies show 40%'.\n"
+            "- Do NOT fabricate a personal experiment or result.\n\n"
+            "MARKETING (soft, honest): LuBot does NOT have a biohacking feature yet (only stock, website, "
+            "and my-files modes exist). Do NOT market a LuBot biohacking product. Keep any mention soft and "
+            "general at most. The post's job here is value and authority, not a hard sell."
         )
 
     # Add scraped articles as context

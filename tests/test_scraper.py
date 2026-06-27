@@ -82,9 +82,11 @@ class TestLoadSources:
             "big_tech",
             "my_agent_git",
             "stock_talk",
-            "market_pulse",  # Phase 2.10b — podcast feeds (handled by PodcastInsights)
         }
+        # Phase F: podcast feeds moved under a top-level `podcasts:` section (keyed by
+        # topic, owned by PodcastInsights) and are excluded from news-scraper sources.
         assert set(sources.keys()) == expected
+        assert "podcasts" not in sources
 
     def test_each_source_has_required_fields(self):
         sources = load_sources()

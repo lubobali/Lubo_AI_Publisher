@@ -110,6 +110,23 @@ class Pipeline:
                     f"\n\nThe chart shown with this post plots: {charted}. "
                     "Anchor your take on these so the words and the chart match."
                 )
+        elif category == "biohacker":
+            # Podcast-primary (Phase F): the week's longevity episode IS the article,
+            # distilled to actionable bullets in Lubo's lens. Fall back to the news
+            # scraper if no episode is usable, so the post still generates.
+            selected_article = self._get_podcast_article(target_date, topic="biohacker")
+            if selected_article is None:
+                logger.info("No biohacker podcast episode this week — falling back to news scrape")
+                articles = await scrape_topic(category)
+                if not articles:
+                    return PipelineResult(success=False, error="No biohacker podcast or articles found")
+                checker = DuplicateChecker(self.session)
+                selected_article = await self._find_non_duplicate(checker, articles, category)
+                if selected_article is None:
+                    return PipelineResult(
+                        success=False, error=f"All {len(articles)} articles are duplicates for {category}"
+                    )
+                checker.record_url(selected_article.url, used=True)
         else:
             articles = await scrape_topic(category)
             if not articles:
@@ -333,20 +350,24 @@ class Pipeline:
         self._stock = StockInsights(indices=indices) if indices else StockInsights()
         return self._stock.get_market_pulse()
 
-    def _get_podcast_context(self, target_date: date) -> str | None:
-        """Distilled podcast angle for this week's Market Pulse. Never fatal.
+    def _get_podcast_article(self, target_date: date, topic: str) -> ScrapedArticle | None:
+        """This week's rotated podcast episode for a topic, distilled. Never fatal.
 
-        Rotates to the week's show, transcribes + distills (cached), and returns the
-        bullet points. Any failure (no API key, dead feed, etc.) returns None so the
-        post still generates from the real yfinance numbers alone.
+        Rotates to the week's show, transcribes + distills (cached) with the topic's lens,
+        and returns the episode as a ScrapedArticle (summary = bullets). Any failure (no API
+        key, dead feed, etc.) returns None so the caller can fall back.
         """
         try:
             self._podcast = PodcastInsights()
-            article = self._podcast.get_episode_article(self.session, get_week_number(target_date))
-            return article.summary if article else None
+            return self._podcast.get_episode_article(self.session, get_week_number(target_date), topic=topic)
         except Exception:
-            logger.warning("Podcast angle fetch failed; Market Pulse uses yfinance only", exc_info=True)
+            logger.warning("Podcast fetch failed for %s", topic, exc_info=True)
             return None
+
+    def _get_podcast_context(self, target_date: date) -> str | None:
+        """Distilled podcast angle (bullets) for this week's Market Pulse, or None."""
+        article = self._get_podcast_article(target_date, topic="market_pulse")
+        return article.summary if article else None
 
     def _get_book_concepts(self, category: str, topic: dict, article: ScrapedArticle) -> list[str]:
         """Retrieve 2-3 book concepts to ground a technical post. Never fatal.
@@ -424,10 +445,10 @@ def _x_reply_link(post) -> str | None:
     post). Stock -> LuBot stock CTA; ai_news/tech_talk -> the source article (value); else lubot.ai."""
     cat = post.topic_category
     if cat in ("market_pulse", "stock_talk"):
-        return "Built with my own stock AI \u2192 lubot.ai"
+        return "Built with my own stock AI: lubot.ai"
     if cat in ("ai_news", "tech_talk") and post.source_url:
         return post.source_url
-    return "More on what I'm building \u2192 lubot.ai"
+    return "More on what I am building: lubot.ai"
 
 
 def _enabled_platforms(access_token: str, person_urn: str) -> list[tuple[str, dict]]:

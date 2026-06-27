@@ -46,6 +46,26 @@ _DISTILL_SYSTEM = (
     "or dollar amounts). Each bullet on its own line starting with '- '. No preamble, no title."
 )
 
+# Biohacker / longevity distill (Phase F) — Lubo's lens (memory project_biohacker_brief).
+_DISTILL_BIOHACKER = (
+    "You distill a longevity/biohacking podcast transcript into the most VALUABLE, ACTIONABLE "
+    "takeaways for a busy person. Lens: biohacking = optimizing the WHOLE body as one system "
+    "(food, environment, stress, sleep, light, movement, people, mind), not just supplements. "
+    "Prioritize what people can do for FREE; note premium/paid options separately. LEAD with what "
+    "to STOP (seed oils, ultra-processed food, plastics, toxins) before what to add. Give the brief "
+    "MECHANISM (why). Where relevant use the age framework: what lowers BIOLOGICAL age and how to "
+    "MEASURE it (free at-home markers, bloodwork, premium epigenetic clocks). No hype; flag solid "
+    "vs marketing. Output 3 to 5 short bullets, each on its own line starting with '- ', each = one "
+    "action + the why, marked free vs costs-money; attribute claims to the speaker. Use NO invented "
+    "numbers, studies, or dosages not in the transcript. No preamble, no title."
+)
+
+# Per-topic distillation prompt — defaults to the market prompt for any unmapped topic.
+_DISTILL_BY_TOPIC = {
+    "market_pulse": _DISTILL_SYSTEM,
+    "biohacker": _DISTILL_BIOHACKER,
+}
+
 # Invisible chars Megaphone et al. sprinkle around hyperlinked names in show-notes.
 _ZERO_WIDTH = dict.fromkeys(map(ord, "​‌‍⁠﻿"), None)
 
@@ -56,11 +76,12 @@ _SKIP_TITLE = re.compile(
 )
 
 
-def load_podcast_feeds() -> list[dict]:
-    """Load the Market Pulse podcast feeds (name + url) from scraper_sources.yaml."""
+def load_podcast_feeds(topic: str = "market_pulse") -> list[dict]:
+    """Load a topic's podcast feeds (name + url) from scraper_sources.yaml -> podcasts[topic]."""
     with open(CONFIG_PATH) as f:
         config = yaml.safe_load(f)
-    return [{"name": s["name"], "url": s["url"]} for s in config.get("market_pulse", [])]
+    feeds = config.get("podcasts", {}).get(topic, [])
+    return [{"name": s["name"], "url": s["url"]} for s in feeds]
 
 
 def select_episode(episodes: list["PodcastEpisode"], max_scan: int = 10) -> "PodcastEpisode | None":
@@ -114,15 +135,16 @@ def pick_podcast(week: int, podcasts: list):
 def distill_transcript(
     transcript: str,
     *,
+    system: str | None = None,
     api_key: str | None = None,
     model: str | None = None,
     timeout: float = 120.0,
 ) -> str | None:
-    """Distill a raw transcript into 3-5 market-theme bullets via OpenRouter chat.
+    """Distill a raw transcript into 3-5 takeaway bullets via OpenRouter chat.
 
     The key quality lever (P5.5): turns ~10k unstructured words into the writer's
-    actual angle, stripping ads/intros/tangents and all numbers. Non-fatal — returns
-    None on missing key, API error, or empty output.
+    actual angle. `system` selects the per-topic distill lens (defaults to the market
+    prompt). Non-fatal — returns None on missing key, API error, or empty output.
     """
     api_key = api_key or os.getenv("OPENROUTER_API_KEY")
     if not api_key:
@@ -136,7 +158,7 @@ def distill_transcript(
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": _DISTILL_SYSTEM},
+            {"role": "system", "content": system or _DISTILL_SYSTEM},
             {"role": "user", "content": f"Distill this podcast transcript:\n\n{text}"},
         ],
         "temperature": 0.3,
@@ -269,8 +291,12 @@ class PodcastInsights:
         resp.raise_for_status()
         return resp.text
 
-    def _bullets_for(self, session: Session, ep: PodcastEpisode) -> str | None:
-        """Distilled bullets for an episode — from cache if present, else transcribe+distill."""
+    def _bullets_for(self, session: Session, ep: PodcastEpisode, system: str | None = None) -> str | None:
+        """Distilled bullets for an episode — from cache if present, else transcribe+distill.
+
+        `system` selects the per-topic distill lens; the raw transcript stays shared across
+        topics (cached by guid), only the distillation differs.
+        """
         cached = get_cached_transcript(session, ep.guid)
         if cached and cached.distilled:
             return cached.distilled  # full cache hit — zero API spend
@@ -278,7 +304,7 @@ class PodcastInsights:
         transcript = cached.transcript if cached else transcribe_audio(ep.audio_url)
         if not transcript:
             return None
-        bullets = distill_transcript(transcript)
+        bullets = distill_transcript(transcript, system=system)
         if not bullets:
             return None
         store_transcript(
@@ -296,10 +322,15 @@ class PodcastInsights:
         self,
         session: Session,
         week: int,
+        topic: str = "market_pulse",
         feeds: list[dict] | None = None,
     ) -> ScrapedArticle | None:
-        """Return the week's podcast angle as a ScrapedArticle (summary = bullets), or None."""
-        feeds = feeds if feeds is not None else load_podcast_feeds()
+        """Return the week's podcast angle as a ScrapedArticle (summary = bullets), or None.
+
+        `topic` selects both the feed list (config podcasts[topic]) and the distill lens.
+        """
+        feeds = feeds if feeds is not None else load_podcast_feeds(topic)
+        system = _DISTILL_BY_TOPIC.get(topic, _DISTILL_SYSTEM)
         for feed in rotation_order(week, feeds):
             try:
                 xml = self._fetch_feed(feed["url"])
@@ -309,11 +340,11 @@ class PodcastInsights:
             ep = select_episode(parse_podcast_feed(xml, podcast_name=feed["name"]))
             if ep is None:
                 continue
-            bullets = self._bullets_for(session, ep)
+            bullets = self._bullets_for(session, ep, system=system)
             if not bullets:
                 continue
             self.episode = ep
-            logger.info("Market Pulse podcast angle from %s: %s", ep.podcast_name, ep.title)
+            logger.info("%s podcast angle from %s: %s", topic, ep.podcast_name, ep.title)
             return ScrapedArticle(
                 title=ep.title,
                 url=ep.page_url or ep.audio_url,

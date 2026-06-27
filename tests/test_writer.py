@@ -146,6 +146,12 @@ class TestBuildSystemPrompt:
         prompt = build_system_prompt().lower()
         assert "no markdown" in prompt or "plain text only" in prompt
 
+    def test_forbids_em_dashes_and_arrows(self):
+        prompt = build_system_prompt().lower()
+        assert "plain human typing" in prompt
+        assert "em-dash" in prompt or "em dash" in prompt
+        assert "arrow" in prompt
+
 
 # ---------------------------------------------------------------------------
 # User prompt building
@@ -397,6 +403,42 @@ class TestBuildUserPrompt:
         assert "my_agent_build" in rules["topic_specific"]
         build_rules = rules["topic_specific"]["my_agent_build"]
         assert any("BUILD LOG" in r for r in build_rules)
+
+
+class TestBiohackerBlock:
+    """Phase F: biohacker posts get Lubo's longevity philosophy block."""
+
+    def _prompt(self):
+        return build_user_prompt(
+            topic_name="Biohacker",
+            topic_description="longevity and health optimization",
+            articles=SAMPLE_ARTICLES,
+        )
+
+    def test_has_biohacker_block(self):
+        assert "BIOHACKER" in self._prompt()
+
+    def test_leads_with_what_to_stop(self):
+        assert "STOP" in self._prompt()
+
+    def test_includes_age_framework(self):
+        p = self._prompt()
+        assert "Biological age" in p and "Chronological age" in p
+
+    def test_includes_longevity_tests_tiers(self):
+        p = self._prompt().lower()
+        assert "free" in p and "epigenetic" in p
+
+    def test_uses_real_credibility(self):
+        assert "46" in self._prompt()  # true: 46, feels 35
+
+    def test_no_hard_biohacking_product_pitch(self):
+        # LuBot has no biohacking feature yet; the block must say so
+        assert "biohacking feature yet" in self._prompt()
+
+    def test_not_present_for_other_topics(self):
+        prompt = build_user_prompt(topic_name="Tech Talk", topic_description="x", articles=SAMPLE_ARTICLES)
+        assert "BIOHACKER / LONGEVITY post" not in prompt
 
 
 # ---------------------------------------------------------------------------
