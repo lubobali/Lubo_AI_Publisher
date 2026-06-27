@@ -63,6 +63,36 @@ class TestHeadlineCard:
         assert "<html" in html and "Just a title" in html
 
 
+class TestDesignSystemFoundation:
+    """Phase 2.16 E1: embedded fonts + brand palette + deterministic texture helpers."""
+
+    def test_font_css_embeds_fonts(self):
+        css = cards._font_css()
+        assert "@font-face" in css
+        assert "Fraunces" in css and "Grotesk" in css
+        assert "data:font/woff2;base64," in css
+
+    def test_font_css_cached_and_deterministic(self):
+        assert cards._font_css() == cards._font_css()
+
+    def test_brand_palette_core_keys(self):
+        for key in ("blue", "blue_dk", "steel", "accent", "bg", "text", "headline", "footer"):
+            assert key in cards.BRAND
+        assert cards.BRAND["blue"] == "#4f8cf0"  # logo blue, not gold
+
+    def test_grain_deterministic_fixed_seed(self):
+        first, second = cards._grain(), cards._grain()
+        assert first == second  # no randomness
+        assert "seed='11'" in first
+        assert "mix-blend-mode:overlay" in first
+
+    def test_grain_opacity_param(self):
+        assert "opacity:0.12" in cards._grain(0.12)
+
+    def test_vignette_is_inset_overlay(self):
+        assert "inset" in cards._vignette()
+
+
 class TestInsightCard:
     """Phase 2.12 A: editorial pull-quote card for opinion categories (no screenshots)."""
 

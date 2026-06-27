@@ -14,6 +14,7 @@ Each builder is PURE (returns HTML; the ECharts lib is injected) so it is unit-t
 the real check is the render (verify it paints — remember the locale blank-chart bug).
 """
 
+import base64
 import html as html_lib
 import json
 from pathlib import Path
@@ -74,13 +75,90 @@ def echarts_lib() -> str:
 
 
 def _logo_data_uri() -> str:
-    import base64
-
     try:
         b = _LOGO_PATH.read_bytes()
         return "data:image/png;base64," + base64.b64encode(b).decode()
     except Exception:
         return ""
+
+
+# ---------------------------------------------------------------------------
+# Design system (Phase 2.16 E) — brand palette + embedded fonts + texture.
+# The universal frame is built on these. Everything deterministic: fonts embedded
+# as base64, grain a FIXED-seed SVG -> a given post always renders identical pixels.
+# ---------------------------------------------------------------------------
+
+_FONTS_DIR = Path(__file__).parent.parent / "static" / "fonts"
+
+# (css family, file, weight, style) — exactly what the locked design uses, nothing more.
+_FONT_FACES = (
+    ("Fraunces", "fraunces-400.woff2", 400, "normal"),  # serif headline (the "art")
+    ("Grotesk", "spacegrotesk-500.woff2", 500, "normal"),  # body / secondary
+    ("Grotesk", "spacegrotesk-700.woff2", 700, "normal"),  # kicker / signature / numbers
+)
+
+# Brand palette — matches the LuBot logo (blue 3D mark + steel key). Replaces the old gold.
+BRAND = {
+    "blue": "#4f8cf0",
+    "blue_dk": "#1f4fae",
+    "steel": "#c3c9d4",
+    "accent": "linear-gradient(105deg,#1f4fae 0%,#4f8cf0 40%,#c3c9d4 70%,#4f8cf0 100%)",
+    "bg": "radial-gradient(1300px 820px at 12% -20%,#101826 0%,#0a0e15 58%),#0a0e15",
+    "text": "#eef2f8",
+    "headline": "#f4f7fc",
+    "footer": "#aab6cc",
+    "hairline": "rgba(120,160,230,0.20)",
+}
+
+# Deterministic film grain (fixed seed -> identical every render). The SVG uses single
+# quotes, so the url() is wrapped in &quot; to coexist with the double-quoted style attr.
+_GRAIN_SVG = (
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='314'>"
+    "<filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' "
+    "seed='11' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter>"
+    "<rect width='100%25' height='100%25' filter='url(%23n)'/></svg>"
+)
+
+_FONT_CSS_CACHE: str | None = None
+
+
+def _font_css() -> str:
+    """@font-face blocks with the fonts embedded as base64 (offline + deterministic).
+
+    Cached after first read. Returns "" if the font files are missing (graceful — the
+    card still renders in the system fallback rather than crashing).
+    """
+    global _FONT_CSS_CACHE
+    if _FONT_CSS_CACHE is not None:
+        return _FONT_CSS_CACHE
+    parts = []
+    for family, filename, weight, style in _FONT_FACES:
+        try:
+            b64 = base64.b64encode((_FONTS_DIR / filename).read_bytes()).decode()
+        except Exception:
+            continue
+        parts.append(
+            f"@font-face{{font-family:'{family}';font-weight:{weight};font-style:{style};"
+            f"src:url(data:font/woff2;base64,{b64}) format('woff2');font-display:block}}"
+        )
+    _FONT_CSS_CACHE = "".join(parts)
+    return _FONT_CSS_CACHE
+
+
+def _grain(opacity: float = 0.06) -> str:
+    """A subtle film-grain overlay div (deterministic) — kills the flat-digital look."""
+    return (
+        f'<div style="position:absolute;inset:0;background:url(&quot;{_GRAIN_SVG}&quot;);'
+        f'background-size:600px;opacity:{opacity};mix-blend-mode:overlay;pointer-events:none"></div>'
+    )
+
+
+def _vignette() -> str:
+    """An inset vignette overlay div — depth, like a painting under gallery light."""
+    return (
+        '<div style="position:absolute;inset:0;box-shadow:inset 0 0 240px 60px '
+        'rgba(0,0,0,.5);pointer-events:none"></div>'
+    )
 
 
 def _fmt_pct(p: float) -> str:
