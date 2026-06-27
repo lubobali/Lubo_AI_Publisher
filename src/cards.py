@@ -185,13 +185,16 @@ def _frame(
     logo_uri: str = "",
     lib_js: str = "",
     script: str = "",
+    signature: bool = True,
     brand: dict = BRAND,
 ) -> str:
-    """The UNIVERSAL card frame (Phase 2.16 E2) — constant chrome on every card:
+    """The UNIVERSAL card frame (Phase 2.16 E2) — constant chrome on EVERY card:
     background + grain + vignette, an accent rail, the topic KICKER + LOGO, a hairline,
-    a centered BODY slot (the topic-specific interior), and a footer (FOLIO | disclaimer
-    with an accent dot). Deterministic. `body` is whatever interior a builder composes;
-    lib_js/script let chart interiors inject their engine + setup.
+    a centered BODY slot (the topic-specific interior), the "— Lubo Bali" SIGNATURE, and a
+    footer (FOLIO | disclaimer + accent dot). Flex column so any body size stays centered and
+    the signature + footer always anchor at the bottom. Deterministic. The signature is on
+    every card by design (it's Lubo's vision/voice; the tools just express it). `body` is
+    whatever interior a builder composes; lib_js/script let chart interiors inject engine+setup.
     """
     b = brand
     logo = (
@@ -199,19 +202,21 @@ def _frame(
         if logo_uri
         else f'<div style="font-family:Grotesk;font-weight:800;font-size:26px;color:{b["blue"]}">LuBot</div>'
     )
+    sig = f'<div style="position:relative;margin-bottom:20px">{_signature(b)}</div>' if signature else ""
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{_font_css()}
 *{{margin:0;padding:0;box-sizing:border-box}}
 body{{width:1200px;height:627px;font-family:'Grotesk','Inter','Segoe UI',sans-serif;background:{b["bg"]};color:{b["text"]}}}
-</style></head><body><div style="position:relative;width:1200px;height:627px;padding:52px 64px 0 70px">
+</style></head><body><div style="position:relative;width:1200px;height:627px;display:flex;flex-direction:column;padding:52px 64px 40px 70px">
 {_grain()}{_vignette()}
 <div style="position:absolute;left:0;top:64px;bottom:64px;width:3px;background:{b["accent"]}"></div>
 <div style="position:relative;display:flex;justify-content:space-between;align-items:flex-start">
   <div style="font-family:Grotesk;font-weight:700;font-size:17px;letter-spacing:4px;text-transform:uppercase;background:{b["accent"]};-webkit-background-clip:text;background-clip:text;color:transparent">{html_lib.escape(kicker)}</div>
   {logo}
 </div>
-<div style="position:relative;width:60px;height:2px;background:{b["accent"]};margin:24px 0 0 0"></div>
-<div style="position:relative;display:flex;flex-direction:column;justify-content:center;height:372px;max-width:1010px">{body}</div>
-<div style="position:absolute;left:70px;right:64px;bottom:40px;display:flex;justify-content:space-between;align-items:center;
+<div style="position:relative;width:60px;height:2px;background:{b["accent"]};margin:24px 0 22px 0"></div>
+<div style="position:relative;flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;max-width:1010px">{body}</div>
+{sig}
+<div style="position:relative;display:flex;justify-content:space-between;align-items:center;
   border-top:1px solid {b["hairline"]};padding-top:14px;font-family:Grotesk;font-size:16px;letter-spacing:1.5px;text-transform:uppercase;color:{b["footer"]}">
   <span>{html_lib.escape(folio)}</span>
   <span style="display:flex;align-items:center;gap:9px"><span style="width:7px;height:7px;border-radius:50%;background:{b["blue"]};box-shadow:0 0 12px {b["blue"]}"></span>{html_lib.escape(disclaimer)}</span>
@@ -859,7 +864,6 @@ def build_insight_card(
         f'<div style="font-family:Fraunces;font-weight:400;font-size:{size}px;line-height:1.06;'
         f'letter-spacing:-1px;color:{brand["headline"]};text-shadow:0 2px 30px rgba(0,0,0,.4)">'
         f"{html_lib.escape(h)}</div>"
-        f'<div style="margin-top:26px">{_signature(brand)}</div>'
     )
     return _frame(
         kicker=kicker,

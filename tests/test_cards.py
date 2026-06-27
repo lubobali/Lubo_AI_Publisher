@@ -124,6 +124,14 @@ class TestUniversalFrame:
         html = cards._frame(kicker="A & B", body="x", disclaimer="<n>", folio="")
         assert "A &amp; B" in html and "&lt;n&gt;" in html
 
+    def test_frame_includes_signature_by_default(self):
+        html = cards._frame(kicker="K", body="x", disclaimer="d")
+        assert "Lubo Bali" in html  # signature on every card by default
+
+    def test_frame_signature_can_be_disabled(self):
+        html = cards._frame(kicker="K", body="x", disclaimer="d", signature=False)
+        assert "Lubo Bali" not in html
+
     def test_frame_injects_chart_engine_and_script(self):
         html = cards._frame(
             kicker="Market Pulse", body="<div id='c'></div>", disclaimer="d", lib_js="/*ENGINE*/", script="/*SETUP*/"
