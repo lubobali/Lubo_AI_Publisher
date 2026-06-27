@@ -256,7 +256,7 @@ def _shell(
     lib_js: str,
     logo_uri: str = "",
     kicker: str = "Market Pulse",
-    foot: str = "Weekly close · real market data",
+    foot: str = "Weekly close · real market data · LuBot.AI Stock",
     issue: int | None = None,
 ) -> str:
     """Compatibility wrapper (Phase 2.16 E4): renders the chart/stat builders through the

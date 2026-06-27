@@ -43,7 +43,7 @@ GROUNDED_CATEGORIES = {"tech_talk", "my_agent_git", "ai_news", "stock_talk", "ma
 INSIGHT_CARDS = {
     "tech_talk": ("Tech Talk", "Honest takes on tech"),
     "biohacker": ("Biohacker", "What I actually do, not medical advice"),
-    "stock_talk": ("Investing Principle", "Not financial advice"),
+    "stock_talk": ("Investing Principle", "Not financial advice · LuBot.AI Stock"),
 }
 
 
