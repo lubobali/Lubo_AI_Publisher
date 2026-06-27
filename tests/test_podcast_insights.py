@@ -10,6 +10,9 @@ from datetime import datetime
 from unittest.mock import Mock, patch
 
 from src.podcast_insights import (
+    _DISTILL_BIOHACKER,
+    _DISTILL_BY_TOPIC,
+    _DISTILL_SYSTEM,
     PodcastEpisode,
     distill_transcript,
     load_podcast_feeds,
@@ -163,14 +166,40 @@ class TestRotation:
 
 
 class TestLoadPodcastFeeds:
-    """The Market Pulse podcast feeds come from scraper_sources.yaml (P6 config)."""
+    """Podcast feeds come from scraper_sources.yaml -> podcasts[topic] (Phase F: topic-aware)."""
 
     def test_loads_four_feeds_with_name_and_url(self):
-        feeds = load_podcast_feeds()
+        feeds = load_podcast_feeds()  # defaults to market_pulse
         assert len(feeds) == 4
         names = {f["name"] for f in feeds}
         assert "Animal Spirits" in names and "RiskReversal Pod" in names
         assert all(f["url"].startswith("http") for f in feeds)
+
+    def test_market_pulse_topic_explicit(self):
+        assert load_podcast_feeds("market_pulse") == load_podcast_feeds()
+
+    def test_loads_biohacker_feeds(self):
+        feeds = load_podcast_feeds("biohacker")
+        names = {f["name"] for f in feeds}
+        assert "The Human Upgrade with Dave Asprey" in names
+        assert all(f["url"].startswith("http") for f in feeds)
+
+    def test_unknown_topic_is_empty(self):
+        assert load_podcast_feeds("nope") == []
+
+
+class TestDistillByTopic:
+    """Each topic gets its own distillation lens; defaults to the market prompt."""
+
+    def test_registry_maps_topics(self):
+        assert _DISTILL_BY_TOPIC["market_pulse"] is _DISTILL_SYSTEM
+        assert _DISTILL_BY_TOPIC["biohacker"] is _DISTILL_BIOHACKER
+
+    def test_biohacker_prompt_is_longevity_focused(self):
+        p = _DISTILL_BIOHACKER.lower()
+        assert "biohacking" in p or "longevity" in p
+        assert "free" in p  # always serve no-money audience
+        assert "stop" in p  # lead with what to remove
 
 
 class TestSelectEpisode:
@@ -222,6 +251,20 @@ class TestDistillTranscript:
         body = kwargs["json"]
         assert body["model"] == "some/model"
         assert any("THE TRANSCRIPT" in m["content"] for m in body["messages"])
+
+    @patch("src.podcast_insights.httpx.post")
+    def test_default_system_is_market_prompt(self, mock_post):
+        mock_post.return_value = _chat_response("- x")
+        distill_transcript("t", api_key="sk")
+        msgs = mock_post.call_args.kwargs["json"]["messages"]
+        assert msgs[0]["content"] == _DISTILL_SYSTEM
+
+    @patch("src.podcast_insights.httpx.post")
+    def test_custom_system_is_used(self, mock_post):
+        mock_post.return_value = _chat_response("- x")
+        distill_transcript("t", api_key="sk", system=_DISTILL_BIOHACKER)
+        msgs = mock_post.call_args.kwargs["json"]["messages"]
+        assert msgs[0]["content"] == _DISTILL_BIOHACKER
 
     def test_no_api_key_returns_none(self, monkeypatch):
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)

@@ -9,7 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.models import Base, PublisherDestination, PublisherPost
-from src.scheduler import Pipeline, approve_post, publish_approved_posts, reject_post
+from src.scheduler import Pipeline, _x_reply_link, approve_post, publish_approved_posts, reject_post
 from src.scraper import ScrapedArticle
 from src.writer import WriterResult
 
@@ -398,6 +398,94 @@ class TestGitPipeline:
         assert "git log" in result.error.lower() or "commit" in result.error.lower()
 
 
+class TestXReplyLink:
+    """The X self-reply link text must be plain human typing (no arrows)."""
+
+    def _post(self, category, source_url=None):
+        return MagicMock(topic_category=category, source_url=source_url)
+
+    def test_stock_link_has_no_arrows(self):
+        link = _x_reply_link(self._post("stock_talk"))
+        assert "→" not in link and "->" not in link
+        assert "lubot.ai" in link
+
+    def test_general_link_has_no_arrows(self):
+        link = _x_reply_link(self._post("biohacker"))
+        assert "→" not in link and "->" not in link
+        assert "lubot.ai" in link
+
+    def test_ai_news_uses_source_url(self):
+        link = _x_reply_link(self._post("ai_news", source_url="https://example.com/x"))
+        assert link == "https://example.com/x"
+
+
+class TestBiohackerPipeline:
+    """Phase F: biohacker is podcast-primary, with a news-scrape fallback."""
+
+    _BIO_TOPIC = {"name": "Biohacker", "sources_key": "biohacker", "description": "longevity"}
+
+    def _podcast_article(self):
+        return ScrapedArticle(
+            title="Why morning light matters",
+            url="https://podcast.example/ep1",
+            summary="- stop seed oils\n- get morning sun (free)\n- test ApoB (cheap bloodwork)",
+            source="The Human Upgrade with Dave Asprey",
+            published_at=None,
+            source_priority=0,
+        )
+
+    @pytest.mark.asyncio
+    async def test_biohacker_uses_podcast_not_scraper(self, db_session):
+        """When a longevity episode is available, it IS the article — no web scrape."""
+        with (
+            patch("src.scheduler.get_todays_topic", return_value=self._BIO_TOPIC),
+            patch.object(Pipeline, "_get_podcast_article", return_value=self._podcast_article()) as mock_pod,
+            patch("src.scheduler.scrape_topic", new_callable=AsyncMock) as mock_scrape,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()),
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/s.png")),
+            patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
+
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 27))
+
+        assert result.success is True
+        mock_pod.assert_called_once()
+        assert mock_pod.call_args.kwargs.get("topic") == "biohacker"
+        mock_scrape.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_biohacker_falls_back_to_scrape_when_no_episode(self, db_session):
+        """No usable episode -> the news scraper keeps the post flowing."""
+        with (
+            patch("src.scheduler.get_todays_topic", return_value=self._BIO_TOPIC),
+            patch.object(Pipeline, "_get_podcast_article", return_value=None),
+            patch("src.scheduler.scrape_topic", new_callable=AsyncMock, return_value=_make_articles()),
+            patch("src.scheduler.DuplicateChecker") as mock_dedup_cls,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()),
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/s.png")),
+            patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_dedup = MagicMock()
+            mock_dedup.check_article = AsyncMock(return_value=MagicMock(is_duplicate=False))
+            mock_dedup.record_url = MagicMock()
+            mock_dedup_cls.return_value = mock_dedup
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
+
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 27))
+
+        assert result.success is True
+        # the post was created from the scraped fallback article
+        post = db_session.query(PublisherPost).filter_by(id=result.post_id).first()
+        assert post is not None and post.status == "pending"
+
+
 def _waka_article():
     return ScrapedArticle(
         title="Building in public: 58h 33m coded this week, mostly Python",
@@ -773,6 +861,38 @@ class TestMyAgentScreenshots:
         # Branded card used; the third-party article URL is NOT screenshotted
         mock_card.assert_called_once()
         mock_url_shot.assert_not_called()
+
+
+class TestRecentPostsMemory:
+    """Anti-repeat: the writer is fed this category's recent posts to avoid repeating itself."""
+
+    def _add(self, session, category, text):
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category=category,
+            topic_title="t",
+            post_text=text,
+            status="pending",
+        )
+        session.add(post)
+        session.flush()
+        return post
+
+    def test_returns_category_posts_newest_first(self, db_session):
+        self._add(db_session, "biohacker", "oldest")
+        self._add(db_session, "biohacker", "middle")
+        self._add(db_session, "biohacker", "newest")
+        recent = Pipeline(session=db_session)._get_recent_posts("biohacker", limit=2)
+        assert recent == ["newest", "middle"]  # newest first, capped at limit
+
+    def test_filters_by_category(self, db_session):
+        self._add(db_session, "biohacker", "bio post")
+        self._add(db_session, "ai_news", "news post")
+        recent = Pipeline(session=db_session)._get_recent_posts("biohacker")
+        assert recent == ["bio post"]
+
+    def test_empty_when_no_history(self, db_session):
+        assert Pipeline(session=db_session)._get_recent_posts("biohacker") == []
 
 
 class TestApprovalWorkflow:

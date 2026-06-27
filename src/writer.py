@@ -116,6 +116,8 @@ TRUTH (this is the most important rule — one fake detail destroys credibility 
 
 PLAIN TEXT ONLY: No markdown. No ** bold **, no # headers, no backticks, no "* " bullets (use "- " if you must list). LinkedIn renders markdown as literal symbols and it looks broken.
 
+PLAIN HUMAN TYPING: Write like a real person on a normal keyboard. NO em-dashes (the long "—"), NO en-dashes, NO arrows (no "->", no unicode arrows), NO fancy/special unicode symbols or smart quotes. Use only a normal hyphen (-), comma, period, colon, and regular letters. This applies to post_text AND card_headline.
+
 HASHTAGS:
 - {hashtag_rules["min_count"]}-{hashtag_rules["max_count"]} hashtags at the very end of the post
 - Mix broad and specific: {hashtag_rules["mix"]}
@@ -140,6 +142,7 @@ def build_user_prompt(
     performance_context: str | None = None,
     book_concepts: list[str] | None = None,
     podcast_context: str | None = None,
+    recent_posts: list[str] | None = None,
 ) -> str:
     """Build the user message with today's topic + scraped articles."""
     rules = load_voice_rules()
@@ -283,6 +286,50 @@ def build_user_prompt(
             "- Do NOT fabricate personal trading results or holdings"
         )
 
+    # Biohacker / longevity — Lubo's lived philosophy (memory project_biohacker_brief)
+    if topic_key == "biohacker":
+        prompt_parts.append(
+            "\nThis is a BIOHACKER / LONGEVITY post. Below is everything Lubo believes about health "
+            "and a distilled takeaway from a longevity expert. This is his WORLDVIEW and KNOWLEDGE BASE "
+            "to think from - it is NOT a checklist to recite and NOT a template to fill in.\n\n"
+            "HOW TO USE THIS (read carefully):\n"
+            "- Write ONE post about ONE idea. Go deep on a single thing, do not dump the whole philosophy.\n"
+            "- Each post should pick a DIFFERENT facet: maybe a thing to stop, maybe one free habit, maybe a "
+            "single test, maybe the age idea, maybe a mindset shift, maybe a myth you bust. Rotate. Never the same shape twice.\n"
+            "- Internalize these beliefs and say them YOUR way, fresh, like a real person who lives this - "
+            "do NOT copy these sentences or list them out. If a post reads like the brief, you failed.\n"
+            "- Use only what serves today's one idea. Leave the rest out. Less is more.\n\n"
+            "LUBO'S PHILOSOPHY (his real beliefs - the base to think from):\n"
+            "- Biohacking = optimizing the WHOLE body as one system: food, environment, stress, work, the "
+            "people around you, sleep, light, movement, time outdoors, mind. NOT just supplements.\n"
+            "- Most disease comes from bad habits, not genetics. The biggest wins come from REMOVING harm "
+            "(seed oils, ultra-processed food, plastics, toxins) before adding anything.\n"
+            "- Everyone can start FREE - knowledge, not money, is the barrier. Money buys precision and speed, "
+            "not the basics. So serve BOTH the no-money and the money audience.\n"
+            "- The age idea: chronological age is fixed, biological age is not - you bend it with daily habits. "
+            "Epigenetic clocks just MEASURE it. Empowering, not preachy.\n"
+            "- Tone: generous, practical, helping a friend. No hype, no preaching, no selling. Flag solid science vs marketing.\n\n"
+            "FACTS YOU MAY DRAW ON (only if they serve today's one idea - do not list them):\n"
+            "- Free ways to gauge aging: resting heart rate, grip strength, waist-to-height, recovery speed, VO2max.\n"
+            "- Cheap bloodwork: ApoB, hs-CRP, fasting insulin, HbA1c, lipids.\n"
+            "- Premium epigenetic clocks: TruDiagnostic TruAge, GrimAge, DunedinPACE (measure biological age + aging speed).\n\n"
+            "LUBO'S REAL CREDIBILITY (true - use SPARINGLY and only when it fits, never as a crutch):\n"
+            "- He has lived this 5+ years; he is 46 and feels/looks about 35. This is powerful BUT do not open "
+            "with it every time and do not repeat it across posts. If a recent post already used his age or "
+            "years, do NOT use them again - find another way to show he lives it, or skip it entirely.\n"
+            "- Never invent a tested age number ('my biological age is 32') unless it is a REAL result. "
+            "'feel and look 35' is subjective and fine.\n\n"
+            "HONEST FRAMING:\n"
+            "- You MAY cite the expert/show by name ('Asprey made the case that...', 'Saladino argues...'). Citing is credible.\n"
+            "- Do NOT claim Lubo listened to this exact episode (the pipeline picked it, not him). "
+            "'I have spent years on this' is true; 'I just listened to this episode' is not.\n\n"
+            "CRAFT:\n"
+            "- Always 'I', never 'we'. Short lines, blank lines between thoughts. End with ONE real question (?).\n"
+            "- Use NO numbers, studies, or dosages that are not in the material above. Do NOT fabricate a personal experiment.\n\n"
+            "MARKETING (soft, honest): LuBot has no biohacking feature yet (only stock, website, my-files modes). "
+            "Do NOT market a LuBot biohacking product. Any mention stays soft and general. The job is value and authority, not a sell."
+        )
+
     # Add scraped articles as context
     if articles:
         prompt_parts.append("\nHere are today's top articles for inspiration:")
@@ -340,6 +387,23 @@ def build_user_prompt(
             "- Treat it as the general mood/debate, NOT 'this exact week'\n"
             "- Take NO number from this. Every number comes ONLY from the market data above\n"
             "- If a point does not fit naturally, ignore it"
+        )
+
+    # Anti-repeat memory — your own recent posts in this category. The single most
+    # important rule for sounding human: never run the same play twice.
+    if recent_posts:
+        recent_text = "\n\n".join(f"PAST POST {i}:\n{p.strip()[:900]}" for i, p in enumerate(recent_posts, 1))
+        prompt_parts.append(
+            "\nYOUR RECENT POSTS IN THIS CATEGORY (read them, then deliberately do something DIFFERENT):\n"
+            f"{recent_text}\n"
+            "ANTI-REPEAT RULES (critical — repetition is the fastest way to look like a bot):\n"
+            "- Do NOT reuse the same opening line or hook pattern as any post above\n"
+            "- Do NOT repeat the same personal lines, catchphrases, or signature sentences "
+            "(e.g. if a recent post already said your age or years of experience, do NOT say it again this time)\n"
+            "- Do NOT lead with the same idea, the same example, or the same structure\n"
+            "- Pick a genuinely different angle, a different facet of the topic, a different emotion\n"
+            "- Vary the closing question — never echo a question you already asked above\n"
+            "- These are your past work, not a template. Move the conversation forward, do not restate it"
         )
 
     prompt_parts.append(
@@ -563,6 +627,7 @@ async def write_post(
     performance_context: str | None = None,
     book_concepts: list[str] | None = None,
     podcast_context: str | None = None,
+    recent_posts: list[str] | None = None,
 ) -> WriterResult | None:
     """Generate a LinkedIn post. Tries NVIDIA NIM first, falls back to OpenRouter.
 
@@ -576,6 +641,7 @@ async def write_post(
         performance_context=performance_context,
         book_concepts=book_concepts,
         podcast_context=podcast_context,
+        recent_posts=recent_posts,
     )
 
     # Primary = free NIM; fallback = OpenRouter (only when a key is configured).

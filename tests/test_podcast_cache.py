@@ -162,3 +162,17 @@ class TestPodcastInsightsOrchestration:
         ):
             art = PodcastInsights().get_episode_article(db_session, week=0, feeds=self.FEEDS)
         assert art is None  # non-fatal: caller falls back to yfinance-only
+
+    @patch("src.podcast_insights.transcribe_audio", return_value="raw transcript")
+    def test_biohacker_topic_uses_its_feeds_and_distill_lens(self, mock_tx, db_session):
+        """topic='biohacker' loads the biohacker feeds and distills with the biohacker prompt."""
+        from src.podcast_insights import _DISTILL_BIOHACKER
+
+        with (
+            patch.object(PodcastInsights, "_fetch_feed", return_value=FEED_XML),
+            patch("src.podcast_insights.distill_transcript", return_value="- stop seed oils") as mock_distill,
+        ):
+            art = PodcastInsights().get_episode_article(db_session, week=0, topic="biohacker")
+        assert art is not None and art.summary == "- stop seed oils"
+        # the biohacker lens was passed through, not the market default
+        assert mock_distill.call_args.kwargs["system"] is _DISTILL_BIOHACKER

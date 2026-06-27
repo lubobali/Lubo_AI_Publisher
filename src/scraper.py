@@ -36,9 +36,14 @@ class ScrapedArticle:
 
 
 def load_sources() -> dict:
-    """Load scraper sources config from YAML."""
+    """Load news-scraper sources config from YAML.
+
+    Excludes the ``podcasts`` section — those feeds are audio episodes owned by
+    PodcastInsights (transcribe + distill), not article sources the scraper fetches.
+    """
     with open(CONFIG_PATH) as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+    return {k: v for k, v in config.items() if k != "podcasts"}
 
 
 async def fetch_url(

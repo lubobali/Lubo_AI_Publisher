@@ -24,6 +24,31 @@ def strip_dashes(text: str) -> str:
     return text
 
 
+# Arrows + fancy symbols -> plain typing (Lubo only types normal keyboard chars).
+_SPECIAL_CHAR_MAP = {
+    "->": " to ",  # ASCII arrow
+    "=>": " to ",
+    "<-": " ",
+    "\u2192": " to ",  # \u2192 right arrow
+    "\u2190": " ",  # \u2190 left arrow
+    "\u21d2": " to ",  # \u21d2
+    "\u2026": "...",  # \u2026 ellipsis
+    "\u2022": "-",  # \u2022 bullet
+    "\u2013": "-",  # en dash (defense if strip_dashes skipped)
+    "\u2014": "-",  # em dash
+    "\u201c": "",  # left double quote
+    "\u201d": "",  # right double quote
+}
+
+
+def strip_special_chars(text: str) -> str:
+    """Replace arrows, fancy bullets, and smart quotes with plain keyboard characters."""
+    for special, plain in _SPECIAL_CHAR_MAP.items():
+        text = text.replace(special, plain)
+    text = re.sub(r"  +", " ", text)
+    return text
+
+
 # Apostrophe contractions -> ESL style (Lubo never uses apostrophes)
 _APOSTROPHE_MAP = {
     "I'm": "im",
@@ -455,6 +480,10 @@ def process_post(text: str, hashtags: list[str]) -> tuple[str, list[str]]:
     prev = text
     text = strip_dashes(text)
     fixes["dashes_stripped"] = text != prev
+
+    prev = text
+    text = strip_special_chars(text)
+    fixes["special_chars_stripped"] = text != prev
 
     prev = text
     text = strip_apostrophes(text)

@@ -514,16 +514,22 @@ stock_talk:
 # weekly ANGLE, while yfinance stays the number backbone. Feeds verified live Jun 22.
 # This key also fixes the topics.yaml Market Pulse sources_key, which pointed at a
 # "market_pulse" key that did not exist here.
-market_pulse:
-  - name: Animal Spirits
-    type: podcast
-    url: https://feeds.megaphone.fm/TCP6464651487
-  - name: RiskReversal Pod
-    type: podcast
-    url: https://feeds.megaphone.fm/RRM5151570998
-  - name: Money Life with Chuck Jaffe
-    type: podcast
-    url: https://rss.pdrl.fm/5a1008/feeds.libsyn.com/148394/rss/?redirect=false
-  - name: Investing Experts
-    type: podcast
-    url: https://www.spreaker.com/show/5725001/episodes/feed
+# Podcasts per topic (Phase F) — transcribed (Deepgram) + distilled with a per-topic prompt.
+# Separate from the news RSS above. load_podcast_feeds(topic) reads podcasts[topic].
+podcasts:
+  market_pulse:
+    - name: Animal Spirits
+      url: https://feeds.megaphone.fm/TCP6464651487
+    - name: RiskReversal Pod
+      url: https://feeds.megaphone.fm/RRM5151570998
+    - name: Money Life with Chuck Jaffe
+      url: https://rss.pdrl.fm/5a1008/feeds.libsyn.com/148394/rss/?redirect=false
+    - name: Investing Experts
+      url: https://www.spreaker.com/show/5725001/episodes/feed
+  biohacker:  # Lubo's trusted longevity sources, priority order (feedback_biohacker_sources)
+    - name: The Human Upgrade with Dave Asprey
+      url: https://rss.art19.com/human-upgrade
+    - name: Paul Saladino MD
+      url: https://anchor.fm/s/d33c1300/podcast/rss
+    - name: The Ultimate Human with Gary Brecka
+      url: https://feeds.megaphone.fm/theultimatehuman

@@ -2062,6 +2062,42 @@ PHASE 2.17 (F): PODCAST-GROUNDED CONTENT — real expert podcasts per topic (pla
   COMBINED VALUE: podcast angle + RSS-KB book/blog concepts + the news/data = the richest posts
   (the $300k bar). See [[project_positioning_goal]].
 
+  BIOHACKER PROMPTS — DRAFTED Jun 27 (first topic; full brief in memory project_biohacker_brief).
+  Two layers, pending Lubo's approval before wiring:
+
+  (A) DISTILL prompt — extract from the full transcript, through Lubo's lens:
+    "Distill this longevity/biohacking episode into the most VALUABLE, ACTIONABLE takeaways for a
+     busy person. Lens: biohacking = optimizing the WHOLE body as one system (food, environment,
+     stress, sleep, light, movement, people, mind) — not just supplements. Prioritize what people
+     can do FREE with knowledge; note premium/paid options separately. LEAD with what to STOP
+     (seed oils, ultra-processed food, plastics, toxins) before what to add. Always give the brief
+     MECHANISM (why). No hype — flag solid vs marketing. Output 3-5 short bullets, each = one
+     action + the why, marked free vs costs-money; attribute claims to the speaker; invent NO
+     numbers/studies/dosages not stated. Where it fits, use the AGE FRAMEWORK: pull out what lowers
+     your BIOLOGICAL age and how to MEASURE it (longevity tests: free at-home markers -> cheap
+     bloodwork -> premium epigenetic clocks)."
+
+  (B) WRITER block (biohacker post, Lubo's voice):
+    "Lubo's philosophy: optimize your whole biology so every system works as one — live longer AND
+     in peak shape to do what you want. Not just supplements; it's environment/stress/sleep/light/
+     movement/food/people/mind. Bust the myth: you don't need expensive supplements to start —
+     most is FREE, you just need to know; ALWAYS give a free option AND (where relevant) a premium
+     one. LEAD with what to STOP (~95% of disease is habits, not genes; removing the poison beats
+     adding pills). Use Lubo's REAL cred naturally where it fits: 46, feels/looks 35, 5+ years in
+     (TRUE — authentic, never exaggerate). CITE the expert for claims ('Asprey makes the case...');
+     NEVER say 'I just listened to' the episode. Generous, practical, helping-a-friend tone; no
+     hype/fearmongering/preaching. End with ONE thing to try today (free if possible). Not medical
+     advice — Lubo's experience + what he's learned.
+     AGE FRAMEWORK (recurring): your CHRONOLOGICAL age is fixed, your BIOLOGICAL/EPIGENETIC age is
+     not — goal = a body younger than your birthday (Lubo: 46, feels 35). LONGEVITY TESTS measure
+     it: free at-home markers (resting HR, VO2max, grip strength, waist-to-height) -> cheap blood-
+     work (ApoB, hs-CRP, fasting insulin, HbA1c) -> premium epigenetic clocks (TruDiagnostic /
+     GrimAge / DunedinPACE). Only cite a SPECIFIC tested epigenetic-age number if Lubo really has
+     one; 'feel/look 35' (subjective) is fine.
+     PLAIN HUMAN TYPING (all topics): no em-dashes, no arrows, no fancy unicode — only normal
+     keyboard chars (hyphen, comma, period, colon). Enforce in writer + strip in post_processor;
+     also drop the arrow from the X self-reply link text."
+
   ACCEPTANCE (both phases): E = all 7 cards share the frame + readable at 400px + tests green +
   deployed; F = each podcast topic ships a post with a real distilled angle, verified live. Then
   MEASURE the follower/engagement delta after E+F (ties to Phase 2.14 C analytics) — confirm the
