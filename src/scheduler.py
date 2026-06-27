@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime
 
 from sqlalchemy.orm import Session
 
+from src import x_client
 from src.devtrack_insights import DevTrackInsights, build_devtrack_screenshot_fields
 from src.duplicate_checker import DuplicateChecker
 from src.git_insights import GitInsights
@@ -418,48 +419,102 @@ def reject_post(session: Session, post_id: int) -> bool:
     return True
 
 
+def _x_reply_link(post) -> str | None:
+    """Category-aware self-reply link for X (the conversion hook; links go in a reply, not the
+    post). Stock -> LuBot stock CTA; ai_news/tech_talk -> the source article (value); else lubot.ai."""
+    cat = post.topic_category
+    if cat in ("market_pulse", "stock_talk"):
+        return "Built with my own stock AI \u2192 lubot.ai"
+    if cat in ("ai_news", "tech_talk") and post.source_url:
+        return post.source_url
+    return "More on what I'm building \u2192 lubot.ai"
+
+
+def _enabled_platforms(access_token: str, person_urn: str) -> list[tuple[str, dict]]:
+    """Platforms to fan out to: LinkedIn always; X only if its creds are configured (else skipped)."""
+    platforms: list[tuple[str, dict]] = [("linkedin", {"access_token": access_token, "person_urn": person_urn})]
+    if x_client.x_configured():
+        platforms.append(("x", {}))
+    return platforms
+
+
+async def _publish_to_platform(publisher, post) -> str:
+    """Publish one post via a publisher (image if present, else text). Returns the platform urn/id."""
+    if post.image_path:
+        with open(post.image_path, "rb") as f:
+            image_data = f.read()
+        return await publisher.publish_image(post.post_text, image_data)
+    return await publisher.publish_text(post.post_text)
+
+
 async def publish_approved_posts(
     session: Session,
     access_token: str,
     person_urn: str,
-    platform: str = "linkedin",
+    platforms: list[tuple[str, dict]] | None = None,
 ) -> int:
-    """Publish all approved posts. Returns count of published posts."""
+    """Publish all approved posts to every enabled platform (LinkedIn + X).
+
+    PER-PLATFORM + NON-FATAL: one platform failing never blocks the other. IDEMPOTENT: a platform
+    already marked published for a post (PublisherDestination) is skipped, so re-runs of the 5-min
+    loop never double-post; a partially-failed post is retried only on the missing platform. A post
+    is marked "published" only once ALL enabled platforms succeed. Returns # posts newly completed.
+    """
     approved = session.query(PublisherPost).filter_by(status="approved").all()
     if not approved:
         return 0
 
-    publisher = get_publisher(platform, access_token=access_token, person_urn=person_urn)
-    published_count = 0
+    platforms = platforms if platforms is not None else _enabled_platforms(access_token, person_urn)
+    newly_published = 0
 
     for post in approved:
-        try:
-            # Publish with image if available
-            if post.image_path:
-                with open(post.image_path, "rb") as f:
-                    image_data = f.read()
-                post_urn = await publisher.publish_image(post.post_text, image_data)
-            else:
-                post_urn = await publisher.publish_text(post.post_text)
-
-            post.status = "published"
-            post.linkedin_post_urn = post_urn
-
-            # Record destination
-            dest = PublisherDestination(
-                post_id=post.id,
-                platform=platform,
-                platform_post_urn=post_urn,
-                status="published",
-                published_at=datetime.now(UTC),
+        done = 0
+        for platform, kwargs in platforms:
+            already = (
+                session.query(PublisherDestination)
+                .filter_by(post_id=post.id, platform=platform, status="published")
+                .first()
             )
-            session.add(dest)
+            if already:
+                done += 1
+                continue
+
+            publisher = get_publisher(platform, **kwargs)
+            if publisher is None:
+                continue
+
+            try:
+                post_urn = await _publish_to_platform(publisher, post)
+
+                # X: put the marketing link in a SELF-REPLY (never the main post).
+                if platform == "x":
+                    link = _x_reply_link(post)
+                    if link:
+                        try:
+                            await publisher.reply(post_urn, link)
+                        except Exception:
+                            logger.warning("X self-reply failed for post #%d (main post is up)", post.id)
+
+                session.add(
+                    PublisherDestination(
+                        post_id=post.id,
+                        platform=platform,
+                        platform_post_urn=post_urn,
+                        status="published",
+                        published_at=datetime.now(UTC),
+                    )
+                )
+                if platform == "linkedin":
+                    post.linkedin_post_urn = post_urn
+                session.flush()
+                done += 1
+                logger.info("Published post #%d to %s: %s", post.id, platform, post_urn)
+            except Exception as e:
+                logger.error("Failed to publish post #%d to %s: %s", post.id, platform, e)
+
+        if done == len(platforms) and post.status != "published":
+            post.status = "published"
             session.flush()
+            newly_published += 1
 
-            published_count += 1
-            logger.info("Published post #%d to %s: %s", post.id, platform, post_urn)
-
-        except Exception as e:
-            logger.error("Failed to publish post #%d: %s", post.id, e)
-
-    return published_count
+    return newly_published

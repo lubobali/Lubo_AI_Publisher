@@ -329,3 +329,46 @@ class TestPlatformRegistry:
     def test_get_unknown_platform_returns_none(self):
         pub = get_publisher("tiktok", access_token="fake")
         assert pub is None
+
+
+# ---------------------------------------------------------------------------
+# XPublisher (Phase 2.18 G) — x_client mocked
+# ---------------------------------------------------------------------------
+
+
+class TestXPublisher:
+    @pytest.mark.asyncio
+    async def test_publish_text(self):
+        from src.publisher import XPublisher
+
+        with patch("src.x_client.post_text", return_value="123") as m:
+            assert await XPublisher().publish_text("hi") == "123"
+            m.assert_called_once_with("hi")
+
+    @pytest.mark.asyncio
+    async def test_publish_image(self):
+        from src.publisher import XPublisher
+
+        with patch("src.x_client.post_image", return_value="124") as m:
+            assert await XPublisher().publish_image("hi", b"img") == "124"
+            assert m.call_args[0][1] == b"img"
+
+    @pytest.mark.asyncio
+    async def test_reply(self):
+        from src.publisher import XPublisher
+
+        with patch("src.x_client.reply", return_value="125") as m:
+            assert await XPublisher().reply("99", "lubot.ai") == "125"
+            m.assert_called_once_with("99", "lubot.ai")
+
+    def test_platform_name_and_url(self):
+        from src.publisher import XPublisher
+
+        pub = XPublisher()
+        assert pub.platform_name == "x"
+        assert pub.get_post_url("12345") == "https://x.com/i/web/status/12345"
+
+    def test_get_publisher_returns_x(self):
+        from src.publisher import XPublisher, get_publisher
+
+        assert isinstance(get_publisher("x"), XPublisher)

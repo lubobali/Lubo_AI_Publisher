@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.models import Base, PublisherPost
+from src.models import Base, PublisherDestination, PublisherPost
 from src.scheduler import Pipeline, approve_post, publish_approved_posts, reject_post
 from src.scraper import ScrapedArticle
 from src.writer import WriterResult
@@ -1198,3 +1198,107 @@ class TestDevTrackPipeline:
         assert result.success is True
         assert mwrite.call_args.kwargs["articles"][0].source == "devtrack:weekly"  # DevTrack summary used
         mshot.assert_awaited_once()  # luxury DevTrack card rendered
+
+
+# ---------------------------------------------------------------------------
+# Multi-platform publish fan-out (Phase 2.18 G) — publishers mocked
+# ---------------------------------------------------------------------------
+
+
+class TestPublishFanout:
+    def _approved(self, db_session, cat="ai_news"):
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category=cat,
+            topic_title="t",
+            post_text="body text",
+            source_url="https://example.com/x",
+            status="approved",
+            image_path=None,
+        )
+        db_session.add(post)
+        db_session.flush()
+        return post
+
+    def _li(self, urn="urn:li:share:1"):
+        m = MagicMock()
+        m.publish_text = AsyncMock(return_value=urn)
+        m.publish_image = AsyncMock(return_value=urn)
+        return m
+
+    def _x(self):
+        m = MagicMock()
+        m.publish_text = AsyncMock(return_value="x123")
+        m.publish_image = AsyncMock(return_value="x123")
+        m.reply = AsyncMock(return_value="x124")
+        return m
+
+    @pytest.mark.asyncio
+    async def test_fans_out_to_linkedin_and_x(self, db_session):
+        post = self._approved(db_session)
+        li, xp = self._li(), self._x()
+        with (
+            patch("src.scheduler.x_client.x_configured", return_value=True),
+            patch("src.scheduler.get_publisher", side_effect=lambda p, **k: li if p == "linkedin" else xp),
+        ):
+            n = await publish_approved_posts(db_session, "tok", "urn")
+        assert n == 1
+        assert db_session.query(PublisherPost).filter_by(id=post.id).first().status == "published"
+        platforms = {d.platform for d in db_session.query(PublisherDestination).filter_by(post_id=post.id).all()}
+        assert platforms == {"linkedin", "x"}
+        xp.reply.assert_awaited_once()  # self-reply link posted
+
+    @pytest.mark.asyncio
+    async def test_x_not_configured_is_linkedin_only(self, db_session):
+        post = self._approved(db_session)
+        li = self._li("urn:li:share:2")
+        with (
+            patch("src.scheduler.x_client.x_configured", return_value=False),
+            patch("src.scheduler.get_publisher", return_value=li),
+        ):
+            n = await publish_approved_posts(db_session, "tok", "urn")
+        assert n == 1
+        platforms = {d.platform for d in db_session.query(PublisherDestination).filter_by(post_id=post.id).all()}
+        assert platforms == {"linkedin"}
+
+    @pytest.mark.asyncio
+    async def test_idempotent_skips_already_published_platform(self, db_session):
+        post = self._approved(db_session)
+        db_session.add(
+            PublisherDestination(
+                post_id=post.id,
+                platform="linkedin",
+                platform_post_urn="old",
+                status="published",
+                published_at=datetime.now(UTC),
+            )
+        )
+        db_session.flush()
+        li, xp = self._li(), self._x()
+        with (
+            patch("src.scheduler.x_client.x_configured", return_value=True),
+            patch("src.scheduler.get_publisher", side_effect=lambda p, **k: li if p == "linkedin" else xp),
+        ):
+            await publish_approved_posts(db_session, "tok", "urn")
+        li.publish_text.assert_not_called()  # already published -> skipped (no double-post)
+        xp.publish_text.assert_awaited_once()  # x newly published
+
+    @pytest.mark.asyncio
+    async def test_non_fatal_partial_failure_retries_later(self, db_session):
+        post = self._approved(db_session)
+        li = self._li("urn:li:share:3")
+        xp = self._x()
+        xp.publish_text = AsyncMock(side_effect=RuntimeError("x down"))
+        with (
+            patch("src.scheduler.x_client.x_configured", return_value=True),
+            patch("src.scheduler.get_publisher", side_effect=lambda p, **k: li if p == "linkedin" else xp),
+        ):
+            n = await publish_approved_posts(db_session, "tok", "urn")
+        # linkedin succeeded; x failed -> post stays approved for retry; only LI destination
+        platforms = {
+            d.platform
+            for d in db_session.query(PublisherDestination).filter_by(post_id=post.id, status="published").all()
+        }
+        assert platforms == {"linkedin"}
+        assert db_session.query(PublisherPost).filter_by(id=post.id).first().status == "approved"
+        assert n == 0
