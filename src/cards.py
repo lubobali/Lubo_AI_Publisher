@@ -108,6 +108,24 @@ BRAND = {
     "headline": "#f4f7fc",
     "footer": "#aab6cc",
     "hairline": "rgba(120,160,230,0.20)",
+    "panel": "rgba(255,255,255,0.03)",
+    "stroke": "rgba(120,160,230,0.12)",
+}
+
+# Chart palette: brand-blue chrome, but financial up/down follows the MARKET STANDARD
+# (green up / red down) so anyone reads it instantly. Fed to the chart builders so their
+# ECharts/Lightweight-Charts scripts recolor without rewriting — the frame stays blue-steel.
+CHART_COLORS = {
+    "accent": BRAND["blue"],  # non-semantic lines/bars = brand blue
+    "up": "#3fb98a",  # market green
+    "down": "#e8645c",  # market red
+    "text": BRAND["text"],
+    "muted": "#8a96ac",
+    "grid": "rgba(120,160,230,0.08)",
+    "panel": BRAND["panel"],
+    "stroke": BRAND["stroke"],
+    "bg1": "#0a0e15",
+    "bg2": "#101826",
 }
 
 # Deterministic film grain (fixed seed -> identical every render). The SVG uses single
@@ -206,6 +224,7 @@ def _frame(
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{_font_css()}
 *{{margin:0;padding:0;box-sizing:border-box}}
 body{{width:1200px;height:627px;font-family:'Grotesk','Inter','Segoe UI',sans-serif;background:{b["bg"]};color:{b["text"]}}}
+.panel{{background:{b["panel"]};border:1px solid {b["stroke"]};border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.35)}}
 </style></head><body><div style="position:relative;width:1200px;height:627px;display:flex;flex-direction:column;padding:52px 64px 40px 70px">
 {_grain()}{_vignette()}
 <div style="position:absolute;left:0;top:64px;bottom:64px;width:3px;background:{b["accent"]}"></div>
@@ -214,7 +233,7 @@ body{{width:1200px;height:627px;font-family:'Grotesk','Inter','Segoe UI',sans-se
   {logo}
 </div>
 <div style="position:relative;width:60px;height:2px;background:{b["accent"]};margin:24px 0 22px 0"></div>
-<div style="position:relative;flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;max-width:1010px">{body}</div>
+<div style="position:relative;flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center">{body}</div>
 {sig}
 <div style="position:relative;display:flex;justify-content:space-between;align-items:center;
   border-top:1px solid {b["hairline"]};padding-top:14px;font-family:Grotesk;font-size:16px;letter-spacing:1.5px;text-transform:uppercase;color:{b["footer"]}">
@@ -237,39 +256,25 @@ def _shell(
     lib_js: str,
     logo_uri: str = "",
     kicker: str = "Market Pulse",
-    foot: str = "Weekly close · real market data · LuBot Stock",
+    foot: str = "Weekly close · real market data · LuBot",
+    issue: int | None = None,
 ) -> str:
-    """Shared premium shell: charcoal canvas, header (kicker+date+logo), footer."""
-    p = palette
-    brand = (
-        f'<img class="logo" src="{logo_uri}"/>'
-        if logo_uri
-        else f'<div class="wordmark" style="color:{p["accent"]}">LuBot</div>'
+    """Compatibility wrapper (Phase 2.16 E4): renders the chart/stat builders through the
+    UNIVERSAL _frame so they share the blue-steel brand, fonts, grain, signature and folio.
+    `palette` is unused for chrome now (the builders already baked their colors into
+    body/script — fed CHART_COLORS so up/down stay market-standard green/red). foot ->
+    disclaimer, date_range -> folio. Kept so the 11 chart builders + devtrack call it unchanged.
+    """
+    return _frame(
+        kicker=kicker,
+        body=body,
+        disclaimer=foot,
+        folio=_folio(issue, date_range),
+        logo_uri=logo_uri,
+        lib_js=lib_js,
+        script=script,
+        brand=BRAND,
     )
-    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-*{{margin:0;padding:0;box-sizing:border-box}}
-body{{width:1200px;height:627px;font-family:'Inter','Segoe UI','Helvetica Neue',sans-serif;
-  background:radial-gradient(1200px 700px at 18% -10%, {p["bg2"]} 0%, {p["bg1"]} 60%);color:{p["text"]}}}
-.card{{height:100%;padding:40px 48px;display:flex;flex-direction:column}}
-.head{{display:flex;align-items:flex-start;justify-content:space-between}}
-.kicker{{color:{p["accent"]};font-size:15px;font-weight:800;letter-spacing:3px;text-transform:uppercase}}
-.range{{color:{p["muted"]};font-size:14px;margin-top:6px;letter-spacing:1px}}
-.logo{{height:50px;width:auto;opacity:.95}}
-.wordmark{{font-weight:800;font-size:24px;letter-spacing:1px}}
-.body{{flex:1;display:flex;margin-top:26px;min-height:0}}
-.foot{{margin-top:18px;padding-top:14px;border-top:1px solid {p["stroke"]};
-  color:{p["muted"]};font-size:12px;letter-spacing:2px;text-transform:uppercase}}
-.panel{{background:{p["panel"]};border:1px solid {p["stroke"]};border-radius:18px;
-  box-shadow:0 10px 40px rgba(0,0,0,.35)}}
-</style></head><body><div class="card">
-  <div class="head"><div><div class="kicker">{html_lib.escape(kicker)}</div>
-    <div class="range">{html_lib.escape(date_range)}</div></div>{brand}</div>
-  <div class="body">{body}</div>
-  <div class="foot">{html_lib.escape(foot)}</div>
-</div>
-<script>{lib_js}</script>
-<script>{script}</script>
-</body></html>"""
 
 
 def _norm(series: list[dict]) -> str:

@@ -139,6 +139,26 @@ class TestUniversalFrame:
         assert "/*ENGINE*/" in html and "/*SETUP*/" in html
 
 
+class TestChartCardsUseFrame:
+    """Phase 2.16 E4: chart/stat cards now render through the universal frame (signed,
+    branded fonts, market-standard up/down colors)."""
+
+    def test_chart_builder_renders_through_frame(self):
+        html = cards.build_bar_ranking(SERIES, "2026-06-01 to 2026-06-26", cards.CHART_COLORS, "/*LIB*/")
+        assert "Lubo Bali" in html  # signature comes from the frame
+        assert "@font-face" in html  # embedded brand fonts
+        assert "Market Pulse" in html  # kicker
+
+    def test_chart_palette_is_market_standard(self):
+        assert cards.CHART_COLORS["up"] == "#3fb98a"  # green up
+        assert cards.CHART_COLORS["down"] == "#e8645c"  # red down
+        assert cards.CHART_COLORS["accent"] == cards.BRAND["blue"]  # chrome stays brand blue
+
+    def test_devtrack_card_renders_through_frame(self):
+        html = cards.build_devtrack_card({"total_hours": 80, "commits": 5}, "Week 25", cards.CHART_COLORS)
+        assert "Lubo Bali" in html and "Building in Public" in html
+
+
 class TestInsightCard:
     """Phase 2.12 A: editorial pull-quote card for opinion categories (no screenshots)."""
 

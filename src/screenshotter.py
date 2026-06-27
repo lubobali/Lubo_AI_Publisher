@@ -898,8 +898,9 @@ async def take_card_screenshot(
         logger.info("Card engine lib missing for %s — falling back to LWC card", layout["name"])
         return await take_stock_lwc_screenshot(indices, date_range)
 
-    palette = cards.PALETTES[layout["palette"] % len(cards.PALETTES)]
-    page_html = layout["builder"](indices, date_range, palette, lib_js, cards._logo_data_uri())
+    # Unified brand chart palette (Phase 2.16 E4): blue-steel chrome, market-standard
+    # green/red up/down. Chart TYPE still rotates per post (variety); only colors unify.
+    page_html = layout["builder"](indices, date_range, cards.CHART_COLORS, lib_js, cards._logo_data_uri())
 
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
         f.write(page_html)
@@ -1044,7 +1045,7 @@ async def take_devtrack_screenshot(metrics: dict, date_range: str = "") -> Scree
     from src import cards
 
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
-    page_html = cards.build_devtrack_card(metrics, date_range, cards.PALETTES[0], logo_uri=cards._logo_data_uri())
+    page_html = cards.build_devtrack_card(metrics, date_range, cards.CHART_COLORS, logo_uri=cards._logo_data_uri())
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
         f.write(page_html)
         tmp_path = f.name
