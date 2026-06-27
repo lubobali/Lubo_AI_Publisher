@@ -256,7 +256,7 @@ def _shell(
     lib_js: str,
     logo_uri: str = "",
     kicker: str = "Market Pulse",
-    foot: str = "Weekly close · real market data · LuBot",
+    foot: str = "Weekly close · real market data",
     issue: int | None = None,
 ) -> str:
     """Compatibility wrapper (Phase 2.16 E4): renders the chart/stat builders through the
@@ -794,7 +794,7 @@ def build_devtrack_card(m: dict, date_range: str, palette: dict, lib_js: str = "
         lib_js="",
         logo_uri=logo_uri,
         kicker="Building in Public",
-        foot="Weekly build report · real data: WakaTime + Git · LuBot",
+        foot="Weekly build report · real data: WakaTime + Git",
     )
 
 
@@ -844,7 +844,7 @@ def build_headline_card(
     return _frame(
         kicker=kicker,
         body=body,
-        disclaimer="AI news, curated and explained · LuBot",
+        disclaimer="AI news, curated and explained",
         folio=_folio(issue, date_range),
         logo_uri=logo_uri,
         brand=brand,
@@ -856,7 +856,7 @@ def build_insight_card(
     kicker: str = "Insight",
     date_range: str = "",
     logo_uri: str = "",
-    disclaimer: str = "Field notes from building in AI · LuBot",
+    disclaimer: str = "Honest takes on tech",
     issue: int | None = None,
     brand: dict = BRAND,
 ) -> str:
@@ -920,7 +920,7 @@ def build_build_card(
     return _frame(
         kicker="My Agent Build",
         body=body,
-        disclaimer="Build log · real git · LuBot",
+        disclaimer="Build log · real git",
         folio=_folio(issue, date_range),
         logo_uri=logo_uri,
         brand=brand,

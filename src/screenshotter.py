@@ -896,7 +896,7 @@ async def take_insight_screenshot(
     headline: str,
     kicker: str = "Insight",
     date_range: str = "",
-    disclaimer: str = "Field notes from building in AI · LuBot",
+    disclaimer: str = "Honest takes on tech",
     issue: int | None = None,
 ) -> ScreenshotResult | None:
     """Render the branded INSIGHT card (Phase 2.16 E) to a PNG. Non-fatal.

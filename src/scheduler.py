@@ -41,9 +41,9 @@ GROUNDED_CATEGORIES = {"tech_talk", "my_agent_git", "ai_news", "stock_talk", "ma
 # Opinion categories that render a branded INSIGHT card (Phase 2.12 A) instead of a
 # third-party / staging screenshot. Value: (kicker, palette index, footer line).
 INSIGHT_CARDS = {
-    "tech_talk": ("Tech Talk", "Field notes from building in AI · LuBot"),
-    "biohacker": ("Biohacker", "What I actually do, not medical advice · LuBot"),
-    "stock_talk": ("Investing Principle", "Not financial advice · LuBot"),
+    "tech_talk": ("Tech Talk", "Honest takes on tech"),
+    "biohacker": ("Biohacker", "What I actually do, not medical advice"),
+    "stock_talk": ("Investing Principle", "Not financial advice"),
 }
 
 
