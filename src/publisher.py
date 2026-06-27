@@ -1,8 +1,10 @@
 """Platform-agnostic publisher interface — base class + implementations."""
 
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 
+from src import x_client
 from src.linkedin_client import (
     create_image_post,
     create_text_post,
@@ -77,12 +79,38 @@ class LinkedInPublisher(Publisher):
         return f"https://www.linkedin.com/feed/update/urn:li:share:{share_id}"
 
 
+class XPublisher(Publisher):
+    """X (Twitter) publisher — wraps x_client (tweepy OAuth 1.0a). Reads X_* env vars.
+
+    tweepy is synchronous, so each call runs in a thread to keep the event loop free.
+    Adds reply() for the self-reply link (X-specific — links go in a reply, not the post).
+    """
+
+    @property
+    def platform_name(self) -> str:
+        return "x"
+
+    async def publish_text(self, text: str) -> str:
+        return await asyncio.to_thread(x_client.post_text, text)
+
+    async def publish_image(self, text: str, image_data: bytes) -> str:
+        return await asyncio.to_thread(x_client.post_image, text, image_data)
+
+    async def reply(self, in_reply_to_id: str, text: str) -> str:
+        """Post a reply to one of our tweets (the self-reply link). Returns reply id."""
+        return await asyncio.to_thread(x_client.reply, in_reply_to_id, text)
+
+    def get_post_url(self, post_urn: str) -> str:
+        return f"https://x.com/i/web/status/{post_urn}"
+
+
 # ---------------------------------------------------------------------------
 # Platform registry
 # ---------------------------------------------------------------------------
 
 _PLATFORM_MAP = {
     "linkedin": LinkedInPublisher,
+    "x": XPublisher,
 }
 
 

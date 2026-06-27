@@ -36,6 +36,9 @@ apscheduler==3.11.0
 # Backups (Backblaze B2 — S3-compatible)
 boto3==1.43.36
 
+# X (Twitter) publishing
+tweepy==4.16.0
+
 # Config
 pyyaml==6.0.2
 python-dotenv==1.0.1
