@@ -2068,6 +2068,57 @@ PHASE 2.17 (F): PODCAST-GROUNDED CONTENT — real expert podcasts per topic (pla
   upgrade actually moved the needle (currently +3-5 followers/day on the working pipeline).
 
 ==============================================================================
+PHASE 2.18 (G): X (TWITTER) MULTI-PLATFORM PUBLISHING (planned Jun 27, 2026)
+==============================================================================
+  GOAL: one approval -> publish to BOTH LinkedIn AND X, on the SAME 5-min publish loop and the
+  SAME approval gate (Lubo approves once on the dashboard; the worker fans out to both). The
+  marketing link goes in an X SELF-REPLY, never the main post (links crush reach + cost 13x).
+  First goal of the whole publisher = market LuBot and gain paid users.
+
+  SETUP — DONE & VERIFIED (Jun 27, see memory project_x_integration): X dev account (pay-per-use,
+  $5 credit), app "lubo-publisher", OAuth1.0a Read+Write, X Premium active (full-length posts +
+  checkmark). Keys in .env: X_API_KEY / X_API_SECRET / X_ACCESS_TOKEN / X_ACCESS_TOKEN_SECRET
+  (+ bearer/client unused). tweepy capabilities CONFIRMED LIVE: media_upload (v1.1) works on
+  pay-per-use (no $100 tier), create_tweet + image + self-reply + delete. So this phase is BUILD-ONLY.
+
+  ARCHITECTURE (reuse what exists): src/publisher.py Publisher ABC + LinkedInPublisher + get_publisher
+  registry already anticipate "x"; PublisherDestination model already tracks one post across platforms;
+  publish_approved_posts already loops approved posts + writes a destination row. We extend it to fan
+  out to a LIST of platforms with PER-PLATFORM idempotency.
+
+  COST/REACH RULES (2026, baked in): main post (text+image, no link) = $0.015; a post WITH a link =
+  $0.20; links suppress reach -> ALWAYS link-in-self-reply, never main post. Full-length text OK
+  (Premium); first ~280 chars show before "Show more" so the hook still leads.
+
+  SUBSTEPS (RECR, test-first; external boundary = tweepy, MOCK it; fan-out logic = REAL):
+  G1. requirements.txt: add tweepy. src/x_client.py — thin tweepy wrapper (post_text, post_image
+      from bytes via v1.1 media_upload -> v2 create_tweet, reply(in_reply_to,text), delete, verify).
+      Reads X_* from env. Non-fatal helpers. Unit-tested with tweepy mocked.
+  G2. publisher.py: XPublisher(Publisher) — platform_name="x"; publish_text; publish_image(bytes);
+      get_post_url -> https://x.com/i/web/status/{id}; plus reply(in_reply_to_id, text) for the
+      self-reply. Register "x" in _PLATFORM_MAP. Construct from X_* env (get_publisher("x")).
+  G3. Multi-platform fan-out: refactor publish_approved_posts to publish each approved post to a
+      configurable list of platforms (linkedin + x). PER-PLATFORM try/except (NON-FATAL — one
+      platform failing never blocks the other). IDEMPOTENT: skip a platform if a "published"
+      PublisherDestination already exists for (post_id, platform) -> safe retries, NEVER double-post.
+      Mark post.status="published" once >=1 platform succeeds; keep post.linkedin_post_urn for the LI one.
+  G4. X self-reply link (the conversion hook): after the main X post, post a reply with a
+      CATEGORY-AWARE link — stock (market_pulse/stock_talk) -> "Built with my stock AI -> lubot.ai";
+      ai_news/tech_talk -> the source_url (adds value); others -> lubot.ai. Non-fatal. (LinkedIn
+      first-comment stays Phase C, see project_first_comment_cta.)
+  G5. Wiring: cron _run_publish + scheduler publish to BOTH platforms. X creds OPTIONAL — if X_* env
+      missing, degrade gracefully to LinkedIn-only (never crash). Same schedule as LinkedIn (no new job).
+  G6. Tests (mock tweepy + linkedin client): fan-out hits both platforms; idempotency (no double-post
+      on re-run); per-platform non-fatal; self-reply called with the right per-category link; X-missing
+      -> LinkedIn-only. Then DEPLOY + LIVE: approve one real post -> appears on BOTH LinkedIn + X with
+      the self-reply link = Lubo's first DOUBLE post.
+
+  WORKFLOW: built on branch feature/x-publisher -> draft PR (CI green) -> merge atomically -> deploy
+  (docker compose build && up -d). Rotate the X keys (pasted in chat) once stable.
+  ACCEPTANCE: one approval publishes to LinkedIn + X with the X link in a self-reply; re-running the
+  publish loop never double-posts; X outage degrades to LinkedIn-only; tests green; deployed.
+
+==============================================================================
 SHIPPED & LIVE — STATUS (Jun 23, 2026)
 ==============================================================================
 
@@ -2108,6 +2159,7 @@ OPEN / NEXT (not blocking):
       (PR #3), verified by host-render, merged + deployed atomically. CI Postgres health hardened.
       Optional follow-up: chart-expansion (Pejic-inspired alpha etc. — see project_chart_expansion).
 [ ] Phase 2.17 (F) — PODCAST-GROUNDED CONTENT: real expert podcasts per topic (CONTEXT, after E).
+[~] Phase 2.18 (G) — X (Twitter) multi-platform publishing: one approval -> LinkedIn + X, link in X self-reply. Setup DONE; BUILDING NOW on feature/x-publisher.
 [ ] app should run create_tables() on startup (new tables needed a manual create on deploy).
 [ ] (could grow card catalog toward 20 layouts later; 11 already meets the goal.)
 
