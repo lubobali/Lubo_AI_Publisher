@@ -41,9 +41,9 @@ GROUNDED_CATEGORIES = {"tech_talk", "my_agent_git", "ai_news", "stock_talk", "ma
 # Opinion categories that render a branded INSIGHT card (Phase 2.12 A) instead of a
 # third-party / staging screenshot. Value: (kicker, palette index, footer line).
 INSIGHT_CARDS = {
-    "tech_talk": ("Tech Talk", 2, "Field notes from building in AI · LuBot"),
-    "biohacker": ("Biohacker", 1, "What I actually do, not medical advice · LuBot"),
-    "stock_talk": ("Investing Principle", 0, "Not financial advice · LuBot"),
+    "tech_talk": ("Tech Talk", "Field notes from building in AI · LuBot"),
+    "biohacker": ("Biohacker", "What I actually do, not medical advice · LuBot"),
+    "stock_talk": ("Investing Principle", "Not financial advice · LuBot"),
 }
 
 
@@ -172,6 +172,8 @@ class Pipeline:
 
         # 6. Take screenshot — my_agent uses lubot.ai, everything else uses article URL
         image_path = None
+        # Magazine folio number — a running issue count so cards read like one collection.
+        issue_no = self.session.query(PublisherPost).count() + 1
 
         if category == "my_agent_git" and self._git_insights and self._git_insights.best_commit:
             bc = self._git_insights.best_commit
@@ -183,10 +185,11 @@ class Pipeline:
                 changed_files=bc.changed_files,
                 commit_hash=bc.hash,
                 commit_date=bc.date.strftime("%B %d, %Y"),
+                issue=issue_no,
             )
             if screenshot:
                 image_path = screenshot.path
-                logger.info("Git screenshot: %s", image_path)
+                logger.info("My Agent Build card: %s", image_path)
         elif category == "my_agent":
             screenshot = await take_screenshot("https://staging.lubot.ai")
             if screenshot:
@@ -220,22 +223,22 @@ class Pipeline:
                     logger.info("Market-pulse card screenshot: %s", image_path)
         elif category in INSIGHT_CARDS:
             # Opinion categories (tech_talk / biohacker / Investing Principle): render Lubo's
-            # own branded pull-quote card, never a third-party / staging screenshot (Phase 2.12 A).
-            kicker, palette_index, foot = INSIGHT_CARDS[category]
+            # own branded pull-quote card, never a third-party / staging screenshot (Phase 2.16 E).
+            kicker, disclaimer = INSIGHT_CARDS[category]
             headline = writer_result.card_headline or derive_card_headline(writer_result.post_text)
             screenshot = await take_insight_screenshot(
                 headline,
                 kicker=kicker,
                 date_range=datetime.now().strftime("%B %d, %Y"),
-                palette_index=palette_index,
-                foot=foot,
+                disclaimer=disclaimer,
+                issue=issue_no,
             )
             if screenshot:
                 image_path = screenshot.path
                 logger.info("%s insight card: %s", kicker, image_path)
         elif category == "ai_news":
             # Branded headline card — never screenshot the third-party article page,
-            # which looks generic and leaks nav/login junk (Phase 2.12 A).
+            # which looks generic and leaks nav/login junk (Phase 2.16 E).
             from urllib.parse import urlparse
 
             source = urlparse(selected_article.url or "").netloc.replace("www.", "")
@@ -246,6 +249,7 @@ class Pipeline:
                 source=source,
                 date_range=datetime.now().strftime("%B %d, %Y"),
                 dek=dek,
+                issue=issue_no,
             )
             if screenshot:
                 image_path = screenshot.path

@@ -14,6 +14,7 @@ Each builder is PURE (returns HTML; the ECharts lib is injected) so it is unit-t
 the real check is the render (verify it paints — remember the locale blank-chart bug).
 """
 
+import base64
 import html as html_lib
 import json
 from pathlib import Path
@@ -74,13 +75,172 @@ def echarts_lib() -> str:
 
 
 def _logo_data_uri() -> str:
-    import base64
-
     try:
         b = _LOGO_PATH.read_bytes()
         return "data:image/png;base64," + base64.b64encode(b).decode()
     except Exception:
         return ""
+
+
+# ---------------------------------------------------------------------------
+# Design system (Phase 2.16 E) — brand palette + embedded fonts + texture.
+# The universal frame is built on these. Everything deterministic: fonts embedded
+# as base64, grain a FIXED-seed SVG -> a given post always renders identical pixels.
+# ---------------------------------------------------------------------------
+
+_FONTS_DIR = Path(__file__).parent.parent / "static" / "fonts"
+
+# (css family, file, weight, style) — exactly what the locked design uses, nothing more.
+_FONT_FACES = (
+    ("Fraunces", "fraunces-400.woff2", 400, "normal"),  # serif headline (the "art")
+    ("Grotesk", "spacegrotesk-500.woff2", 500, "normal"),  # body / secondary
+    ("Grotesk", "spacegrotesk-700.woff2", 700, "normal"),  # kicker / signature / numbers
+)
+
+# Brand palette — matches the LuBot logo (blue 3D mark + steel key). Replaces the old gold.
+BRAND = {
+    "blue": "#4f8cf0",
+    "blue_dk": "#1f4fae",
+    "steel": "#c3c9d4",
+    "accent": "linear-gradient(105deg,#1f4fae 0%,#4f8cf0 40%,#c3c9d4 70%,#4f8cf0 100%)",
+    "bg": "radial-gradient(1300px 820px at 12% -20%,#101826 0%,#0a0e15 58%),#0a0e15",
+    "text": "#eef2f8",
+    "headline": "#f4f7fc",
+    "footer": "#aab6cc",
+    "hairline": "rgba(120,160,230,0.20)",
+    "panel": "rgba(255,255,255,0.03)",
+    "stroke": "rgba(120,160,230,0.12)",
+}
+
+# Chart palette: brand-blue chrome, but financial up/down follows the MARKET STANDARD
+# (green up / red down) so anyone reads it instantly. Fed to the chart builders so their
+# ECharts/Lightweight-Charts scripts recolor without rewriting — the frame stays blue-steel.
+CHART_COLORS = {
+    "accent": BRAND["blue"],  # non-semantic lines/bars = brand blue
+    "up": "#3fb98a",  # market green
+    "down": "#e8645c",  # market red
+    "text": BRAND["text"],
+    "muted": "#8a96ac",
+    "grid": "rgba(120,160,230,0.08)",
+    "panel": BRAND["panel"],
+    "stroke": BRAND["stroke"],
+    "bg1": "#0a0e15",
+    "bg2": "#101826",
+}
+
+# Deterministic film grain (fixed seed -> identical every render). The SVG uses single
+# quotes, so the url() is wrapped in &quot; to coexist with the double-quoted style attr.
+_GRAIN_SVG = (
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='314'>"
+    "<filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' "
+    "seed='11' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter>"
+    "<rect width='100%25' height='100%25' filter='url(%23n)'/></svg>"
+)
+
+_FONT_CSS_CACHE: str | None = None
+
+
+def _font_css() -> str:
+    """@font-face blocks with the fonts embedded as base64 (offline + deterministic).
+
+    Cached after first read. Returns "" if the font files are missing (graceful — the
+    card still renders in the system fallback rather than crashing).
+    """
+    global _FONT_CSS_CACHE
+    if _FONT_CSS_CACHE is not None:
+        return _FONT_CSS_CACHE
+    parts = []
+    for family, filename, weight, style in _FONT_FACES:
+        try:
+            b64 = base64.b64encode((_FONTS_DIR / filename).read_bytes()).decode()
+        except Exception:
+            continue
+        parts.append(
+            f"@font-face{{font-family:'{family}';font-weight:{weight};font-style:{style};"
+            f"src:url(data:font/woff2;base64,{b64}) format('woff2');font-display:block}}"
+        )
+    _FONT_CSS_CACHE = "".join(parts)
+    return _FONT_CSS_CACHE
+
+
+def _grain(opacity: float = 0.06) -> str:
+    """A subtle film-grain overlay div (deterministic) — kills the flat-digital look."""
+    return (
+        f'<div style="position:absolute;inset:0;background:url(&quot;{_GRAIN_SVG}&quot;);'
+        f'background-size:600px;opacity:{opacity};mix-blend-mode:overlay;pointer-events:none"></div>'
+    )
+
+
+def _vignette() -> str:
+    """An inset vignette overlay div — depth, like a painting under gallery light."""
+    return (
+        '<div style="position:absolute;inset:0;box-shadow:inset 0 0 240px 60px '
+        'rgba(0,0,0,.5);pointer-events:none"></div>'
+    )
+
+
+def _signature(brand: dict = BRAND) -> str:
+    """The constant maker's mark: a small blue dash, then 'Lubo Bali' as a tech wordmark.
+    Identical on every card (matches the logo's style — no handwriting)."""
+    blue = brand["blue"]
+    dash = (
+        f"<svg width='46' height='12' style='vertical-align:middle'>"
+        f"<line x1='2' y1='6' x2='44' y2='6' stroke='{blue}' stroke-width='2'/></svg>"
+    )
+    return (
+        "<span style='display:inline-flex;align-items:center;gap:14px'>"
+        f"{dash}<span style='font-family:Grotesk;font-weight:700;font-size:30px;"
+        f"letter-spacing:.5px;color:{blue}'>Lubo Bali</span></span>"
+    )
+
+
+def _frame(
+    *,
+    kicker: str,
+    body: str,
+    disclaimer: str,
+    folio: str = "",
+    logo_uri: str = "",
+    lib_js: str = "",
+    script: str = "",
+    signature: bool = True,
+    brand: dict = BRAND,
+) -> str:
+    """The UNIVERSAL card frame (Phase 2.16 E2) — constant chrome on EVERY card:
+    background + grain + vignette, an accent rail, the topic KICKER + LOGO, a hairline,
+    a centered BODY slot (the topic-specific interior), the "— Lubo Bali" SIGNATURE, and a
+    footer (FOLIO | disclaimer + accent dot). Flex column so any body size stays centered and
+    the signature + footer always anchor at the bottom. Deterministic. The signature is on
+    every card by design (it's Lubo's vision/voice; the tools just express it). `body` is
+    whatever interior a builder composes; lib_js/script let chart interiors inject engine+setup.
+    """
+    b = brand
+    logo = (
+        f'<img src="{logo_uri}" style="height:70px;opacity:.97"/>'
+        if logo_uri
+        else f'<div style="font-family:Grotesk;font-weight:800;font-size:26px;color:{b["blue"]}">LuBot</div>'
+    )
+    sig = f'<div style="position:relative;margin-bottom:20px">{_signature(b)}</div>' if signature else ""
+    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{_font_css()}
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{width:1200px;height:627px;font-family:'Grotesk','Inter','Segoe UI',sans-serif;background:{b["bg"]};color:{b["text"]}}}
+.panel{{background:{b["panel"]};border:1px solid {b["stroke"]};border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.35)}}
+</style></head><body><div style="position:relative;width:1200px;height:627px;display:flex;flex-direction:column;padding:52px 64px 40px 70px">
+{_grain()}{_vignette()}
+<div style="position:absolute;left:0;top:64px;bottom:64px;width:3px;background:{b["accent"]}"></div>
+<div style="position:relative;display:flex;justify-content:space-between;align-items:flex-start">
+  <div style="font-family:Grotesk;font-weight:700;font-size:17px;letter-spacing:4px;text-transform:uppercase;background:{b["accent"]};-webkit-background-clip:text;background-clip:text;color:transparent">{html_lib.escape(kicker)}</div>
+  {logo}
+</div>
+<div style="position:relative;width:60px;height:2px;background:{b["accent"]};margin:24px 0 22px 0"></div>
+<div style="position:relative;flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center">{body}</div>
+{sig}
+<div style="position:relative;display:flex;justify-content:space-between;align-items:center;
+  border-top:1px solid {b["hairline"]};padding-top:14px;font-family:Grotesk;font-size:16px;letter-spacing:1.5px;text-transform:uppercase;color:{b["footer"]}">
+  <span>{html_lib.escape(folio)}</span>
+  <span style="display:flex;align-items:center;gap:9px"><span style="width:7px;height:7px;border-radius:50%;background:{b["blue"]};box-shadow:0 0 12px {b["blue"]}"></span>{html_lib.escape(disclaimer)}</span>
+</div>
+</div><script>{lib_js}</script><script>{script}</script></body></html>"""
 
 
 def _fmt_pct(p: float) -> str:
@@ -96,39 +256,25 @@ def _shell(
     lib_js: str,
     logo_uri: str = "",
     kicker: str = "Market Pulse",
-    foot: str = "Weekly close · real market data · LuBot Stock",
+    foot: str = "Weekly close · real market data · LuBot",
+    issue: int | None = None,
 ) -> str:
-    """Shared premium shell: charcoal canvas, header (kicker+date+logo), footer."""
-    p = palette
-    brand = (
-        f'<img class="logo" src="{logo_uri}"/>'
-        if logo_uri
-        else f'<div class="wordmark" style="color:{p["accent"]}">LuBot</div>'
+    """Compatibility wrapper (Phase 2.16 E4): renders the chart/stat builders through the
+    UNIVERSAL _frame so they share the blue-steel brand, fonts, grain, signature and folio.
+    `palette` is unused for chrome now (the builders already baked their colors into
+    body/script — fed CHART_COLORS so up/down stay market-standard green/red). foot ->
+    disclaimer, date_range -> folio. Kept so the 11 chart builders + devtrack call it unchanged.
+    """
+    return _frame(
+        kicker=kicker,
+        body=body,
+        disclaimer=foot,
+        folio=_folio(issue, date_range),
+        logo_uri=logo_uri,
+        lib_js=lib_js,
+        script=script,
+        brand=BRAND,
     )
-    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-*{{margin:0;padding:0;box-sizing:border-box}}
-body{{width:1200px;height:627px;font-family:'Inter','Segoe UI','Helvetica Neue',sans-serif;
-  background:radial-gradient(1200px 700px at 18% -10%, {p["bg2"]} 0%, {p["bg1"]} 60%);color:{p["text"]}}}
-.card{{height:100%;padding:40px 48px;display:flex;flex-direction:column}}
-.head{{display:flex;align-items:flex-start;justify-content:space-between}}
-.kicker{{color:{p["accent"]};font-size:15px;font-weight:800;letter-spacing:3px;text-transform:uppercase}}
-.range{{color:{p["muted"]};font-size:14px;margin-top:6px;letter-spacing:1px}}
-.logo{{height:50px;width:auto;opacity:.95}}
-.wordmark{{font-weight:800;font-size:24px;letter-spacing:1px}}
-.body{{flex:1;display:flex;margin-top:26px;min-height:0}}
-.foot{{margin-top:18px;padding-top:14px;border-top:1px solid {p["stroke"]};
-  color:{p["muted"]};font-size:12px;letter-spacing:2px;text-transform:uppercase}}
-.panel{{background:{p["panel"]};border:1px solid {p["stroke"]};border-radius:18px;
-  box-shadow:0 10px 40px rgba(0,0,0,.35)}}
-</style></head><body><div class="card">
-  <div class="head"><div><div class="kicker">{html_lib.escape(kicker)}</div>
-    <div class="range">{html_lib.escape(date_range)}</div></div>{brand}</div>
-  <div class="body">{body}</div>
-  <div class="foot">{html_lib.escape(foot)}</div>
-</div>
-<script>{lib_js}</script>
-<script>{script}</script>
-</body></html>"""
 
 
 def _norm(series: list[dict]) -> str:
@@ -652,53 +798,56 @@ def build_devtrack_card(m: dict, date_range: str, palette: dict, lib_js: str = "
     )
 
 
+def _folio(issue: int | None, date_range: str) -> str:
+    """Magazine folio: 'No. 27 · June 27, 2026' (issue optional, date optional)."""
+    parts = []
+    if issue:
+        parts.append(f"No. {issue}")
+    if date_range:
+        parts.append(date_range)
+    return " · ".join(parts)
+
+
 def build_headline_card(
     headline: str,
     source: str = "",
     date_range: str = "",
-    palette: dict | None = None,
-    lib_js: str = "",
-    logo_uri: str = "",
     dek: str = "",
+    logo_uri: str = "",
     kicker: str = "AI News",
+    issue: int | None = None,
+    brand: dict = BRAND,
 ) -> str:
-    """Branded headline card (Phase 2.12 A) for ai_news.
-
-    Instead of screenshotting a third-party article page (generic, leaks nav junk),
-    render the article's HEADLINE + source as a premium LuBot-branded card. Pure
-    HTML/CSS, no chart lib. Headline font-size adapts to length so it always fits.
-    """
-    p = palette or PALETTES[2]
+    """HEADLINE card (Phase 2.16 E) for ai_news — the article HEADLINE + source inside the
+    universal frame, instead of screenshotting the source site. Headline size adapts to length."""
     h = " ".join(headline.split())
     size = 66 if len(h) <= 36 else 56 if len(h) <= 58 else 46 if len(h) <= 88 else 38
     dek_html = (
-        f'<div style="font-size:23px;line-height:1.45;color:{p["muted"]};margin-top:24px;max-width:92%">'
-        f"{html_lib.escape(' '.join(dek.split()))}</div>"
+        f'<div style="font-family:Grotesk;font-weight:500;font-size:23px;line-height:1.45;'
+        f'color:{brand["footer"]};margin-top:22px;max-width:92%">{html_lib.escape(" ".join(dek.split()))}</div>'
         if dek.strip()
         else ""
     )
     src_html = (
-        '<div style="display:flex;align-items:center;gap:11px;margin-top:34px">'
-        f'<span style="width:9px;height:9px;border-radius:50%;background:{p["accent"]};box-shadow:0 0 14px {p["accent"]}"></span>'
-        f'<span style="font-size:16px;font-weight:700;letter-spacing:1.5px;color:{p["accent"]}">{html_lib.escape(source.lower())}</span>'
-        "</div>"
+        '<div style="display:flex;align-items:center;gap:11px;margin-top:30px">'
+        f'<span style="width:9px;height:9px;border-radius:50%;background:{brand["blue"]};box-shadow:0 0 14px {brand["blue"]}"></span>'
+        f'<span style="font-family:Grotesk;font-weight:700;font-size:16px;letter-spacing:1.5px;color:{brand["blue"]}">'
+        f"{html_lib.escape(source.lower())}</span></div>"
         if source.strip()
         else ""
     )
     body = (
-        '<div class="panel" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:46px 56px">'
-        f'<div style="font-size:{size}px;font-weight:800;line-height:1.12;letter-spacing:-0.6px;color:{p["text"]}">'
-        f"{html_lib.escape(h)}</div>{dek_html}{src_html}</div>"
+        f'<div style="font-family:Fraunces;font-weight:400;font-size:{size}px;line-height:1.1;'
+        f'letter-spacing:-0.5px;color:{brand["headline"]};text-shadow:0 2px 30px rgba(0,0,0,.4)">'
+        f"{html_lib.escape(h)}</div>{dek_html}{src_html}"
     )
-    return _shell(
-        palette=p,
-        date_range=date_range,
-        body=body,
-        script="",
-        lib_js=lib_js,
-        logo_uri=logo_uri,
+    return _frame(
         kicker=kicker,
-        foot="AI news, curated and explained · LuBot",
+        body=body,
+        disclaimer="AI news, curated and explained · LuBot",
+        folio=_folio(issue, date_range),
+        logo_uri=logo_uri,
+        brand=brand,
     )
 
 
@@ -706,37 +855,73 @@ def build_insight_card(
     headline: str,
     kicker: str = "Insight",
     date_range: str = "",
-    palette: dict | None = None,
-    lib_js: str = "",
     logo_uri: str = "",
-    attribution: str = "Lubo Bali",
-    foot: str = "",
+    disclaimer: str = "Field notes from building in AI · LuBot",
+    issue: int | None = None,
+    brand: dict = BRAND,
 ) -> str:
-    """Branded INSIGHT card (Phase 2.12 A) for opinion categories (tech_talk, biohacker,
-    Investing Principle) — render the post's core take as a big editorial pull-quote, not
-    a third-party screenshot. Pure HTML/CSS. Pull-quote font-size adapts to length."""
-    p = palette or PALETTES[0]
+    """INSIGHT card (Phase 2.16 E) for opinion categories (tech_talk, biohacker, Investing
+    Principle) — the post's core take as a big Fraunces serif pull-quote inside the universal
+    frame, signed. Pull-quote font-size adapts to length so it always fits."""
     h = " ".join(headline.split())
-    size = 60 if len(h) <= 40 else 50 if len(h) <= 64 else 42 if len(h) <= 95 else 34
-    attribution_html = (
-        f'<div style="margin-top:30px;font-size:17px;font-weight:700;letter-spacing:1px;color:{p["accent"]}">'
-        f"— {html_lib.escape(attribution)}</div>"
-        if attribution.strip()
-        else ""
+    size = 80 if len(h) <= 40 else 66 if len(h) <= 64 else 54 if len(h) <= 95 else 44
+    body = (
+        f'<div style="font-family:Fraunces;font-weight:400;font-size:{size}px;line-height:1.06;'
+        f'letter-spacing:-1px;color:{brand["headline"]};text-shadow:0 2px 30px rgba(0,0,0,.4)">'
+        f"{html_lib.escape(h)}</div>"
+    )
+    return _frame(
+        kicker=kicker,
+        body=body,
+        disclaimer=disclaimer,
+        folio=_folio(issue, date_range),
+        logo_uri=logo_uri,
+        brand=brand,
+    )
+
+
+def build_build_card(
+    commit: dict,
+    date_range: str = "",
+    logo_uri: str = "",
+    issue: int | None = None,
+    brand: dict = BRAND,
+) -> str:
+    """BUILD card (Phase 2.16 E5) for my_agent_git — what Lubo shipped, from REAL git data,
+    inside the universal frame. Retires the old terminal-style screenshot. The commit message
+    is the headline; real diff stats are luxury tiles. numbers come straight from git_insights."""
+    p = brand
+    msg = " ".join(str(commit.get("message", "")).split())
+    size = 46 if len(msg) <= 50 else 38 if len(msg) <= 92 else 32
+    added = int(commit.get("lines_added", 0))
+    deleted = int(commit.get("lines_deleted", 0))
+    files = int(commit.get("files_changed", 0))
+    chash = str(commit.get("hash", "")).strip()
+
+    def tile(big: str, label: str, sub: str, accent: bool = False) -> str:
+        col = p["blue"] if accent else p["text"]
+        return (
+            '<div class="panel" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:20px 26px">'
+            f'<div style="font-family:Grotesk;font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:{p["footer"]}">{html_lib.escape(label)}</div>'
+            f'<div style="font-family:Grotesk;font-size:40px;font-weight:700;color:{col};line-height:1.05;margin-top:8px">{html_lib.escape(big)}</div>'
+            f'<div style="font-family:Grotesk;font-size:14px;color:{p["footer"]};margin-top:6px">{html_lib.escape(sub)}</div></div>'
+        )
+
+    tiles = (
+        tile(f"+{added:,}", "Lines Shipped", f"-{deleted:,} removed", accent=True)
+        + tile(str(files), "Files Touched", "this build")
+        + tile(chash or "—", "Commit", "real git log")
     )
     body = (
-        '<div class="panel" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:40px 56px;position:relative">'
-        f'<div style="position:absolute;top:8px;left:40px;font-size:140px;line-height:1;color:{p["accent"]};opacity:.18;font-family:Georgia,serif">&ldquo;</div>'
-        f'<div style="position:relative;font-size:{size}px;font-weight:800;line-height:1.16;letter-spacing:-0.5px;color:{p["text"]}">'
-        f"{html_lib.escape(h)}</div>{attribution_html}</div>"
+        f'<div style="font-family:Fraunces;font-weight:400;font-size:{size}px;line-height:1.1;'
+        f'letter-spacing:-0.5px;color:{p["headline"]};text-shadow:0 2px 30px rgba(0,0,0,.4)">{html_lib.escape(msg)}</div>'
+        f'<div style="display:flex;gap:18px;margin-top:28px">{tiles}</div>'
     )
-    return _shell(
-        palette=p,
-        date_range=date_range,
+    return _frame(
+        kicker="My Agent Build",
         body=body,
-        script="",
-        lib_js=lib_js,
+        disclaimer="Build log · real git · LuBot",
+        folio=_folio(issue, date_range),
         logo_uri=logo_uri,
-        kicker=kicker,
-        foot=foot or "Field notes from building in AI · LuBot",
+        brand=brand,
     )

@@ -63,6 +63,117 @@ class TestHeadlineCard:
         assert "<html" in html and "Just a title" in html
 
 
+class TestDesignSystemFoundation:
+    """Phase 2.16 E1: embedded fonts + brand palette + deterministic texture helpers."""
+
+    def test_font_css_embeds_fonts(self):
+        css = cards._font_css()
+        assert "@font-face" in css
+        assert "Fraunces" in css and "Grotesk" in css
+        assert "data:font/woff2;base64," in css
+
+    def test_font_css_cached_and_deterministic(self):
+        assert cards._font_css() == cards._font_css()
+
+    def test_brand_palette_core_keys(self):
+        for key in ("blue", "blue_dk", "steel", "accent", "bg", "text", "headline", "footer"):
+            assert key in cards.BRAND
+        assert cards.BRAND["blue"] == "#4f8cf0"  # logo blue, not gold
+
+    def test_grain_deterministic_fixed_seed(self):
+        first, second = cards._grain(), cards._grain()
+        assert first == second  # no randomness
+        assert "seed='11'" in first
+        assert "mix-blend-mode:overlay" in first
+
+    def test_grain_opacity_param(self):
+        assert "opacity:0.12" in cards._grain(0.12)
+
+    def test_vignette_is_inset_overlay(self):
+        assert "inset" in cards._vignette()
+
+
+class TestUniversalFrame:
+    """Phase 2.16 E2: the constant frame chrome + signature."""
+
+    def test_signature_is_blue_wordmark_with_dash(self):
+        sig = cards._signature()
+        assert "Lubo Bali" in sig
+        assert cards.BRAND["blue"] in sig
+        assert "<svg" in sig  # the front dash
+        assert "Grotesk" in sig
+
+    def test_frame_has_chrome_and_body(self):
+        html = cards._frame(
+            kicker="Investing Principle",
+            body="<div id='interior'>BODY</div>",
+            disclaimer="Not financial advice · LuBot",
+            folio="No. 27 · June 27, 2026",
+            logo_uri="data:image/png;base64,AAAA",
+        )
+        assert "<html" in html
+        assert "Investing Principle" in html  # kicker
+        assert "BODY" in html  # the interior slot
+        assert "No. 27 · June 27, 2026" in html  # folio
+        assert "Not financial advice · LuBot" in html  # disclaimer
+        assert "@font-face" in html  # fonts embedded
+        assert "data:image/png;base64,AAAA" in html  # logo
+        assert cards.BRAND["accent"] in html  # accent rail/kicker
+
+    def test_frame_escapes_kicker_and_disclaimer(self):
+        html = cards._frame(kicker="A & B", body="x", disclaimer="<n>", folio="")
+        assert "A &amp; B" in html and "&lt;n&gt;" in html
+
+    def test_frame_includes_signature_by_default(self):
+        html = cards._frame(kicker="K", body="x", disclaimer="d")
+        assert "Lubo Bali" in html  # signature on every card by default
+
+    def test_frame_signature_can_be_disabled(self):
+        html = cards._frame(kicker="K", body="x", disclaimer="d", signature=False)
+        assert "Lubo Bali" not in html
+
+    def test_frame_injects_chart_engine_and_script(self):
+        html = cards._frame(
+            kicker="Market Pulse", body="<div id='c'></div>", disclaimer="d", lib_js="/*ENGINE*/", script="/*SETUP*/"
+        )
+        assert "/*ENGINE*/" in html and "/*SETUP*/" in html
+
+
+class TestChartCardsUseFrame:
+    """Phase 2.16 E4: chart/stat cards now render through the universal frame (signed,
+    branded fonts, market-standard up/down colors)."""
+
+    def test_chart_builder_renders_through_frame(self):
+        html = cards.build_bar_ranking(SERIES, "2026-06-01 to 2026-06-26", cards.CHART_COLORS, "/*LIB*/")
+        assert "Lubo Bali" in html  # signature comes from the frame
+        assert "@font-face" in html  # embedded brand fonts
+        assert "Market Pulse" in html  # kicker
+
+    def test_chart_palette_is_market_standard(self):
+        assert cards.CHART_COLORS["up"] == "#3fb98a"  # green up
+        assert cards.CHART_COLORS["down"] == "#e8645c"  # red down
+        assert cards.CHART_COLORS["accent"] == cards.BRAND["blue"]  # chrome stays brand blue
+
+    def test_devtrack_card_renders_through_frame(self):
+        html = cards.build_devtrack_card({"total_hours": 80, "commits": 5}, "Week 25", cards.CHART_COLORS)
+        assert "Lubo Bali" in html and "Building in Public" in html
+
+    def test_build_card_renders_real_git_stats(self):
+        commit = {
+            "message": "Merge Stock Talk: yfinance market card + prompts",
+            "lines_added": 1905,
+            "lines_deleted": 1457,
+            "files_changed": 34,
+            "hash": "b7d1f96",
+        }
+        html = cards.build_build_card(commit, date_range="June 24, 2026", issue=11)
+        assert "My Agent Build" in html  # kicker
+        assert "+1,905" in html and "-1,457 removed" in html and "34" in html  # real diff stats
+        assert "b7d1f96" in html  # commit hash
+        assert "Merge Stock Talk" in html  # commit message headline
+        assert "Lubo Bali" in html  # signature
+
+
 class TestInsightCard:
     """Phase 2.12 A: editorial pull-quote card for opinion categories (no screenshots)."""
 
@@ -82,10 +193,16 @@ class TestInsightCard:
         assert "&amp;" in html and "&lt;reward&gt;" in html
         assert "<reward>" not in html
 
-    def test_attribution_optional(self):
-        html = cards.build_insight_card("Sleep is the cheapest performance drug", attribution="")
-        assert "Lubo Bali" not in html
+    def test_signature_always_present(self):
+        # The signature is the constant brand mark — always rendered (no opt-out).
+        html = cards.build_insight_card("Sleep is the cheapest performance drug")
+        assert "Lubo Bali" in html
         assert "Sleep is the cheapest performance drug" in html
+
+    def test_folio_combines_issue_and_date(self):
+        assert cards._folio(27, "June 27, 2026") == "No. 27 · June 27, 2026"
+        assert cards._folio(None, "June 27, 2026") == "June 27, 2026"
+        assert cards._folio(5, "") == "No. 5"
 
 
 class TestSelectCardLayout:

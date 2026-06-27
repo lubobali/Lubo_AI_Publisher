@@ -246,144 +246,48 @@ async def take_git_screenshot(
     changed_files: list[str],
     commit_hash: str = "",
     commit_date: str = "",
+    issue: int | None = None,
 ) -> ScreenshotResult | None:
-    """Generate a terminal-style screenshot from real git commit data.
+    """Render the luxury My Agent Build card (Phase 2.16 E5) from REAL git data — replaces the
+    old terminal-style screenshot. Non-fatal: returns None on failure so the caller falls back."""
+    from src import cards
 
-    Renders an HTML page styled like a dark terminal showing git log + diff stats,
-    then screenshots it with Playwright.
-    """
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Build file lines with color by type
-    file_lines = ""
-    for f in changed_files[:15]:
-        short = f.split("/", 1)[-1] if "/" in f else f
-        color = "#6a9955" if "/test" in f else "#dcdcaa"
-        file_lines += f'<div class="file"><span style="color:{color}">{html_lib.escape(short)}</span></div>\n'
-    if len(changed_files) > 15:
-        file_lines += f'<div class="file dim">... and {len(changed_files) - 15} more files</div>\n'
-
-    net = lines_added - lines_deleted
-    net_str = f"+{net}" if net > 0 else str(net)
-
-    page_html = f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"><style>
-body {{
-    margin: 0; padding: 0;
-    background: #1e1e2e;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
-    color: #cdd6f4; font-size: 14px;
-}}
-.window {{
-    margin: 24px; background: #11111b; border-radius: 12px;
-    overflow: hidden; border: 1px solid #313244;
-}}
-.titlebar {{
-    background: #181825; padding: 10px 16px;
-    display: flex; align-items: center; gap: 8px;
-    border-bottom: 1px solid #313244;
-}}
-.dot {{ width: 12px; height: 12px; border-radius: 50%; }}
-.red {{ background: #f38ba8; }}
-.yellow {{ background: #f9e2af; }}
-.green {{ background: #a6e3a1; }}
-.title {{ color: #6c7086; font-size: 12px; margin-left: 12px; }}
-.content {{ padding: 20px 24px; line-height: 1.7; }}
-.prompt {{ color: #89b4fa; }}
-.cmd {{ color: #cdd6f4; }}
-.hash {{ color: #f9e2af; }}
-.msg {{ color: #cdd6f4; font-weight: 600; }}
-.date {{ color: #6c7086; }}
-.stats {{ margin: 16px 0; padding: 12px 0; border-top: 1px solid #313244; }}
-.added {{ color: #a6e3a1; font-weight: 700; }}
-.deleted {{ color: #f38ba8; font-weight: 700; }}
-.net {{ color: #89b4fa; }}
-.file {{ color: #bac2de; padding: 1px 0; font-size: 13px; }}
-.dim {{ color: #585b70; }}
-.bar {{ display: inline-block; height: 10px; border-radius: 2px; }}
-.bar-add {{ background: #a6e3a1; }}
-.bar-del {{ background: #f38ba8; }}
-.section {{ color: #6c7086; font-size: 12px; text-transform: uppercase;
-    letter-spacing: 1px; margin: 16px 0 8px; }}
-</style></head><body>
-<div class="window">
-    <div class="titlebar">
-        <div class="dot red"></div>
-        <div class="dot yellow"></div>
-        <div class="dot green"></div>
-        <div class="title">lubot-staging ~/services-agent-api</div>
-    </div>
-    <div class="content">
-        <div>
-            <span class="prompt">$</span>
-            <span class="cmd"> git log --oneline -1</span>
-        </div>
-        <div style="margin: 8px 0 4px;">
-            <span class="hash">{html_lib.escape(commit_hash or "HEAD")}</span>
-            <span class="msg"> {html_lib.escape(commit_message)}</span>
-        </div>
-        <div class="date">{html_lib.escape(commit_date)}</div>
-
-        <div class="stats">
-            <div>
-                <span class="prompt">$</span>
-                <span class="cmd"> git diff --stat</span>
-            </div>
-            <div style="margin: 8px 0;">
-                <span class="added">+{lines_added}</span>
-                <span class="dim"> additions  </span>
-                <span class="deleted">-{lines_deleted}</span>
-                <span class="dim"> deletions  </span>
-                <span class="net">({net_str} net)</span>
-                <span class="dim">  across </span>
-                <span style="color:#cdd6f4">{files_changed} files</span>
-            </div>
-            <div style="margin: 4px 0;">
-                <span class="bar bar-add" style="width:{min(lines_added // 8, 200)}px"></span>
-                <span class="bar bar-del" style="width:{min(lines_deleted // 8, 200)}px"></span>
-            </div>
-        </div>
-
-        <div class="section">files changed</div>
-        {file_lines}
-    </div>
-</div>
-</body></html>"""
-
+    commit = {
+        "message": commit_message,
+        "lines_added": lines_added,
+        "lines_deleted": lines_deleted,
+        "files_changed": files_changed or len(changed_files),
+        "hash": commit_hash,
+    }
+    page_html = cards.build_build_card(commit, date_range=commit_date, issue=issue, logo_uri=cards._logo_data_uri())
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
         f.write(page_html)
         tmp_path = f.name
-
     try:
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(headless=True)
             try:
                 context = await browser.new_context(
-                    viewport={"width": SCREENSHOT_WIDTH, "height": SCREENSHOT_HEIGHT},
-                    device_scale_factor=1.5,
+                    viewport={"width": SCREENSHOT_WIDTH, "height": SCREENSHOT_HEIGHT}, device_scale_factor=2
                 )
                 page = await context.new_page()
-                await page.goto(f"file://{tmp_path}", wait_until="domcontentloaded")
-                await page.wait_for_timeout(500)
-
+                await page.goto(f"file://{tmp_path}", wait_until="networkidle")
+                await page.wait_for_timeout(400)
                 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-                filename = f"{timestamp}-git-commit.png"
-                filepath = SCREENSHOT_DIR / filename
-
-                screenshot_bytes = await page.screenshot(full_page=False)
-                filepath.write_bytes(screenshot_bytes)
-
-                logger.info("Git screenshot saved: %s", filepath)
+                filepath = SCREENSHOT_DIR / f"{timestamp}-git-commit.png"
+                filepath.write_bytes(await page.screenshot(full_page=False))
+                logger.info("My Agent Build card saved: %s", filepath)
                 return ScreenshotResult(
                     path=str(filepath),
-                    url=f"git:{commit_hash}",
+                    url=f"card:build:{commit_hash}",
                     width=SCREENSHOT_WIDTH,
                     height=SCREENSHOT_HEIGHT,
                 )
             finally:
                 await browser.close()
     except Exception as e:
-        logger.warning("Git screenshot failed: %s", e)
+        logger.warning("Build card screenshot failed: %s", e)
         return None
     finally:
         Path(tmp_path).unlink(missing_ok=True)
@@ -898,8 +802,9 @@ async def take_card_screenshot(
         logger.info("Card engine lib missing for %s — falling back to LWC card", layout["name"])
         return await take_stock_lwc_screenshot(indices, date_range)
 
-    palette = cards.PALETTES[layout["palette"] % len(cards.PALETTES)]
-    page_html = layout["builder"](indices, date_range, palette, lib_js, cards._logo_data_uri())
+    # Unified brand chart palette (Phase 2.16 E4): blue-steel chrome, market-standard
+    # green/red up/down. Chart TYPE still rotates per post (variety); only colors unify.
+    page_html = layout["builder"](indices, date_range, cards.CHART_COLORS, lib_js, cards._logo_data_uri())
 
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
         f.write(page_html)
@@ -934,9 +839,14 @@ async def take_card_screenshot(
 
 
 async def take_headline_screenshot(
-    headline: str, source: str = "", date_range: str = "", dek: str = "", kicker: str = "AI News"
+    headline: str,
+    source: str = "",
+    date_range: str = "",
+    dek: str = "",
+    kicker: str = "AI News",
+    issue: int | None = None,
 ) -> ScreenshotResult | None:
-    """Render the branded headline card (Phase 2.12 A) to a PNG. Non-fatal.
+    """Render the branded headline card (Phase 2.16 E) to a PNG. Non-fatal.
 
     Used for ai_news instead of screenshotting a third-party article page (which looks
     generic and leaks nav/login junk). Returns None on failure so the caller can fall back.
@@ -945,7 +855,13 @@ async def take_headline_screenshot(
 
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
     page_html = cards.build_headline_card(
-        headline, source, date_range, cards.PALETTES[2], logo_uri=cards._logo_data_uri(), dek=dek, kicker=kicker
+        headline,
+        source=source,
+        date_range=date_range,
+        dek=dek,
+        kicker=kicker,
+        issue=issue,
+        logo_uri=cards._logo_data_uri(),
     )
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
         f.write(page_html)
@@ -977,9 +893,13 @@ async def take_headline_screenshot(
 
 
 async def take_insight_screenshot(
-    headline: str, kicker: str = "Insight", date_range: str = "", palette_index: int = 0, foot: str = ""
+    headline: str,
+    kicker: str = "Insight",
+    date_range: str = "",
+    disclaimer: str = "Field notes from building in AI · LuBot",
+    issue: int | None = None,
 ) -> ScreenshotResult | None:
-    """Render the branded INSIGHT card (Phase 2.12 A) to a PNG. Non-fatal.
+    """Render the branded INSIGHT card (Phase 2.16 E) to a PNG. Non-fatal.
 
     Used for opinion categories (tech_talk, biohacker, Investing Principle) instead of
     screenshotting a third-party article or the staging site. Returns None on failure.
@@ -987,9 +907,13 @@ async def take_insight_screenshot(
     from src import cards
 
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
-    palette = cards.PALETTES[palette_index % len(cards.PALETTES)]
     page_html = cards.build_insight_card(
-        headline, kicker=kicker, date_range=date_range, palette=palette, logo_uri=cards._logo_data_uri(), foot=foot
+        headline,
+        kicker=kicker,
+        date_range=date_range,
+        disclaimer=disclaimer,
+        issue=issue,
+        logo_uri=cards._logo_data_uri(),
     )
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
         f.write(page_html)
@@ -1025,7 +949,7 @@ async def take_devtrack_screenshot(metrics: dict, date_range: str = "") -> Scree
     from src import cards
 
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
-    page_html = cards.build_devtrack_card(metrics, date_range, cards.PALETTES[0], logo_uri=cards._logo_data_uri())
+    page_html = cards.build_devtrack_card(metrics, date_range, cards.CHART_COLORS, logo_uri=cards._logo_data_uri())
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
         f.write(page_html)
         tmp_path = f.name
