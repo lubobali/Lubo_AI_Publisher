@@ -6,8 +6,10 @@ import pytest
 
 from src.topic_rotator import (
     get_random_post_time,
+    get_todays_posts,
     get_todays_topic,
     get_week_number,
+    get_week_plan,
     load_schedule_config,
     load_topic_categories,
 )
@@ -64,6 +66,8 @@ class TestWeekNumber:
 
 
 class TestGetTodaysTopic:
+    """get_todays_topic = the day's PRIMARY (first) topic (thin accessor over the plan)."""
+
     def test_returns_category_dict(self):
         topic = get_todays_topic(date(2026, 3, 23))
         assert "name" in topic
@@ -73,54 +77,86 @@ class TestGetTodaysTopic:
         d = date(2026, 3, 23)
         assert get_todays_topic(d) == get_todays_topic(d)
 
-    def test_different_days_same_week_different_topics(self):
-        """Monday and Tuesday of same week should have different topics."""
-        monday = date(2026, 3, 23)
-        tuesday = date(2026, 3, 24)
-        assert get_todays_topic(monday) != get_todays_topic(tuesday)
+    def test_biohacker_is_primary_on_sun_wed_fri(self):
+        sunday = date(2026, 3, 22)  # Sunday
+        for offset in (0, 3, 5):  # Sun, Wed, Fri
+            assert get_todays_topic(sunday + timedelta(days=offset))["sources_key"] == "biohacker"
 
-    def test_seven_days_cover_all_topics(self):
-        """A full week (Sun-Sat) should cover all 7 categories."""
-        sunday = date(2026, 3, 22)  # Sunday — start of calendar week
-        topics = [get_todays_topic(sunday + timedelta(days=i)) for i in range(7)]
-        names = [t["name"] for t in topics]
-        assert len(set(names)) == 7, f"Duplicate categories in week: {names}"
-
-    def test_sunday_saturday_same_week_different_topics(self):
-        """Regression: Sunday and Saturday must NOT collide (ISO week bug)."""
+    def test_other_days_are_not_biohacker(self):
         sunday = date(2026, 3, 22)
-        saturday = date(2026, 3, 28)
-        assert get_todays_topic(sunday) != get_todays_topic(saturday)
+        for offset in (1, 2, 4, 6):  # Mon, Tue, Thu, Sat
+            assert get_todays_topic(sunday + timedelta(days=offset))["sources_key"] != "biohacker"
 
-    @pytest.mark.parametrize("weeks_ahead", range(8))
-    def test_every_sun_sat_week_has_unique_topics(self, weeks_ahead):
-        """Every Sun-Sat week should cover all 7 categories."""
-        sunday = date(2026, 3, 22) + timedelta(weeks=weeks_ahead)
-        topics = [get_todays_topic(sunday + timedelta(days=i)) for i in range(7)]
-        names = [t["name"] for t in topics]
-        assert len(set(names)) == 7, f"Duplicates in week of {sunday}: {names}"
+    def test_all_days_map_to_valid_topics(self):
+        start = date(2026, 3, 22)
+        valid_names = {c["name"] for c in load_topic_categories()}
+        for i in range(42):
+            assert get_todays_topic(start + timedelta(days=i))["name"] in valid_names
+
+
+# ---------------------------------------------------------------------------
+# Weekly plan — 9 posts/week (Phase 2.19): biohacker 3x, others 1x
+# ---------------------------------------------------------------------------
+
+
+class TestWeeklyPlan:
+    SUNDAY = date(2026, 3, 22)
+
+    def _week_posts(self, sunday=SUNDAY):
+        posts = []
+        for i in range(7):
+            posts += get_todays_posts(sunday + timedelta(days=i))
+        return posts
+
+    def test_nine_posts_per_week(self):
+        assert len(self._week_posts()) == 9
+
+    def test_biohacker_three_times(self):
+        bio = [p for p in self._week_posts() if p["topic"]["sources_key"] == "biohacker"]
+        assert len(bio) == 3
+
+    def test_each_other_topic_exactly_once(self):
+        others = [p["topic"]["sources_key"] for p in self._week_posts() if p["topic"]["sources_key"] != "biohacker"]
+        assert len(others) == 6
+        assert len(set(others)) == 6
+
+    def test_biohacker_lands_on_sun_wed_fri(self):
+        bio_days = [
+            i
+            for i in range(7)
+            if any(p["topic"]["sources_key"] == "biohacker" for p in get_todays_posts(self.SUNDAY + timedelta(days=i)))
+        ]
+        assert bio_days == [0, 3, 5]
+
+    def test_double_days_are_sun_and_wed(self):
+        counts = [len(get_todays_posts(self.SUNDAY + timedelta(days=i))) for i in range(7)]
+        assert counts == [2, 1, 1, 2, 1, 1, 1]
+
+    def test_biohacker_posts_have_distinct_show_offsets(self):
+        offsets = sorted(p["show_offset"] for p in self._week_posts() if p["topic"]["sources_key"] == "biohacker")
+        assert offsets == [0, 1, 2]
 
     def test_rotation_shifts_between_weeks(self):
-        """Monday of week 2 should not be the same topic as Monday of week 1."""
-        week1_monday = date(2026, 3, 23)
-        week2_monday = date(2026, 3, 30)
-        assert get_todays_topic(week1_monday) != get_todays_topic(week2_monday)
+        w1 = get_todays_posts(date(2026, 3, 23))[0]["topic"]["sources_key"]  # Mon week 1
+        w2 = get_todays_posts(date(2026, 3, 30))[0]["topic"]["sources_key"]  # Mon week 2
+        assert w1 != w2
 
-    def test_full_cycle_repeats_after_7_weeks(self):
-        """After 7 weeks, the rotation should repeat."""
-        d = date(2026, 3, 23)
-        cycle1 = get_todays_topic(d)
-        cycle2 = get_todays_topic(d + timedelta(weeks=7))
-        assert cycle1 == cycle2
+    @pytest.mark.parametrize("weeks_ahead", range(8))
+    def test_every_week_is_complete(self, weeks_ahead):
+        posts = self._week_posts(self.SUNDAY + timedelta(weeks=weeks_ahead))
+        keys = [p["topic"]["sources_key"] for p in posts]
+        assert len(keys) == 9
+        assert keys.count("biohacker") == 3
+        non_bio = [k for k in keys if k != "biohacker"]
+        assert len(set(non_bio)) == 6  # all 6 other topics, once each
 
-    def test_all_days_in_7_week_cycle_are_valid(self):
-        """Every day in a 7-week cycle maps to a valid topic."""
-        start = date(2026, 3, 23)
-        categories = load_topic_categories()
-        valid_names = {c["name"] for c in categories}
-        for i in range(49):
-            topic = get_todays_topic(start + timedelta(days=i))
-            assert topic["name"] in valid_names
+    def test_windows_assigned(self):
+        windows = {p["window"] for p in self._week_posts()}
+        assert {"morning", "late_morning", "evening", "weekday", "weekend"} <= windows
+
+    def test_week_plan_matches_todays_posts(self):
+        plan = get_week_plan(get_week_number(self.SUNDAY))
+        assert plan["sun"] == get_todays_posts(self.SUNDAY)
 
 
 # ---------------------------------------------------------------------------
@@ -212,3 +248,12 @@ class TestGetRandomPostTime:
     def test_all_weekends_use_weekend_window(self, d):
         t = get_random_post_time(d)
         assert 11 <= t.hour < 13
+
+    @pytest.mark.parametrize(
+        "window,lo,hi",
+        [("morning", 6, 8), ("late_morning", 10, 12), ("evening", 19, 21)],
+    )
+    def test_explicit_window_overrides_date(self, window, lo, hi):
+        # A weekday date but an explicit window -> uses that window, not weekday 15-17
+        t = get_random_post_time(date(2026, 3, 23), window=window)
+        assert lo <= t.hour < hi

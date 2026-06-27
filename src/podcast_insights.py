@@ -324,14 +324,17 @@ class PodcastInsights:
         week: int,
         topic: str = "market_pulse",
         feeds: list[dict] | None = None,
+        show_offset: int = 0,
     ) -> ScrapedArticle | None:
         """Return the week's podcast angle as a ScrapedArticle (summary = bullets), or None.
 
         `topic` selects both the feed list (config podcasts[topic]) and the distill lens.
+        `show_offset` biases which show is picked first — used when a topic posts more
+        than once a week (e.g. biohacker 3x) so each slot pulls a DIFFERENT show.
         """
         feeds = feeds if feeds is not None else load_podcast_feeds(topic)
         system = _DISTILL_BY_TOPIC.get(topic, _DISTILL_SYSTEM)
-        for feed in rotation_order(week, feeds):
+        for feed in rotation_order(week + show_offset, feeds):
             try:
                 xml = self._fetch_feed(feed["url"])
             except Exception:
