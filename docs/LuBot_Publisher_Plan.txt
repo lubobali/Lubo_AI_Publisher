@@ -2101,7 +2101,12 @@ OPEN / NEXT (not blocking):
 [ ] Phase 2.13 (B) — polish + multi-week eval of the card library.
 [ ] Phase 2.14 (C) — content & engagement (hooks, link-in-comments, analytics learning).
 [ ] Phase 2.15 (D) — dashboard EDIT before approve (tweak text + change/regenerate image).
-[ ] Phase 2.16 (E) — CARD DESIGN SYSTEM: universal luxury frame + bespoke interior (VISUAL, do FIRST). Spec locked.
+[x] Phase 2.16 (E) — CARD DESIGN SYSTEM: universal luxury frame + bespoke interior. DONE & LIVE
+      Jun 27 (merged 490e566, deployed). All 7 topics / 5 card types on the blue-steel frame:
+      insight (tech/bio/Investing), ai_news headline, 11 Market Pulse charts (market-standard
+      green/red), Building in Public, My Agent Build. Signature on every card. Built on a branch
+      (PR #3), verified by host-render, merged + deployed atomically. CI Postgres health hardened.
+      Optional follow-up: chart-expansion (Pejic-inspired alpha etc. — see project_chart_expansion).
 [ ] Phase 2.17 (F) — PODCAST-GROUNDED CONTENT: real expert podcasts per topic (CONTEXT, after E).
 [ ] app should run create_tables() on startup (new tables needed a manual create on deploy).
 [ ] (could grow card catalog toward 20 layouts later; 11 already meets the goal.)
