@@ -788,53 +788,56 @@ def build_devtrack_card(m: dict, date_range: str, palette: dict, lib_js: str = "
     )
 
 
+def _folio(issue: int | None, date_range: str) -> str:
+    """Magazine folio: 'No. 27 · June 27, 2026' (issue optional, date optional)."""
+    parts = []
+    if issue:
+        parts.append(f"No. {issue}")
+    if date_range:
+        parts.append(date_range)
+    return " · ".join(parts)
+
+
 def build_headline_card(
     headline: str,
     source: str = "",
     date_range: str = "",
-    palette: dict | None = None,
-    lib_js: str = "",
-    logo_uri: str = "",
     dek: str = "",
+    logo_uri: str = "",
     kicker: str = "AI News",
+    issue: int | None = None,
+    brand: dict = BRAND,
 ) -> str:
-    """Branded headline card (Phase 2.12 A) for ai_news.
-
-    Instead of screenshotting a third-party article page (generic, leaks nav junk),
-    render the article's HEADLINE + source as a premium LuBot-branded card. Pure
-    HTML/CSS, no chart lib. Headline font-size adapts to length so it always fits.
-    """
-    p = palette or PALETTES[2]
+    """HEADLINE card (Phase 2.16 E) for ai_news — the article HEADLINE + source inside the
+    universal frame, instead of screenshotting the source site. Headline size adapts to length."""
     h = " ".join(headline.split())
     size = 66 if len(h) <= 36 else 56 if len(h) <= 58 else 46 if len(h) <= 88 else 38
     dek_html = (
-        f'<div style="font-size:23px;line-height:1.45;color:{p["muted"]};margin-top:24px;max-width:92%">'
-        f"{html_lib.escape(' '.join(dek.split()))}</div>"
+        f'<div style="font-family:Grotesk;font-weight:500;font-size:23px;line-height:1.45;'
+        f'color:{brand["footer"]};margin-top:22px;max-width:92%">{html_lib.escape(" ".join(dek.split()))}</div>'
         if dek.strip()
         else ""
     )
     src_html = (
-        '<div style="display:flex;align-items:center;gap:11px;margin-top:34px">'
-        f'<span style="width:9px;height:9px;border-radius:50%;background:{p["accent"]};box-shadow:0 0 14px {p["accent"]}"></span>'
-        f'<span style="font-size:16px;font-weight:700;letter-spacing:1.5px;color:{p["accent"]}">{html_lib.escape(source.lower())}</span>'
-        "</div>"
+        '<div style="display:flex;align-items:center;gap:11px;margin-top:30px">'
+        f'<span style="width:9px;height:9px;border-radius:50%;background:{brand["blue"]};box-shadow:0 0 14px {brand["blue"]}"></span>'
+        f'<span style="font-family:Grotesk;font-weight:700;font-size:16px;letter-spacing:1.5px;color:{brand["blue"]}">'
+        f"{html_lib.escape(source.lower())}</span></div>"
         if source.strip()
         else ""
     )
     body = (
-        '<div class="panel" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:46px 56px">'
-        f'<div style="font-size:{size}px;font-weight:800;line-height:1.12;letter-spacing:-0.6px;color:{p["text"]}">'
-        f"{html_lib.escape(h)}</div>{dek_html}{src_html}</div>"
+        f'<div style="font-family:Fraunces;font-weight:400;font-size:{size}px;line-height:1.1;'
+        f'letter-spacing:-0.5px;color:{brand["headline"]};text-shadow:0 2px 30px rgba(0,0,0,.4)">'
+        f"{html_lib.escape(h)}</div>{dek_html}{src_html}"
     )
-    return _shell(
-        palette=p,
-        date_range=date_range,
-        body=body,
-        script="",
-        lib_js=lib_js,
-        logo_uri=logo_uri,
+    return _frame(
         kicker=kicker,
-        foot="AI news, curated and explained · LuBot",
+        body=body,
+        disclaimer="AI news, curated and explained · LuBot",
+        folio=_folio(issue, date_range),
+        logo_uri=logo_uri,
+        brand=brand,
     )
 
 
@@ -842,37 +845,27 @@ def build_insight_card(
     headline: str,
     kicker: str = "Insight",
     date_range: str = "",
-    palette: dict | None = None,
-    lib_js: str = "",
     logo_uri: str = "",
-    attribution: str = "Lubo Bali",
-    foot: str = "",
+    disclaimer: str = "Field notes from building in AI · LuBot",
+    issue: int | None = None,
+    brand: dict = BRAND,
 ) -> str:
-    """Branded INSIGHT card (Phase 2.12 A) for opinion categories (tech_talk, biohacker,
-    Investing Principle) — render the post's core take as a big editorial pull-quote, not
-    a third-party screenshot. Pure HTML/CSS. Pull-quote font-size adapts to length."""
-    p = palette or PALETTES[0]
+    """INSIGHT card (Phase 2.16 E) for opinion categories (tech_talk, biohacker, Investing
+    Principle) — the post's core take as a big Fraunces serif pull-quote inside the universal
+    frame, signed. Pull-quote font-size adapts to length so it always fits."""
     h = " ".join(headline.split())
-    size = 60 if len(h) <= 40 else 50 if len(h) <= 64 else 42 if len(h) <= 95 else 34
-    attribution_html = (
-        f'<div style="margin-top:30px;font-size:17px;font-weight:700;letter-spacing:1px;color:{p["accent"]}">'
-        f"— {html_lib.escape(attribution)}</div>"
-        if attribution.strip()
-        else ""
-    )
+    size = 80 if len(h) <= 40 else 66 if len(h) <= 64 else 54 if len(h) <= 95 else 44
     body = (
-        '<div class="panel" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:40px 56px;position:relative">'
-        f'<div style="position:absolute;top:8px;left:40px;font-size:140px;line-height:1;color:{p["accent"]};opacity:.18;font-family:Georgia,serif">&ldquo;</div>'
-        f'<div style="position:relative;font-size:{size}px;font-weight:800;line-height:1.16;letter-spacing:-0.5px;color:{p["text"]}">'
-        f"{html_lib.escape(h)}</div>{attribution_html}</div>"
+        f'<div style="font-family:Fraunces;font-weight:400;font-size:{size}px;line-height:1.06;'
+        f'letter-spacing:-1px;color:{brand["headline"]};text-shadow:0 2px 30px rgba(0,0,0,.4)">'
+        f"{html_lib.escape(h)}</div>"
+        f'<div style="margin-top:26px">{_signature(brand)}</div>'
     )
-    return _shell(
-        palette=p,
-        date_range=date_range,
-        body=body,
-        script="",
-        lib_js=lib_js,
-        logo_uri=logo_uri,
+    return _frame(
         kicker=kicker,
-        foot=foot or "Field notes from building in AI · LuBot",
+        body=body,
+        disclaimer=disclaimer,
+        folio=_folio(issue, date_range),
+        logo_uri=logo_uri,
+        brand=brand,
     )

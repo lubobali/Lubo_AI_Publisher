@@ -934,9 +934,14 @@ async def take_card_screenshot(
 
 
 async def take_headline_screenshot(
-    headline: str, source: str = "", date_range: str = "", dek: str = "", kicker: str = "AI News"
+    headline: str,
+    source: str = "",
+    date_range: str = "",
+    dek: str = "",
+    kicker: str = "AI News",
+    issue: int | None = None,
 ) -> ScreenshotResult | None:
-    """Render the branded headline card (Phase 2.12 A) to a PNG. Non-fatal.
+    """Render the branded headline card (Phase 2.16 E) to a PNG. Non-fatal.
 
     Used for ai_news instead of screenshotting a third-party article page (which looks
     generic and leaks nav/login junk). Returns None on failure so the caller can fall back.
@@ -945,7 +950,13 @@ async def take_headline_screenshot(
 
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
     page_html = cards.build_headline_card(
-        headline, source, date_range, cards.PALETTES[2], logo_uri=cards._logo_data_uri(), dek=dek, kicker=kicker
+        headline,
+        source=source,
+        date_range=date_range,
+        dek=dek,
+        kicker=kicker,
+        issue=issue,
+        logo_uri=cards._logo_data_uri(),
     )
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
         f.write(page_html)
@@ -977,9 +988,13 @@ async def take_headline_screenshot(
 
 
 async def take_insight_screenshot(
-    headline: str, kicker: str = "Insight", date_range: str = "", palette_index: int = 0, foot: str = ""
+    headline: str,
+    kicker: str = "Insight",
+    date_range: str = "",
+    disclaimer: str = "Field notes from building in AI · LuBot",
+    issue: int | None = None,
 ) -> ScreenshotResult | None:
-    """Render the branded INSIGHT card (Phase 2.12 A) to a PNG. Non-fatal.
+    """Render the branded INSIGHT card (Phase 2.16 E) to a PNG. Non-fatal.
 
     Used for opinion categories (tech_talk, biohacker, Investing Principle) instead of
     screenshotting a third-party article or the staging site. Returns None on failure.
@@ -987,9 +1002,13 @@ async def take_insight_screenshot(
     from src import cards
 
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
-    palette = cards.PALETTES[palette_index % len(cards.PALETTES)]
     page_html = cards.build_insight_card(
-        headline, kicker=kicker, date_range=date_range, palette=palette, logo_uri=cards._logo_data_uri(), foot=foot
+        headline,
+        kicker=kicker,
+        date_range=date_range,
+        disclaimer=disclaimer,
+        issue=issue,
+        logo_uri=cards._logo_data_uri(),
     )
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
         f.write(page_html)

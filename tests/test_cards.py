@@ -150,10 +150,16 @@ class TestInsightCard:
         assert "&amp;" in html and "&lt;reward&gt;" in html
         assert "<reward>" not in html
 
-    def test_attribution_optional(self):
-        html = cards.build_insight_card("Sleep is the cheapest performance drug", attribution="")
-        assert "Lubo Bali" not in html
+    def test_signature_always_present(self):
+        # The signature is the constant brand mark — always rendered (no opt-out).
+        html = cards.build_insight_card("Sleep is the cheapest performance drug")
+        assert "Lubo Bali" in html
         assert "Sleep is the cheapest performance drug" in html
+
+    def test_folio_combines_issue_and_date(self):
+        assert cards._folio(27, "June 27, 2026") == "No. 27 · June 27, 2026"
+        assert cards._folio(None, "June 27, 2026") == "June 27, 2026"
+        assert cards._folio(5, "") == "No. 5"
 
 
 class TestSelectCardLayout:
