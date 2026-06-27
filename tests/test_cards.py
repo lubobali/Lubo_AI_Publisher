@@ -93,6 +93,44 @@ class TestDesignSystemFoundation:
         assert "inset" in cards._vignette()
 
 
+class TestUniversalFrame:
+    """Phase 2.16 E2: the constant frame chrome + signature."""
+
+    def test_signature_is_blue_wordmark_with_dash(self):
+        sig = cards._signature()
+        assert "Lubo Bali" in sig
+        assert cards.BRAND["blue"] in sig
+        assert "<svg" in sig  # the front dash
+        assert "Grotesk" in sig
+
+    def test_frame_has_chrome_and_body(self):
+        html = cards._frame(
+            kicker="Investing Principle",
+            body="<div id='interior'>BODY</div>",
+            disclaimer="Not financial advice · LuBot",
+            folio="No. 27 · June 27, 2026",
+            logo_uri="data:image/png;base64,AAAA",
+        )
+        assert "<html" in html
+        assert "Investing Principle" in html  # kicker
+        assert "BODY" in html  # the interior slot
+        assert "No. 27 · June 27, 2026" in html  # folio
+        assert "Not financial advice · LuBot" in html  # disclaimer
+        assert "@font-face" in html  # fonts embedded
+        assert "data:image/png;base64,AAAA" in html  # logo
+        assert cards.BRAND["accent"] in html  # accent rail/kicker
+
+    def test_frame_escapes_kicker_and_disclaimer(self):
+        html = cards._frame(kicker="A & B", body="x", disclaimer="<n>", folio="")
+        assert "A &amp; B" in html and "&lt;n&gt;" in html
+
+    def test_frame_injects_chart_engine_and_script(self):
+        html = cards._frame(
+            kicker="Market Pulse", body="<div id='c'></div>", disclaimer="d", lib_js="/*ENGINE*/", script="/*SETUP*/"
+        )
+        assert "/*ENGINE*/" in html and "/*SETUP*/" in html
+
+
 class TestInsightCard:
     """Phase 2.12 A: editorial pull-quote card for opinion categories (no screenshots)."""
 

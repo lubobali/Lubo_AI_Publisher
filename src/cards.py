@@ -161,6 +161,64 @@ def _vignette() -> str:
     )
 
 
+def _signature(brand: dict = BRAND) -> str:
+    """The constant maker's mark: a small blue dash, then 'Lubo Bali' as a tech wordmark.
+    Identical on every card (matches the logo's style — no handwriting)."""
+    blue = brand["blue"]
+    dash = (
+        f"<svg width='46' height='12' style='vertical-align:middle'>"
+        f"<line x1='2' y1='6' x2='44' y2='6' stroke='{blue}' stroke-width='2'/></svg>"
+    )
+    return (
+        "<span style='display:inline-flex;align-items:center;gap:14px'>"
+        f"{dash}<span style='font-family:Grotesk;font-weight:700;font-size:30px;"
+        f"letter-spacing:.5px;color:{blue}'>Lubo Bali</span></span>"
+    )
+
+
+def _frame(
+    *,
+    kicker: str,
+    body: str,
+    disclaimer: str,
+    folio: str = "",
+    logo_uri: str = "",
+    lib_js: str = "",
+    script: str = "",
+    brand: dict = BRAND,
+) -> str:
+    """The UNIVERSAL card frame (Phase 2.16 E2) — constant chrome on every card:
+    background + grain + vignette, an accent rail, the topic KICKER + LOGO, a hairline,
+    a centered BODY slot (the topic-specific interior), and a footer (FOLIO | disclaimer
+    with an accent dot). Deterministic. `body` is whatever interior a builder composes;
+    lib_js/script let chart interiors inject their engine + setup.
+    """
+    b = brand
+    logo = (
+        f'<img src="{logo_uri}" style="height:70px;opacity:.97"/>'
+        if logo_uri
+        else f'<div style="font-family:Grotesk;font-weight:800;font-size:26px;color:{b["blue"]}">LuBot</div>'
+    )
+    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{_font_css()}
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{width:1200px;height:627px;font-family:'Grotesk','Inter','Segoe UI',sans-serif;background:{b["bg"]};color:{b["text"]}}}
+</style></head><body><div style="position:relative;width:1200px;height:627px;padding:52px 64px 0 70px">
+{_grain()}{_vignette()}
+<div style="position:absolute;left:0;top:64px;bottom:64px;width:3px;background:{b["accent"]}"></div>
+<div style="position:relative;display:flex;justify-content:space-between;align-items:flex-start">
+  <div style="font-family:Grotesk;font-weight:700;font-size:17px;letter-spacing:4px;text-transform:uppercase;background:{b["accent"]};-webkit-background-clip:text;background-clip:text;color:transparent">{html_lib.escape(kicker)}</div>
+  {logo}
+</div>
+<div style="position:relative;width:60px;height:2px;background:{b["accent"]};margin:24px 0 0 0"></div>
+<div style="position:relative;display:flex;flex-direction:column;justify-content:center;height:372px;max-width:1010px">{body}</div>
+<div style="position:absolute;left:70px;right:64px;bottom:40px;display:flex;justify-content:space-between;align-items:center;
+  border-top:1px solid {b["hairline"]};padding-top:14px;font-family:Grotesk;font-size:16px;letter-spacing:1.5px;text-transform:uppercase;color:{b["footer"]}">
+  <span>{html_lib.escape(folio)}</span>
+  <span style="display:flex;align-items:center;gap:9px"><span style="width:7px;height:7px;border-radius:50%;background:{b["blue"]};box-shadow:0 0 12px {b["blue"]}"></span>{html_lib.escape(disclaimer)}</span>
+</div>
+</div><script>{lib_js}</script><script>{script}</script></body></html>"""
+
+
 def _fmt_pct(p: float) -> str:
     return f"{'+' if p >= 0 else ''}{p:.1f}%"
 
