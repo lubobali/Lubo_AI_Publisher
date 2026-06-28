@@ -96,12 +96,20 @@ class TestDesignSystemFoundation:
 class TestUniversalFrame:
     """Phase 2.16 E2: the constant frame chrome + signature."""
 
-    def test_signature_is_blue_wordmark_with_dash(self):
+    def test_signature_is_constant_mark_wordmark_with_dash(self):
         sig = cards._signature()
         assert "Lubo Bali" in sig
-        assert cards.BRAND["blue"] in sig
+        assert cards.BRAND["mark"] in sig  # constant steel mark color (same on every world)
+        assert "lubot.ai" in sig  # the handle
         assert "<svg" in sig  # the front dash
         assert "Grotesk" in sig
+
+    def test_signature_mark_is_constant_across_color_worlds(self):
+        # The signature must read identically (same color) on every topic world -> recognizable.
+        bio = cards._signature(cards.topic_brand("biohacker"))
+        ai = cards._signature(cards.topic_brand("ai_news"))
+        assert cards.BRAND["mark"] in bio and cards.BRAND["mark"] in ai
+        assert cards.topic_brand("biohacker")["blue"] not in bio  # NOT tinted by the topic accent
 
     def test_frame_has_chrome_and_body(self):
         html = cards._frame(
