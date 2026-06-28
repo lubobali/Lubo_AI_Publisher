@@ -249,6 +249,9 @@ class Pipeline:
             # own branded pull-quote card, never a third-party / staging screenshot (Phase 2.16 E).
             kicker, disclaimer = INSIGHT_CARDS[category]
             headline = writer_result.card_headline or derive_card_headline(writer_result.post_text)
+            # Rotate the card COMPOSITION per same-topic post (Phase 2.20) so two e.g.
+            # biohacker posts never share a layout. Count this category's existing posts.
+            cat_count = self.session.query(PublisherPost).filter_by(topic_category=category).count()
             screenshot = await take_insight_screenshot(
                 headline,
                 kicker=kicker,
@@ -256,6 +259,7 @@ class Pipeline:
                 disclaimer=disclaimer,
                 issue=issue_no,
                 category=category,
+                layout_index=cat_count,
             )
             if screenshot:
                 image_path = screenshot.path
