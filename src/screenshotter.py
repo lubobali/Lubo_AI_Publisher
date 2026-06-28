@@ -260,7 +260,13 @@ async def take_git_screenshot(
         "files_changed": files_changed or len(changed_files),
         "hash": commit_hash,
     }
-    page_html = cards.build_build_card(commit, date_range=commit_date, issue=issue, logo_uri=cards._logo_data_uri())
+    page_html = cards.build_build_card(
+        commit,
+        date_range=commit_date,
+        issue=issue,
+        logo_uri=cards._logo_data_uri(),
+        brand=cards.topic_brand("my_agent_git"),
+    )
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
         f.write(page_html)
         tmp_path = f.name
@@ -862,6 +868,7 @@ async def take_headline_screenshot(
         kicker=kicker,
         issue=issue,
         logo_uri=cards._logo_data_uri(),
+        brand=cards.topic_brand("ai_news"),
     )
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
         f.write(page_html)
@@ -898,11 +905,13 @@ async def take_insight_screenshot(
     date_range: str = "",
     disclaimer: str = "Honest takes on tech",
     issue: int | None = None,
+    category: str = "",
 ) -> ScreenshotResult | None:
     """Render the branded INSIGHT card (Phase 2.16 E) to a PNG. Non-fatal.
 
     Used for opinion categories (tech_talk, biohacker, Investing Principle) instead of
-    screenshotting a third-party article or the staging site. Returns None on failure.
+    screenshotting a third-party article or the staging site. `category` selects the topic
+    color world. Returns None on failure.
     """
     from src import cards
 
@@ -914,6 +923,7 @@ async def take_insight_screenshot(
         disclaimer=disclaimer,
         issue=issue,
         logo_uri=cards._logo_data_uri(),
+        brand=cards.topic_brand(category),
     )
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
         f.write(page_html)
@@ -949,7 +959,13 @@ async def take_devtrack_screenshot(metrics: dict, date_range: str = "") -> Scree
     from src import cards
 
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
-    page_html = cards.build_devtrack_card(metrics, date_range, cards.CHART_COLORS, logo_uri=cards._logo_data_uri())
+    page_html = cards.build_devtrack_card(
+        metrics,
+        date_range,
+        cards.CHART_COLORS,
+        logo_uri=cards._logo_data_uri(),
+        brand=cards.topic_brand("wakatime"),
+    )
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
         f.write(page_html)
         tmp_path = f.name

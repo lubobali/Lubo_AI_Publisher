@@ -17,6 +17,8 @@ the real check is the render (verify it paints — remember the locale blank-cha
 import base64
 import html as html_lib
 import json
+import math
+import random
 from pathlib import Path
 
 _ECHARTS_PATH = Path(__file__).parent.parent / "static" / "vendor" / "echarts.min.js"
@@ -110,7 +112,55 @@ BRAND = {
     "hairline": "rgba(120,160,230,0.20)",
     "panel": "rgba(255,255,255,0.03)",
     "stroke": "rgba(120,160,230,0.12)",
+    "mark": "#cfd6e2",  # constant maker's-mark color for the signature (same on every world)
 }
+
+
+def _world(
+    accent: str, accent_dk: str, base_hi: str, base_lo: str, glow: str, motif: str = "dots", decor: str = "cosmos"
+) -> dict:
+    """Build a per-topic COLOR WORLD: same brand skeleton, full-card colored background.
+
+    The WHOLE card carries the topic color — a deep jewel-tone gradient from a brighter
+    top-left (light source) to a deeper bottom-right — plus a soft accent glow. Only the
+    color changes; the signature 'mark', logo, Fraunces headline, grain and folio stay
+    constant, so every card is one brand while each topic reads as a distinct color world.
+    base_hi/base_lo are kept DARK so the white headline stays crisp.
+    """
+    return {
+        **BRAND,
+        "blue": accent,
+        "blue_dk": accent_dk,
+        "accent": f"linear-gradient(105deg,{accent_dk} 0%,{accent} 45%,#dfe6ef 74%,{accent} 100%)",
+        # Full-bleed colored base (whole card) + a brighter accent glow in the top-left corner.
+        "bg": (
+            f"radial-gradient(900px 620px at 2% -12%,{glow}55 0%,transparent 46%),"
+            f"radial-gradient(1600px 1100px at 24% -8%,{base_hi} 0%,{base_lo} 60%,#04060a 100%)"
+        ),
+        "hairline": f"{glow}55",
+        "stroke": f"{glow}3a",
+        "motif": motif,
+        "decor": decor,
+    }
+
+
+# Per-topic color worlds (keyed by sources_key). Each is luxury-dark with ONE refined
+# accent; the signature mark stays constant across all of them (recognizable brand thread).
+TOPIC_BRANDS = {
+    "tech_talk": _world("#4f8cf0", "#1f4fae", "#16294a", "#070c16", "#4f8cf0", "constellation"),  # blue home
+    "biohacker": _world("#4ec97a", "#1f7a52", "#123c29", "#06130d", "#4ec97a", "rings", "quote"),  # vitality green
+    "stock_talk": _world("#1fb2a6", "#0f6f68", "#0d3b37", "#04130f", "#1fb2a6", "orbits"),  # teal (wealth)
+    "ai_news": _world("#e0655c", "#a83b34", "#3c1815", "#150706", "#e0655c", "comet"),  # editorial coral
+    "market_pulse": _world("#4f8cf0", "#1f4fae", "#16294a", "#070c16", "#4f8cf0", "constellation"),  # blue + charts
+    "wakatime": _world("#7c6cf0", "#4632b0", "#241b48", "#0b0720", "#7c6cf0", "galaxy"),  # building violet
+    "my_agent_git": _world("#46b6e8", "#1f7aa8", "#0d3142", "#050f16", "#46b6e8", "planet"),  # code cyan
+}
+
+
+def topic_brand(sources_key: str) -> dict:
+    """The color world for a topic; falls back to the canonical brand blue world."""
+    return TOPIC_BRANDS.get(sources_key, BRAND)
+
 
 # Chart palette: brand-blue chrome, but financial up/down follows the MARKET STANDARD
 # (green up / red down) so anyone reads it instantly. Fed to the chart builders so their
@@ -179,18 +229,161 @@ def _vignette() -> str:
     )
 
 
+def _motif(brand: dict, kind: str) -> str:
+    """A faint per-topic background texture (deterministic SVG), accent-tinted and low-opacity.
+
+    Adds richness + topic identity without competing with the headline. `kind` picks the
+    pattern; unknown kinds fall back to a refined dot grid.
+    """
+    c = brand["blue"]
+
+    def stars(n: int, seed: int, x0: int = 540) -> str:
+        """A sparse starfield, biased to the right so the left headline stays clean."""
+        rng = random.Random(seed)
+        out = []
+        for _ in range(n):
+            x = rng.randint(120, 1180)
+            y = rng.randint(28, 600)
+            if x < x0 and rng.random() > 0.3:
+                continue
+            r = rng.choice([0.7, 1.0, 1.4, 1.9])
+            o = rng.choice([0.4, 0.6, 0.85])
+            out.append(f"<circle cx='{x}' cy='{y}' r='{r}' fill='{c}' opacity='{o}'/>")
+        return "".join(out)
+
+    if kind == "rings":  # biohacker — organic concentric cells (NOT space)
+        shapes = "".join(
+            f"<circle cx='1040' cy='150' r='{r}' fill='none' stroke='{c}' stroke-width='1.4'/>"
+            for r in (70, 150, 250, 370)
+        )
+        inner = f"<svg width='1200' height='627' xmlns='http://www.w3.org/2000/svg'>{shapes}</svg>"
+        op = 0.34
+    elif kind == "constellation":  # tech — AI network among the stars
+        nodes = [(700, 120), (824, 70), (956, 140), (1092, 86), (1016, 250), (864, 236), (744, 320), (1132, 196)]
+        edges = [(0, 1), (1, 2), (2, 3), (2, 4), (4, 5), (5, 6), (5, 0), (3, 7), (4, 7)]
+        lines = "".join(
+            f"<line x1='{nodes[a][0]}' y1='{nodes[a][1]}' x2='{nodes[b][0]}' y2='{nodes[b][1]}' stroke='{c}' stroke-width='1.5' opacity='0.5'/>"
+            for a, b in edges
+        )
+        dots = "".join(f"<circle cx='{x}' cy='{y}' r='4.5' fill='{c}'/>" for x, y in nodes)
+        inner = f"<svg width='1200' height='627' xmlns='http://www.w3.org/2000/svg'>{stars(34, 1)}{lines}{dots}</svg>"
+        op = 0.6
+    elif kind == "orbits":  # investing — an orbital system (planet + orbits)
+        cx, cy = 1010, 150
+        rings = "".join(
+            f"<ellipse cx='{cx}' cy='{cy}' rx='{rx}' ry='{ry}' fill='none' stroke='{c}' stroke-width='1.5' opacity='0.45'/>"
+            for rx, ry in ((140, 60), (240, 104), (350, 150))
+        )
+        planets = (
+            f"<circle cx='{cx}' cy='{cy}' r='16' fill='{c}'/>"
+            f"<circle cx='{cx - 140}' cy='{cy}' r='7' fill='{c}'/>"
+            f"<circle cx='{cx + 196}' cy='{cy + 40}' r='9' fill='{c}'/>"
+            f"<circle cx='{cx + 120}' cy='{cy - 96}' r='6' fill='{c}'/>"
+        )
+        inner = (
+            f"<svg width='1200' height='627' xmlns='http://www.w3.org/2000/svg'>{stars(30, 2)}{rings}{planets}</svg>"
+        )
+        op = 0.55
+    elif kind == "comet":  # ai_news — a big shooting star / comet
+        hx, hy, tx, ty = 1010, 190, 440, 470
+        trail = ""
+        for i in range(30):
+            f = i / 29
+            x = hx + (tx - hx) * f
+            y = hy + (ty - hy) * f
+            r = 9.0 * (1 - f) + 0.7
+            o = 1.0 * (1 - f) + 0.06
+            trail += f"<circle cx='{x:.0f}' cy='{y:.0f}' r='{r:.1f}' fill='{c}' opacity='{o:.2f}'/>"
+        head = (
+            f"<circle cx='{hx}' cy='{hy}' r='20' fill='{c}'/>"
+            f"<circle cx='{hx}' cy='{hy}' r='34' fill='{c}' opacity='0.28'/>"
+            f"<circle cx='{hx}' cy='{hy}' r='50' fill='none' stroke='{c}' stroke-width='2' opacity='0.45'/>"
+        )
+        inner = f"<svg width='1200' height='627' xmlns='http://www.w3.org/2000/svg'>{stars(30, 3)}{trail}{head}</svg>"
+        op = 0.8
+    elif kind == "galaxy":  # building — a big spiral galaxy
+        cx, cy = 930, 175
+        pts = []
+        for arm in range(3):
+            for i in range(64):
+                t = i / 64 * 3.6 * math.pi
+                r = 14 + i * 7.6
+                a = t + arm * (2 * math.pi / 3)
+                x = cx + r * math.cos(a)
+                y = cy + r * math.sin(a) * 0.6
+                rr = max(0.9, 3.4 - i * 0.04)
+                o = max(0.22, 1.0 - i * 0.014)
+                pts.append(f"<circle cx='{x:.0f}' cy='{y:.0f}' r='{rr:.1f}' fill='{c}' opacity='{o:.2f}'/>")
+        core = (
+            f"<circle cx='{cx}' cy='{cy}' r='52' fill='{c}' opacity='0.22'/>"
+            f"<circle cx='{cx}' cy='{cy}' r='20' fill='{c}'/>"
+        )
+        inner = f"<svg width='1200' height='627' xmlns='http://www.w3.org/2000/svg'>{''.join(pts)}{core}</svg>"
+        op = 0.75
+    elif kind == "planet":  # my_agent — a ringed planet (Saturn)
+        cx, cy = 1010, 180
+        planet = (
+            f"<circle cx='{cx}' cy='{cy}' r='118' fill='none' stroke='{c}' stroke-width='2' opacity='0.7'/>"
+            f"<circle cx='{cx}' cy='{cy}' r='118' fill='{c}' opacity='0.10'/>"
+            f"<ellipse cx='{cx}' cy='{cy}' rx='210' ry='58' fill='none' stroke='{c}' stroke-width='3' opacity='0.55' transform='rotate(-18 {cx} {cy})'/>"
+            f"<circle cx='{cx - 250}' cy='{cy - 70}' r='8' fill='{c}'/>"
+        )
+        inner = f"<svg width='1200' height='627' xmlns='http://www.w3.org/2000/svg'>{stars(30, 4)}{planet}</svg>"
+        op = 0.5
+    else:  # default — starfield
+        inner = f"<svg width='1200' height='627' xmlns='http://www.w3.org/2000/svg'>{stars(48, 5, x0=0)}</svg>"
+        op = 0.5
+    uri = "data:image/svg+xml;utf8," + inner.replace("#", "%23").replace('"', "'")
+    return (
+        f'<div style="position:absolute;inset:0;background:url(&quot;{uri}&quot;);'
+        f'background-size:1200px 627px;opacity:{op};pointer-events:none"></div>'
+    )
+
+
+def _ghost_quote(brand: dict) -> str:
+    """A giant, faint editorial quotation mark behind the pull-quote (luxury-magazine move)."""
+    return (
+        f'<div style="position:absolute;left:36px;top:96px;font-family:Fraunces;font-weight:400;'
+        f'font-size:440px;line-height:1;color:{brand["blue"]};opacity:0.20;pointer-events:none">&ldquo;</div>'
+    )
+
+
+def _spotlight(brand: dict) -> str:
+    """A soft bloom so the headline feels lit, not flat."""
+    return (
+        f'<div style="position:absolute;left:0;top:38%;width:760px;height:300px;'
+        f'background:radial-gradient(closest-side,{brand["blue"]}1f,transparent 70%);'
+        f'filter:blur(20px);pointer-events:none"></div>'
+    )
+
+
+def _decor_for(brand: dict) -> str:
+    """Pick the decorative layer for a card. Every topic gets its OWN distinct space motif
+    (constellation, orbits, comet, galaxy, ringed planet...); Biohacker is the exception —
+    organic rings + the editorial quote. All get a headline spotlight."""
+    motif = _motif(brand, brand.get("motif", "default"))
+    if brand.get("decor") == "quote":  # biohacker only
+        return motif + _spotlight(brand) + _ghost_quote(brand)
+    return motif + _spotlight(brand)
+
+
 def _signature(brand: dict = BRAND) -> str:
-    """The constant maker's mark: a small blue dash, then 'Lubo Bali' as a tech wordmark.
-    Identical on every card (matches the logo's style — no handwriting)."""
-    blue = brand["blue"]
+    """The constant maker's mark: a dash, then 'LUBO BALI' as a bold wordmark + handle.
+
+    Uses the constant `mark` color (NOT the topic accent) so it reads identically on every
+    color world — this is the recognizable brand thread across the whole feed. No handwriting.
+    """
+    mark = brand.get("mark", BRAND["mark"])
     dash = (
-        f"<svg width='46' height='12' style='vertical-align:middle'>"
-        f"<line x1='2' y1='6' x2='44' y2='6' stroke='{blue}' stroke-width='2'/></svg>"
+        f"<svg width='54' height='12' style='vertical-align:middle'>"
+        f"<line x1='2' y1='6' x2='52' y2='6' stroke='{mark}' stroke-width='2'/></svg>"
     )
     return (
-        "<span style='display:inline-flex;align-items:center;gap:14px'>"
-        f"{dash}<span style='font-family:Grotesk;font-weight:700;font-size:30px;"
-        f"letter-spacing:.5px;color:{blue}'>Lubo Bali</span></span>"
+        "<span style='display:inline-flex;align-items:baseline;gap:16px'>"
+        f"{dash}<span style='font-family:Grotesk;font-weight:800;font-size:34px;"
+        f"letter-spacing:2px;text-transform:uppercase;color:{mark}'>Lubo Bali</span>"
+        f"<span style='font-family:Grotesk;font-weight:600;font-size:17px;letter-spacing:1px;"
+        f"color:{brand['footer']};opacity:.8'>· lubot.ai</span></span>"
     )
 
 
@@ -204,6 +397,7 @@ def _frame(
     lib_js: str = "",
     script: str = "",
     signature: bool = True,
+    decor: str = "",
     brand: dict = BRAND,
 ) -> str:
     """The UNIVERSAL card frame (Phase 2.16 E2) — constant chrome on EVERY card:
@@ -226,7 +420,7 @@ def _frame(
 body{{width:1200px;height:627px;font-family:'Grotesk','Inter','Segoe UI',sans-serif;background:{b["bg"]};color:{b["text"]}}}
 .panel{{background:{b["panel"]};border:1px solid {b["stroke"]};border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.35)}}
 </style></head><body><div style="position:relative;width:1200px;height:627px;display:flex;flex-direction:column;padding:52px 64px 40px 70px">
-{_grain()}{_vignette()}
+{decor}{_grain()}{_vignette()}
 <div style="position:absolute;left:0;top:64px;bottom:64px;width:3px;background:{b["accent"]}"></div>
 <div style="position:relative;display:flex;justify-content:space-between;align-items:flex-start">
   <div style="font-family:Grotesk;font-weight:700;font-size:17px;letter-spacing:4px;text-transform:uppercase;background:{b["accent"]};-webkit-background-clip:text;background-clip:text;color:transparent">{html_lib.escape(kicker)}</div>
@@ -258,12 +452,14 @@ def _shell(
     kicker: str = "Market Pulse",
     foot: str = "Weekly close · real market data · LuBot.AI Stock",
     issue: int | None = None,
+    brand: dict = BRAND,
+    decor: str = "",
 ) -> str:
     """Compatibility wrapper (Phase 2.16 E4): renders the chart/stat builders through the
-    UNIVERSAL _frame so they share the blue-steel brand, fonts, grain, signature and folio.
-    `palette` is unused for chrome now (the builders already baked their colors into
-    body/script — fed CHART_COLORS so up/down stay market-standard green/red). foot ->
-    disclaimer, date_range -> folio. Kept so the 11 chart builders + devtrack call it unchanged.
+    UNIVERSAL _frame so they share the brand, fonts, grain, signature and folio. `brand`
+    selects the per-topic color world (defaults to BRAND so the 11 chart builders are
+    unchanged); `decor` is an optional background motif layer. `palette` still carries the
+    chart's market-standard green/red. foot -> disclaimer, date_range -> folio.
     """
     return _frame(
         kicker=kicker,
@@ -273,7 +469,8 @@ def _shell(
         logo_uri=logo_uri,
         lib_js=lib_js,
         script=script,
-        brand=BRAND,
+        decor=decor,
+        brand=brand,
     )
 
 
@@ -752,9 +949,12 @@ def _fmt_tokens(n: int) -> str:
     return f"{n:,}"
 
 
-def build_devtrack_card(m: dict, date_range: str, palette: dict, lib_js: str = "", logo_uri: str = "") -> str:
+def build_devtrack_card(
+    m: dict, date_range: str, palette: dict, lib_js: str = "", logo_uri: str = "", brand: dict = BRAND
+) -> str:
     """Luxury Building-in-Public stat-card (Phase 2.11) — big-number scoreboard of the
-    real DevTrack weekly metrics. Pure HTML/CSS premium tiles (no chart lib)."""
+    real DevTrack weekly metrics. Pure HTML/CSS premium tiles (no chart lib). `brand`
+    selects the topic color world (frame bg/accent/motif); tiles keep the chart palette."""
     p = palette
 
     def tile(big: str, label: str, sub: str, accent: bool = False) -> str:
@@ -795,6 +995,8 @@ def build_devtrack_card(m: dict, date_range: str, palette: dict, lib_js: str = "
         logo_uri=logo_uri,
         kicker="Building in Public",
         foot="Weekly build report · real data: WakaTime + Git",
+        brand=brand,
+        decor=_decor_for(brand),
     )
 
 
@@ -847,6 +1049,7 @@ def build_headline_card(
         disclaimer="AI news, curated and explained",
         folio=_folio(issue, date_range),
         logo_uri=logo_uri,
+        decor=_decor_for(brand),
         brand=brand,
     )
 
@@ -876,6 +1079,7 @@ def build_insight_card(
         disclaimer=disclaimer,
         folio=_folio(issue, date_range),
         logo_uri=logo_uri,
+        decor=_decor_for(brand),
         brand=brand,
     )
 
@@ -923,5 +1127,6 @@ def build_build_card(
         disclaimer="Build log · real git",
         folio=_folio(issue, date_range),
         logo_uri=logo_uri,
+        decor=_decor_for(brand),
         brand=brand,
     )

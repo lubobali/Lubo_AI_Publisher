@@ -255,6 +255,7 @@ class Pipeline:
                 date_range=datetime.now().strftime("%B %d, %Y"),
                 disclaimer=disclaimer,
                 issue=issue_no,
+                category=category,
             )
             if screenshot:
                 image_path = screenshot.path
