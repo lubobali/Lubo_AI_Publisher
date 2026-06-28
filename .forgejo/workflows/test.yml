@@ -17,14 +17,12 @@ jobs:
           POSTGRES_USER: publisher
           POSTGRES_PASSWORD: test_password
           POSTGRES_DB: publisher_test
-        options: >-
-          --health-cmd "pg_isready -U publisher"
-          --health-start-period 15s
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
         ports:
           - 5432:5432
+        # NOTE: no --health-* options on purpose. The Forgejo runner intermittently
+        # aborted the whole job (~6s) when the service health-check wasn't green yet,
+        # before any step ran. We instead start the service ungated and wait for it
+        # deterministically in the "Wait for Postgres" step below.
 
     env:
       DATABASE_URL: postgresql://publisher:test_password@localhost:5432/publisher_test
@@ -39,6 +37,21 @@ jobs:
           pip install --break-system-packages -r requirements.txt > /dev/null 2>&1
           python3 --version
           ruff --version
+
+      - name: Wait for Postgres
+        run: |
+          python3 - <<'PY'
+          import socket, sys, time
+          for i in range(90):
+              try:
+                  with socket.create_connection(("127.0.0.1", 5432), timeout=2):
+                      print(f"Postgres accepting connections after ~{i}s")
+                      sys.exit(0)
+              except OSError:
+                  time.sleep(1)
+          print("Postgres did not become ready within 90s")
+          sys.exit(1)
+          PY
 
       - name: Ruff lint
         run: ruff check src/ tests/
