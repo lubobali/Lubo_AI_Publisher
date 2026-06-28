@@ -906,18 +906,20 @@ async def take_insight_screenshot(
     disclaimer: str = "Honest takes on tech",
     issue: int | None = None,
     category: str = "",
+    layout_index: int = 0,
 ) -> ScreenshotResult | None:
     """Render the branded INSIGHT card (Phase 2.16 E) to a PNG. Non-fatal.
 
     Used for opinion categories (tech_talk, biohacker, Investing Principle) instead of
     screenshotting a third-party article or the staging site. `category` selects the topic
-    color world. Returns None on failure.
+    color world; `layout_index` rotates the composition per post. Returns None on failure.
     """
     from src import cards
 
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
     page_html = cards.build_insight_card(
         headline,
+        layout=layout_index,
         kicker=kicker,
         date_range=date_range,
         disclaimer=disclaimer,

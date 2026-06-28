@@ -212,6 +212,36 @@ class TestInsightCard:
         assert cards._folio(None, "June 27, 2026") == "June 27, 2026"
         assert cards._folio(5, "") == "No. 5"
 
+    def test_layout_rotation_changes_composition(self):
+        """Phase 2.20: layout index rotates the composition so same-topic posts differ."""
+        h = "Time in the market beats timing it"
+        a = cards.build_insight_card(h, layout=0)  # mid/left
+        b = cards.build_insight_card(h, layout=1)  # centered
+        c = cards.build_insight_card(h, layout=2)  # upper/left
+        assert a != b != c
+        assert "text-align:center" in b  # only the centered variant
+        assert "justify-content:flex-start" in c  # only the upper variant
+
+    def test_layout_index_wraps_mod_three(self):
+        h = "Sleep is the cheapest performance drug"
+        assert cards.build_insight_card(h, layout=3) == cards.build_insight_card(h, layout=0)
+        assert cards.build_insight_card(h, layout=4) == cards.build_insight_card(h, layout=1)
+
+
+class TestMarketWorld:
+    """Phase 2.20: chart cards default through _shell to the Market Pulse color world."""
+
+    def test_chart_default_uses_market_world(self):
+        series = [{"name": "S&P", "pct": 1.0, "last_close": 5000.0, "closes": [4950, 5000]}]
+        html = cards.build_bar_ranking(series, "wk", cards.CHART_COLORS, "", "")
+        # the market world's deep-navy base color is in the background
+        assert cards.TOPIC_BRANDS["market_pulse"]["bg"][:20] in html or "16294a" in html
+
+    def test_devtrack_keeps_its_own_world(self):
+        # devtrack passes the building (violet) world explicitly — not the market default
+        html = cards.build_devtrack_card({}, "wk", cards.CHART_COLORS, brand=cards.topic_brand("wakatime"))
+        assert "7c6cf0" in html  # building violet accent
+
 
 class TestSelectCardLayout:
     def test_rotates_through_all(self):

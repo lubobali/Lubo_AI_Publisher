@@ -452,14 +452,14 @@ def _shell(
     kicker: str = "Market Pulse",
     foot: str = "Weekly close · real market data · LuBot.AI Stock",
     issue: int | None = None,
-    brand: dict = BRAND,
+    brand: dict | None = None,
     decor: str = "",
 ) -> str:
     """Compatibility wrapper (Phase 2.16 E4): renders the chart/stat builders through the
     UNIVERSAL _frame so they share the brand, fonts, grain, signature and folio. `brand`
-    selects the per-topic color world (defaults to BRAND so the 11 chart builders are
-    unchanged); `decor` is an optional background motif layer. `palette` still carries the
-    chart's market-standard green/red. foot -> disclaimer, date_range -> folio.
+    selects the color world; it defaults to the MARKET PULSE world because the only callers
+    that don't pass an explicit brand are the 11 market_pulse chart builders (devtrack passes
+    its own). `decor` is an optional motif layer. `palette` still carries the chart green/red.
     """
     return _frame(
         kicker=kicker,
@@ -470,7 +470,7 @@ def _shell(
         lib_js=lib_js,
         script=script,
         decor=decor,
-        brand=brand,
+        brand=brand or TOPIC_BRANDS["market_pulse"],
     )
 
 
@@ -1062,16 +1062,28 @@ def build_insight_card(
     disclaimer: str = "Honest takes on tech",
     issue: int | None = None,
     brand: dict = BRAND,
+    layout: int = 0,
 ) -> str:
     """INSIGHT card (Phase 2.16 E) for opinion categories (tech_talk, biohacker, Investing
     Principle) — the post's core take as a big Fraunces serif pull-quote inside the universal
-    frame, signed. Pull-quote font-size adapts to length so it always fits."""
+    frame, signed. Pull-quote font-size adapts to length. `layout` rotates the COMPOSITION
+    per post (Phase 2.20) so two posts in the same topic never look identical: 0=mid/left,
+    1=centered, 2=lower/left."""
     h = " ".join(headline.split())
     size = 80 if len(h) <= 40 else 66 if len(h) <= 64 else 54 if len(h) <= 95 else 44
+    # (vertical justify, horizontal text-align, max-width) per layout variant.
+    # 0=mid/left, 1=centered, 2=upper/left. (No flex-end — it crowds the signature.)
+    justify, align, maxw = [
+        ("center", "left", "100%"),
+        ("center", "center", "90%"),
+        ("flex-start", "left", "100%"),
+    ][layout % 3]
     body = (
+        f'<div style="height:100%;display:flex;flex-direction:column;justify-content:{justify};'
+        f'text-align:{align};{"margin:0 auto;" if align == "center" else ""}max-width:{maxw}">'
         f'<div style="font-family:Fraunces;font-weight:400;font-size:{size}px;line-height:1.06;'
         f'letter-spacing:-1px;color:{brand["headline"]};text-shadow:0 2px 30px rgba(0,0,0,.4)">'
-        f"{html_lib.escape(h)}</div>"
+        f"{html_lib.escape(h)}</div></div>"
     )
     return _frame(
         kicker=kicker,
