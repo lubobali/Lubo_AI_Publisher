@@ -990,11 +990,12 @@ class TestPublishApproved:
         db_session.flush()
 
         mock_publisher = AsyncMock()
-        mock_publisher.publish_image = AsyncMock(return_value="urn:li:share:pub123")
+        mock_publisher.publish_images = AsyncMock(return_value="urn:li:share:pub123")
         mock_publisher.platform_name = "linkedin"
 
         with (
             patch("src.scheduler.get_publisher", return_value=mock_publisher),
+            patch("src.scheduler.os.path.exists", return_value=True),
             patch("builtins.open", MagicMock(return_value=MagicMock(read=MagicMock(return_value=b"img")))),
         ):
             count = await publish_approved_posts(db_session, access_token="test", person_urn="urn:li:person:x")
@@ -1002,6 +1003,38 @@ class TestPublishApproved:
         assert count >= 1
         db_session.refresh(post)
         assert post.status == "published"
+        mock_publisher.publish_images.assert_awaited()  # card (+ any extra images) sent as a carousel
+
+    @pytest.mark.asyncio
+    async def test_publishes_card_plus_extra_photo_as_carousel(self, db_session):
+        """A post with extra_image_paths sends the card + the photo together (2 images)."""
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category="biohacker",
+            topic_title="Coffee",
+            post_text="glass cups only",
+            image_path="/tmp/card.png",
+            extra_image_paths=["/tmp/photo.jpg"],
+            status="approved",
+        )
+        db_session.add(post)
+        db_session.flush()
+
+        mock_publisher = AsyncMock()
+        mock_publisher.publish_images = AsyncMock(return_value="urn:li:share:x")
+        mock_publisher.platform_name = "linkedin"
+
+        with (
+            patch("src.scheduler.get_publisher", return_value=mock_publisher),
+            patch("src.scheduler.os.path.exists", return_value=True),
+            patch("builtins.open", MagicMock(return_value=MagicMock(read=MagicMock(return_value=b"img")))),
+        ):
+            await publish_approved_posts(db_session, access_token="t", person_urn="urn:li:person:x")
+
+        # publish_images was called with BOTH images (card + photo)
+        _, kwargs = mock_publisher.publish_images.call_args
+        images = kwargs.get("images") or mock_publisher.publish_images.call_args.args[1]
+        assert len(images) == 2
 
     @pytest.mark.asyncio
     async def test_skips_non_approved_posts(self, db_session):

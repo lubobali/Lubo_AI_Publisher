@@ -1,6 +1,7 @@
 """Daily pipeline scheduler — orchestrates full post generation flow."""
 
 import logging
+import os
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
@@ -492,11 +493,16 @@ def _enabled_platforms(access_token: str, person_urn: str) -> list[tuple[str, di
 
 
 async def _publish_to_platform(publisher, post) -> str:
-    """Publish one post via a publisher (image if present, else text). Returns the platform urn/id."""
-    if post.image_path:
-        with open(post.image_path, "rb") as f:
-            image_data = f.read()
-        return await publisher.publish_image(post.post_text, image_data)
+    """Publish one post via a publisher. Sends the card + any extra images (a carousel) if
+    present, else text. Missing image files are skipped. Returns the platform urn/id."""
+    paths = [post.image_path, *(post.extra_image_paths or [])]
+    images = []
+    for p in paths:
+        if p and os.path.exists(p):
+            with open(p, "rb") as f:
+                images.append(f.read())
+    if images:
+        return await publisher.publish_images(post.post_text, images)
     return await publisher.publish_text(post.post_text)
 
 

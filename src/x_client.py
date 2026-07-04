@@ -53,6 +53,15 @@ def post_image(text: str, image_data: bytes, filename: str = "card.png") -> str:
     return str(client.create_tweet(text=text, media_ids=[media.media_id]).data["id"])
 
 
+def post_images(text: str, images: list[bytes]) -> str:
+    """Upload up to 4 images (v1.1) then post one tweet with all of them (v2). Returns the id."""
+    api, client = _clients()
+    media_ids = [
+        api.media_upload(filename=f"img{i}.png", file=io.BytesIO(data)).media_id for i, data in enumerate(images[:4])
+    ]
+    return str(client.create_tweet(text=text, media_ids=media_ids).data["id"])
+
+
 def reply(in_reply_to_id: str, text: str) -> str:
     """Reply to a tweet (used for the self-reply link). Returns the reply tweet id."""
     _, client = _clients()
