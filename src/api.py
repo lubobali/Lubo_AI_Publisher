@@ -42,6 +42,7 @@ class PostOut(BaseModel):
     source_url: str | None = None
     post_text: str
     image_path: str | None = None
+    extra_image_count: int = 0
     hashtags: list[str] | None = None
     linkedin_post_urn: str | None = None
     status: str
@@ -89,11 +90,21 @@ def dashboard():
 
 @app.get("/api/posts/{post_id}/image")
 def post_image(post_id: int, session: Session = Depends(get_db_session)):
-    """Serve the screenshot/image for a post so the dashboard can show it."""
+    """Serve the primary image (the card) for a post so the dashboard can show it."""
     post = session.query(PublisherPost).filter_by(id=post_id).first()
     if not post or not post.image_path or not Path(post.image_path).exists():
         raise HTTPException(status_code=404, detail="No image for this post")
     return FileResponse(post.image_path)
+
+
+@app.get("/api/posts/{post_id}/image/{idx}")
+def post_image_n(post_id: int, idx: int, session: Session = Depends(get_db_session)):
+    """Serve the idx-th image of a post: 0 = the card, 1+ = extra images (e.g. a real photo)."""
+    post = session.query(PublisherPost).filter_by(id=post_id).first()
+    paths = [post.image_path, *(post.extra_image_paths or [])] if post else []
+    if not (0 <= idx < len(paths)) or not paths[idx] or not Path(paths[idx]).exists():
+        raise HTTPException(status_code=404, detail="No such image for this post")
+    return FileResponse(paths[idx])
 
 
 @app.get("/api/health")

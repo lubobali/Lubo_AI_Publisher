@@ -33,6 +33,11 @@ class PublisherPost(Base):
     analytics = relationship("PublisherAnalytics", back_populates="post")
     destinations = relationship("PublisherDestination", back_populates="post")
 
+    @property
+    def extra_image_count(self) -> int:
+        """How many images beyond the card (for the dashboard to show them all)."""
+        return len(self.extra_image_paths or [])
+
 
 class PublisherAnalytics(Base):
     __tablename__ = "publisher_analytics"
