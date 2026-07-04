@@ -143,3 +143,38 @@ async def create_image_post(
         )
         response.raise_for_status()
         return response.headers.get("x-restli-id", "")
+
+
+async def create_multi_image_post(
+    access_token: str,
+    person_urn: str,
+    text: str,
+    image_urns: list[str],
+) -> str:
+    """Create a multi-image post (a swipeable image carousel) on LinkedIn. Returns the post URN.
+
+    LinkedIn's Posts API uses content.multiImage.images (2-20 images, shown in order).
+    """
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            url=f"{LINKEDIN_API_BASE}/rest/posts",
+            headers=get_auth_headers(access_token),
+            json={
+                "author": person_urn,
+                "commentary": text,
+                "visibility": "PUBLIC",
+                "distribution": {
+                    "feedDistribution": "MAIN_FEED",
+                    "targetEntities": [],
+                    "thirdPartyDistributionChannels": [],
+                },
+                "content": {
+                    "multiImage": {
+                        "images": [{"id": urn} for urn in image_urns],
+                    }
+                },
+                "lifecycleState": "PUBLISHED",
+            },
+        )
+        response.raise_for_status()
+        return response.headers.get("x-restli-id", "")

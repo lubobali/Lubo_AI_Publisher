@@ -270,6 +270,49 @@ class TestLinkedInPublisher:
             assert urn == "urn:li:share:88888"
 
     @pytest.mark.asyncio
+    async def test_publish_images_multi_uses_multi_image_post(self):
+        """Two+ images -> a LinkedIn multi-image (carousel) post, uploading each first."""
+        pub = LinkedInPublisher(access_token="t", person_urn="urn:li:person:abc")
+        with (
+            patch(
+                "src.publisher.initialize_image_upload",
+                new_callable=AsyncMock,
+                side_effect=[("u1", "urn:li:image:1"), ("u2", "urn:li:image:2")],
+            ),
+            patch("src.publisher.upload_image", new_callable=AsyncMock) as mock_upload,
+            patch(
+                "src.publisher.create_multi_image_post",
+                new_callable=AsyncMock,
+                return_value="urn:li:share:multi",
+            ) as mock_multi,
+            patch("src.publisher.create_image_post", new_callable=AsyncMock) as mock_single,
+        ):
+            urn = await pub.publish_images("card + photo", [b"card", b"photo"])
+            assert urn == "urn:li:share:multi"
+            assert mock_upload.await_count == 2  # both images uploaded
+            mock_multi.assert_awaited_once()
+            assert mock_multi.await_args.kwargs["image_urns"] == ["urn:li:image:1", "urn:li:image:2"]
+            mock_single.assert_not_awaited()  # not the single-image path
+
+    @pytest.mark.asyncio
+    async def test_publish_images_single_uses_single_post(self):
+        """One image -> the normal single-image post, not multi."""
+        pub = LinkedInPublisher(access_token="t", person_urn="urn:li:person:abc")
+        with (
+            patch(
+                "src.publisher.initialize_image_upload",
+                new_callable=AsyncMock,
+                return_value=("u", "urn:li:image:1"),
+            ),
+            patch("src.publisher.upload_image", new_callable=AsyncMock),
+            patch("src.publisher.create_image_post", new_callable=AsyncMock, return_value="urn:li:share:one"),
+            patch("src.publisher.create_multi_image_post", new_callable=AsyncMock) as mock_multi,
+        ):
+            urn = await pub.publish_images("card only", [b"card"])
+            assert urn == "urn:li:share:one"
+            mock_multi.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_publish_image_calls_all_three_steps(self):
         pub = LinkedInPublisher(
             access_token="fake-token",
@@ -352,6 +395,26 @@ class TestXPublisher:
         with patch("src.x_client.post_image", return_value="124") as m:
             assert await XPublisher().publish_image("hi", b"img") == "124"
             assert m.call_args[0][1] == b"img"
+
+    @pytest.mark.asyncio
+    async def test_publish_images_multi_uses_post_images(self):
+        from src.publisher import XPublisher
+
+        with patch("src.x_client.post_images", return_value="126") as m:
+            assert await XPublisher().publish_images("hi", [b"a", b"b"]) == "126"
+            m.assert_called_once_with("hi", [b"a", b"b"])
+
+    @pytest.mark.asyncio
+    async def test_publish_images_single_uses_post_image(self):
+        from src.publisher import XPublisher
+
+        with (
+            patch("src.x_client.post_image", return_value="127") as single,
+            patch("src.x_client.post_images") as multi,
+        ):
+            assert await XPublisher().publish_images("hi", [b"a"]) == "127"
+            single.assert_called_once()
+            multi.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_reply(self):
