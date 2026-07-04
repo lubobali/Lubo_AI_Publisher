@@ -88,6 +88,22 @@ class TestListPosts:
         posts = resp.json()
         assert all(p["status"] == "pending" for p in posts)
 
+    def test_extra_image_count_exposed(self, client, db_session):
+        _create_post(db_session, image_path="/tmp/card.png", extra_image_paths=["/tmp/photo.jpg"])
+        resp = client.get("/api/posts")
+        assert resp.json()[0]["extra_image_count"] == 1
+
+    def test_extra_image_served(self, client, db_session, tmp_path):
+        card = tmp_path / "card.png"
+        photo = tmp_path / "photo.jpg"
+        card.write_bytes(b"\x89PNG card")
+        photo.write_bytes(b"\xff\xd8 photo")
+        p = _create_post(db_session, image_path=str(card), extra_image_paths=[str(photo)])
+        # idx 0 = card, idx 1 = the extra photo, idx 2 = 404
+        assert client.get(f"/api/posts/{p.id}/image/0").status_code == 200
+        assert client.get(f"/api/posts/{p.id}/image/1").content == b"\xff\xd8 photo"
+        assert client.get(f"/api/posts/{p.id}/image/2").status_code == 404
+
     def test_filter_by_category(self, client, db_session):
         _create_post(db_session, topic_category="ai_news")
         _create_post(db_session, topic_category="biohacker")

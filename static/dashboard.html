@@ -56,6 +56,7 @@
           </div>
           <div class="px-4 py-3 pre text-[15px] leading-relaxed">${esc(p.post_text)}</div>
           ${p.image_path ? `<img src="/api/posts/${p.id}/image" class="w-full border-y border-slate-800" loading="lazy" onerror="this.remove()">` : ""}
+          ${Array.from({length: p.extra_image_count||0}).map((_,i)=>`<img src="/api/posts/${p.id}/image/${i+1}" class="w-full border-b border-slate-800" loading="lazy" onerror="this.remove()">`).join("")}
           ${(p.hashtags&&p.hashtags.length)?`<div class="px-4 pt-3 text-emerald-400/80 text-sm">${esc(p.hashtags.join(" "))}</div>`:""}
           <div class="p-3 grid grid-cols-2 gap-2">
             <button onclick="act(${p.id},'approve',this)" class="py-3 rounded-xl bg-emerald-500 text-slate-900 font-semibold active:scale-95 transition">✓ Approve &amp; Post</button>
