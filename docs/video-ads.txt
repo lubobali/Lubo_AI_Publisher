@@ -33,7 +33,8 @@ THE STACK (locked picks — best quality, 2026)
   Screen footage  : Screen Studio (Mac) — auto-zoom, cursor smoothing, 4K
   Music           : Epidemic Sound (monthly) OR Artlist — one signature family
   Brand frames    : LuBot card engine (cards.py) — intro/outro/lower-thirds
-  Edit + color    : DaVinci Resolve (free, pro-grade)
+  Edit + color    : DaVinci Resolve (pro-grade) — OR CapCut (far easier; use this
+                    for the pilot if DaVinci feels heavy, upgrade later if needed)
   Captions        : DaVinci / CapCut auto + brand styling
   Optional b-roll : Runway / Kling — cinematic transition shots, sparingly
   Assets/backup   : Local folders + a cloud drive; download EVERYTHING in-month
@@ -84,6 +85,10 @@ PHASE 0 — FOUNDATIONS (one-time setup; do NOT skip, this is the luxury)
        - Caption style (font Grotesk, brand colors, position). LOCK these.
   0.6  Decide formats + specs: 9:16 (1080x1920) primary for feed, 16:9 secondary.
        Frame rate 30fps. Loudness target for voice. Safe margins for captions.
+       GOTCHA: screen demos are WIDE (16:9). For the 9:16 vertical feed cut you do
+       NOT just crop the wide screen (unreadable). Instead reframe: crop + push-in
+       on the exact area where the action happens, and follow it. Decide this up
+       front (or record LuBot in a tall/narrow window so it is vertical-friendly).
   0.7  Set up the FOLDER STRUCTURE (one folder per video: /script /screen /voice
        /music /exports) + a cloud backup. Download-everything discipline.
 
@@ -100,6 +105,12 @@ PHASE 1 — SCRIPTS (write all before shooting; cheapest thing to change)
 PHASE 2 — PILOT (produce ONE video end-to-end, perfect the recipe)
 ==============================================================================
   Pick the strongest mode. Run the full pipeline once and get it PERFECT:
+  2.0  RECORD PREP (quality + privacy — do EVERY time before hitting record):
+       - Clean desktop, hide other apps/tabs, silence notifications.
+       - Use a DEMO account with good sample data (a real, impressive example).
+       - HIDE ALL SECRETS/PII on screen: no API keys, tokens, emails, real user
+         data, private files. A luxury demo that leaks a secret is ruined.
+       - Set the right window size/resolution for the target format (see 0.6).
   2.1  Screen Studio: record the demo clean (retry until the run is smooth).
   2.2  ElevenLabs: generate the narration from the locked script.
   2.3  DaVinci: assemble (footage + voice + music + intro/outro + lower-thirds).
