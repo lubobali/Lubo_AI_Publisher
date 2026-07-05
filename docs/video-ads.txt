@@ -1,0 +1,161 @@
+==============================================================================
+LUBOT VIDEO ADS — MASTER PLAN
+"Slow. Luxury. Best quality possible." (Lubo, Jul 2026)
+==============================================================================
+
+GOAL
+  Produce 3-5 short, cinematic demo videos of LuBot in action across its 3 real
+  modes (stock, website, my-files), narrated in Lubo's CLONED voice over premium
+  music, wrapped in the LuBot blue-steel brand. These are top-of-funnel lead ads:
+  every video ends by sending the viewer to lubot.ai. Ties to the north star
+  (market LuBot, gain paid users) and the "market lead engine" direction.
+
+ETHOS
+  Not fast, not cheap, not templated-looking. Each video should feel like a
+  product film from a company 100x our size. One-time batch project: build the
+  system once, shoot all videos in one push, then it is done.
+
+QUALITY BAR (the "luxury" checklist every video must pass)
+  [ ] Footage is crisp (4K source), smooth zooms, no jitter, no dead air.
+  [ ] Voice is indistinguishable from Lubo (Professional clone), clean, paced.
+  [ ] Music is cinematic + on-brand, ducked under the voice, never fighting it.
+  [ ] Brand bookends (intro + outro) match the LinkedIn cards exactly.
+  [ ] Captions burned in, styled, readable MUTED (most people watch with no sound).
+  [ ] Color graded (consistent look across all videos).
+  [ ] One clear CTA: lubot.ai. Every time.
+  [ ] The 3 second hook earns the next 3 seconds. No slow starts.
+
+==============================================================================
+THE STACK (locked picks — best quality, 2026)
+==============================================================================
+  Script          : Claude (drafts + tightening, knows LuBot + Lubo voice)
+  Voice           : ElevenLabs — PROFESSIONAL Voice Clone (not instant)
+  Screen footage  : Screen Studio (Mac) — auto-zoom, cursor smoothing, 4K
+  Music           : Epidemic Sound (monthly) OR Artlist — one signature family
+  Brand frames    : LuBot card engine (cards.py) — intro/outro/lower-thirds
+  Edit + color    : DaVinci Resolve (free, pro-grade)
+  Captions        : DaVinci / CapCut auto + brand styling
+  Optional b-roll : Runway / Kling — cinematic transition shots, sparingly
+  Assets/backup   : Local folders + a cloud drive; download EVERYTHING in-month
+
+COST STRATEGY — ONE MONTH IS ENOUGH
+  Subscribe -> batch all videos -> DOWNLOAD every voice file + music track ->
+  cancel. Licenses on downloaded/generated assets persist.
+  ~$22 ElevenLabs (1 mo) + ~$15 Epidemic (1 mo) + ~$89 Screen Studio (one-time)
+  + DaVinci free = under ~$130 total, then cancel the two subs.
+  RULE: nothing gets produced after the subs lapse, so finish the batch first.
+
+==============================================================================
+THE VIDEOS (the batch)
+==============================================================================
+  V1  INTRO / SIZZLE (15-20s)   — "Meet LuBot. One agent, three modes." brand-forward.
+  V2  STOCK mode (25-40s)       — ask a real market question -> LuBot answers with data.
+  V3  WEBSITE mode (25-40s)     — point it at a site -> it does the thing live.
+  V4  MY-FILES mode (25-40s)    — drop in files -> ask -> grounded answer from YOUR docs.
+  V5  (optional) FOUNDER note   — Lubo on camera / voice: why he built it. Trust.
+  Per-mode color identity: stock=blue, website=teal, files=cyan (from card worlds).
+
+PER-VIDEO PIPELINE (repeatable assembly line)
+  1. SCRIPT (20-40s): Hook -> the pain -> LuBot does it live -> the result -> CTA.
+  2. RECORD the real demo in Screen Studio (clean run, 4K, one mode = one story).
+  3. VOICE the script in ElevenLabs (Lubo clone), export WAV.
+  4. ASSEMBLE in DaVinci: footage + voice + music (duck under voice) + intro/outro
+     + lower-thirds + captions.
+  5. GRADE + mix audio + export: 9:16 (feed) and 16:9 (YouTube/site).
+
+==============================================================================
+PHASE 0 — FOUNDATIONS (one-time setup; do NOT skip, this is the luxury)
+==============================================================================
+  0.1  Lock the goal + audience + the ONE CTA (lubot.ai). Written down.
+  0.2  Buy/setup tools: Screen Studio (one-time), ElevenLabs Creator (1 mo),
+       Epidemic Sound (1 mo), DaVinci Resolve (free). Create accounts.
+  0.3  VOICE CLONE — ElevenLabs Professional:
+       - Record ~30 min of clean audio (quiet room, good mic, consistent tone).
+       - Read varied, natural sentences (Claude provides the script/checklist).
+       - Train the Professional clone. Test it on one paragraph, tweak stability/
+         style until it is unmistakably Lubo. (Do ALL narration this month.)
+  0.4  MUSIC — pick ONE signature track family on Epidemic (2-3 tracks, same mood:
+       modern, cinematic, premium, not hype-y). Download them. This gives the set
+       a consistent sonic brand.
+  0.5  BRAND SYSTEM — from cards.py, generate the reusable video assets:
+       - Intro card/animation (blue-steel, logo, "LuBot", lubot.ai).
+       - Outro card/animation ("Try it -> lubot.ai").
+       - Lower-third template (name/mode label, per-mode color).
+       - Caption style (font Grotesk, brand colors, position). LOCK these.
+  0.6  Decide formats + specs: 9:16 (1080x1920) primary for feed, 16:9 secondary.
+       Frame rate 30fps. Loudness target for voice. Safe margins for captions.
+  0.7  Set up the FOLDER STRUCTURE (one folder per video: /script /screen /voice
+       /music /exports) + a cloud backup. Download-everything discipline.
+
+==============================================================================
+PHASE 1 — SCRIPTS (write all before shooting; cheapest thing to change)
+==============================================================================
+  1.1  Confirm the video list + the ORDER to produce (start with the strongest mode).
+  1.2  Claude drafts each script (20-40s): hook, pain, live demo beat, result, CTA.
+  1.3  Lubo reviews + tweaks to his voice/truth (real features only, no overclaim).
+  1.4  Lock scripts. Each maps 1:1 to a screen-recording shot list.
+  1.5  Write the ElevenLabs recording checklist for Lubo's own on-cam/voice bits (V5).
+
+==============================================================================
+PHASE 2 — PILOT (produce ONE video end-to-end, perfect the recipe)
+==============================================================================
+  Pick the strongest mode. Run the full pipeline once and get it PERFECT:
+  2.1  Screen Studio: record the demo clean (retry until the run is smooth).
+  2.2  ElevenLabs: generate the narration from the locked script.
+  2.3  DaVinci: assemble (footage + voice + music + intro/outro + lower-thirds).
+  2.4  Captions: auto-generate, restyle to brand, check readability MUTED.
+  2.5  Color grade + audio mix (music ducks under voice, consistent loudness).
+  2.6  Export 9:16 + 16:9. Review against the QUALITY BAR. Iterate until luxury.
+  2.7  LOCK THE RECIPE: write the exact DaVinci step list so the rest are fast.
+
+==============================================================================
+PHASE 3 — BATCH (produce the remaining videos on the locked recipe)
+==============================================================================
+  3.1  Record all remaining screen demos in one session (same setup = consistency).
+  3.2  Generate all remaining voiceovers in one ElevenLabs session.
+  3.3  Assemble each in DaVinci using the locked recipe + per-mode color.
+  3.4  Keep the intro/outro/music/captions identical across the set (brand cohesion).
+
+==============================================================================
+PHASE 4 — LUXURY POLISH & QA (the pass that separates good from premium)
+==============================================================================
+  4.1  Watch all videos back-to-back: do they feel like ONE family? Fix outliers.
+  4.2  Audio: consistent voice loudness, clean music ducking, no clipping, no hiss.
+  4.3  Pacing: kill every dead second; the hook must land in the first 3s.
+  4.4  Captions: readable muted, no typos, brand-styled, correct timing.
+  4.5  Color: one grade across all. Export final masters + feed cuts.
+
+==============================================================================
+PHASE 5 — DISTRIBUTION (turn views into leads)
+==============================================================================
+  5.1  Post manually for now (the publisher does not do video yet).
+  5.2  First-comment / caption CTA -> lubot.ai (the capture move; ties to the
+       lead-engine plan). On X, link in the self-reply.
+  5.3  Pin the intro/sizzle video to the profile.
+  5.4  LATER (build): add VIDEO support to the publisher so these auto-post like
+       posts do, and the first-comment lubot.ai link is automatic.
+  5.5  Reuse: cut 6-10s teasers from each for stories/shorts.
+
+==============================================================================
+PHASE 6 — MEASURE & ITERATE
+==============================================================================
+  6.1  Track which video/mode drives the most clicks to lubot.ai + signups.
+  6.2  Double down on the winning mode/hook; re-cut the weak ones.
+  6.3  Feed learnings back into the next batch.
+
+==============================================================================
+ROLES
+==============================================================================
+  CLAUDE (me): scripts; the ElevenLabs recording checklist; generate the branded
+    intro/outro/lower-third/caption templates from cards.py (per mode); the exact
+    DaVinci assembly step-list; QA checklist; later, video support in the publisher.
+  LUBO: record the screen demos (Screen Studio) + the voice-clone training audio;
+    do the final edit in DaVinci following the step-list; approve scripts + cuts.
+
+==============================================================================
+FIRST STEP
+==============================================================================
+  Phase 1.1/1.2 — Claude writes the PILOT script for the strongest mode so Lubo
+  sees the shape. Lubo picks the lead mode: STOCK, WEBSITE, or FILES.
+  (Everything else follows once the pilot recipe is locked.)
+==============================================================================
