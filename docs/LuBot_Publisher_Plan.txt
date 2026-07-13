@@ -2222,5 +2222,80 @@ OPEN / NEXT (not blocking):
 [ ] FUTURE: scheduled per-post PUBLISH (so same-day posts go LIVE 8h apart, not just drafted apart).
 
 ==============================================================================
+PHASE 2.21: CAROUSEL / SLIDE POSTS — the LinkedIn reach multiplier (planned Jul 13)
+==============================================================================
+  WHY: single-image posts are getting ~1% engagement + ~200-300 views on 2500 followers.
+  Multi-slide "carousel/document" posts get 2-5x the reach + dwell time on LinkedIn and
+  people SAVE them (saves boost reach hard). This is the highest-leverage NEW format for
+  engagement -> more eyeballs -> more clicks to lubot.ai (ties to the market-lead-engine
+  goal). NOTE: the fix for low engagement is FORMAT + STRATEGY, not prettier cards or the
+  server (AWS changes nothing about reach). Cards are already good.
+
+  WHAT: a carousel = a SET of branded card slides telling one story, posted as a swipeable
+  gallery. We ALREADY have the machinery: multi-image posting shipped (LinkedIn multiImage
+  supports up to 20 swipeable images; X up to 4). So a carousel REUSES multi-image posting.
+  The new work is the STORY + the per-slide cards.
+
+  SLIDE STRUCTURE (what makes a carousel work):
+    Slide 1  = HOOK (title card, the scroll-stopper — the whole post lives or dies here).
+    Slides 2..n-1 = ONE idea per slide (value; e.g. "5 things I learned building an AI agent").
+    Slide n  = CTA (try LuBot -> lubot.ai / follow for more).
+
+  SUBSTEPS (RECR):
+  C1. Writer: a carousel mode -> generate {hook, 4-6 points, CTA} for carousel-suitable
+      topics (tech_talk, my_agent_build, biohacker "5 free X", building-in-public). Not all
+      topics fit (market_pulse = a chart). Grounded + on-voice + anti-repeat like normal posts.
+  C2. Cards: render EACH slide as a branded card via the card engine — slide layouts:
+      title/hook slide, numbered point slide (big number + one line), CTA slide. Per-topic
+      color world + signature + folio, consistent across the set. Slide counter (2/7).
+  C3. Assemble + post: image_path = slide 1, extra_image_paths = slides 2..n -> the existing
+      multi-image publish sends them as a LinkedIn carousel. X gets the best 4 slides as a
+      multi-image tweet (already works).
+  C4. Cadence: carousels are higher-effort/higher-reach -> ~1-2/week, NOT every post. Slot
+      them into the weekly_plan (replace/augment a slot). Keep single-card posts for the rest.
+  C5. Dashboard: already shows all slide images (multi-image dashboard support shipped).
+  C6. Test + one real carousel end-to-end, eyeball, approve, publish. Measure reach vs
+      single-card posts.
+  LATER: true PDF "document" post (LinkedIn's native carousel look, page-turn + "N pages"
+    badge) if the API supports document upload; X THREADS (image-per-tweet slide story).
+  ACCEPTANCE: one grounded, on-brand carousel posts as a swipeable LinkedIn gallery + a
+  4-slide X version; it measurably out-reaches single-card posts.
+
+==============================================================================
+PHASE 2.22: AWS PRACTICE DEPLOYMENT — résumé/job-change experience (planned Jul 13)
+==============================================================================
+  WHY: Lubo is changing jobs (Senior Data & AI Engineer). Real, talk-about-able AWS
+  experience is a strong résumé line. Practice by deploying a COPY of this publisher to the
+  AWS FREE TIER (EC2 + RDS + S3). It is his own real app (not a tutorial) = authentic in
+  interviews, and low-stakes.
+  IMPORTANT: PROD STAYS ON HETZNER. This is a PRACTICE/portfolio deployment, not a migration
+  (moving live LuBot to AWS = 2-3x the bill + more to babysit, agreed not worth it). Do NOT
+  point real traffic or real prod secrets at the AWS box.
+
+  TAILOR IT: check the target job descriptions and practice the AWS services THEY list
+  (infra: EC2/RDS/S3; data-eng flavor: S3 lake + Glue/Athena/Lambda/Kinesis/Redshift; AI
+  flavor: Bedrock/SageMaker). EC2+RDS+S3 is the foundation either way.
+
+  SUBSTEPS:
+  A1. AWS account + free tier. FIRST set a BILLING ALARM ($1) + Budgets so a mistake never
+      silently charges you. Cost-safety before anything else.
+  A2. EC2 t2.micro (750 hrs/mo free, 12 mo): launch, install docker + docker compose, clone
+      the repo, `docker compose up`. Add a SWAP file (1GB RAM is tight for Playwright/Chromium).
+      -> "deployed a containerized app on EC2."
+  A3. RDS Postgres free tier (db.t3.micro, 20GB): point DATABASE_URL at RDS instead of the
+      local postgres container. -> "used RDS."
+  A4. S3 bucket: point the backup at S3 instead of B2 (src/backup.py is boto3/S3-compatible
+      already -> trivial swap). -> "used S3."
+  A5. (Optional) Lambda (free forever, 1M req/mo): one small slice (e.g. a scheduled trigger)
+      -> "used Lambda + a serverless function."
+  A6. SECRETS SAFETY: use TEST/dummy keys on the practice box (NOT the real LinkedIn/X/NVIDIA
+      prod keys). Run it in a safe/dry mode; it does not need to post for real.
+  A7. Document it: a short architecture note + the exact steps + interview talking points
+      ("why EC2 vs Fargate", "RDS vs self-managed PG", "S3 for object storage/backups").
+  A8. STOP/tear down when not actively using it, to stay inside the free tier.
+  ACCEPTANCE: the publisher runs on EC2 with RDS Postgres + S3, zero AWS charges, and Lubo
+  can confidently talk through the architecture + trade-offs in an interview.
+
+==============================================================================
   END OF PLAN
 ==============================================================================
