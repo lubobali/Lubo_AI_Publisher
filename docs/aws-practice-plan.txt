@@ -1,0 +1,204 @@
+==============================================================================
+LUBOT PUBLISHER on AWS — PRACTICE DEPLOYMENT PLAN
+(detail for Phase 2.22 in LuBot_Publisher_Plan.txt)
+Purpose: real, interview-ready AWS experience for Lubo's job change
+==============================================================================
+
+FRAMING (read first)
+  - This is PRACTICE / portfolio, NOT a migration. PROD STAYS ON HETZNER
+    (moving live LuBot to AWS = 2-3x the bill + more to babysit; agreed not worth it).
+  - Deploy a COPY of this publisher to the AWS FREE TIER so Lubo can say, truthfully:
+    "I deployed a containerized Python app on EC2 with RDS Postgres and S3, and can
+    talk through the architecture and trade-offs." Own real app = authentic in interviews.
+  - GOAL is not a running product; it is the EXPERIENCE + the ability to TALK about it.
+  - Do NOT put real prod secrets or real traffic on the AWS box.
+
+FREE-TIER FACTS (so we never get billed) — verify current limits when you start
+  EC2   : t2.micro / t3.micro, 750 hrs/mo, 12 months. 1 vCPU, 1 GB RAM.
+  RDS   : db.t3.micro, 750 hrs/mo, 20 GB storage, single-AZ, 12 months.
+  S3    : 5 GB, 20k GET, 2k PUT/mo, 12 months.
+  Lambda: 1M requests + 400k GB-sec/mo — FREE FOREVER (not just 12 mo).
+  Egress: ~100 GB out/mo free. Watch data transfer OUT (the usual surprise charge).
+  RULE  : one t2.micro + one db.t3.micro + a small S3 bucket = $0 if you stay in limits
+          and TEAR DOWN when done.
+
+TARGET ARCHITECTURE (v1 — the foundation)
+  [ EC2 t2.micro ]  docker compose: publisher-web + publisher-worker
+        |  DATABASE_URL ->
+  [ RDS Postgres db.t3.micro ]  (private, same VPC, SG-locked to EC2)
+        |  backups / assets ->
+  [ S3 bucket ]  (src/backup.py is boto3/S3-compatible -> trivial swap from B2)
+  (optional) [ Lambda ]  one small serverless slice
+
+==============================================================================
+PHASE A — ACCOUNT + COST SAFETY (do this BEFORE anything else)
+==============================================================================
+  A1. Create the AWS account (or use existing). Pick ONE region, close to you, and
+      stick to it (mixing regions = confusion + egress charges).
+  A2. STOP using the root user for daily work. Create an IAM admin user + enable MFA
+      on root. Log in as the IAM user from now on.
+  A3. COST GUARDRAILS (the most important step):
+      - Billing -> Budgets -> create a monthly budget of $1 with email alerts at 50/80/100%.
+      - Enable "Receive Billing Alerts", then a CloudWatch billing alarm at $1.
+      - Turn on Cost Explorer so you can see spend daily.
+      This way a mistake pings you instantly instead of a $200 surprise.
+
+==============================================================================
+PHASE B — NETWORK BASICS (keep it simple, default VPC is fine)
+==============================================================================
+  B1. Use the default VPC (no need to build one for practice).
+  B2. Create/pick a Security Group for EC2:
+      - inbound 22 (SSH) from YOUR IP only (not 0.0.0.0/0).
+      - inbound 8100 (or 80/443) only if you want to hit the dashboard; else leave closed.
+  B3. Create a Security Group for RDS:
+      - inbound 5432 FROM THE EC2 SECURITY GROUP ONLY (not public). RDS stays private.
+  (Interview point: "the DB is not publicly reachable; only the app SG can hit 5432.")
+
+==============================================================================
+PHASE C — EC2 (deploy the app) -> "deployed a containerized app on EC2"
+==============================================================================
+  C1. Launch EC2 t2.micro: Ubuntu 22.04 (or Amazon Linux 2023), the EC2 SG, a new key pair.
+  C2. SSH in with the key pair (chmod 400 the .pem).
+  C3. Install Docker + the compose plugin:
+      Ubuntu: apt update && apt install -y docker.io docker-compose-plugin && systemctl enable --now docker
+  C4. ADD SWAP (1 GB RAM is tight for Playwright/Chromium card rendering):
+      fallocate -l 2G /swapfile; chmod 600 /swapfile; mkswap /swapfile; swapon /swapfile;
+      echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  C5. Get the code: git clone the publisher repo (GitHub). Create a .env with TEST/dummy
+      keys (see Phase G). Point DATABASE_URL at RDS (after Phase D).
+  C6. docker compose up -d --build. Confirm containers healthy. Optional: hit the dashboard.
+  (Interview points: "why EC2 vs Fargate/ECS", "swap for a memory-tight instance",
+   "docker compose for local-parity deploys".)
+
+==============================================================================
+PHASE D — RDS POSTGRES -> "used RDS (managed Postgres)"
+==============================================================================
+  D1. Create RDS Postgres db.t3.micro, 20 GB gp2, single-AZ, the RDS SG, NOT publicly
+      accessible. Set a master user + password.
+  D2. From EC2, set DATABASE_URL=postgresql://USER:PASS@<rds-endpoint>:5432/publisher
+      in .env. Drop the local postgres service from the compose (or leave it unused).
+  D3. Run the app's create_tables / migrations against RDS; confirm it connects.
+  (Interview points: "RDS vs self-managed Postgres: backups, patching, failover managed
+   for you", "single-AZ for cost vs multi-AZ for HA".)
+
+==============================================================================
+PHASE E — S3 -> "used S3 for object storage / backups"
+==============================================================================
+  E1. Create a private S3 bucket (block all public access ON).
+  E2. IAM: create a policy + user/role with least-privilege access to that bucket only.
+  E3. Point src/backup.py at S3 (it is already boto3 / S3-compatible — swap the endpoint
+      + creds from B2 to AWS S3). Run a backup -> object appears in the bucket.
+  (Interview points: "S3 for durable object storage + backups", "least-privilege IAM
+   policy scoped to one bucket", "lifecycle rules to expire old backups".)
+
+==============================================================================
+PHASE F — (OPTIONAL) LAMBDA -> "wrote + deployed a serverless function"
+==============================================================================
+  F1. One small slice, e.g. a scheduled Lambda (EventBridge cron) that writes a heartbeat
+      to S3, or triggers the publish check. Free forever.
+  (Interview point: "when serverless vs a long-running container".)
+
+==============================================================================
+PHASE G — SECRETS SAFETY (do NOT leak prod)
+==============================================================================
+  G1. The AWS box uses TEST/dummy keys ONLY (fake LinkedIn/X/NVIDIA/Deepgram/OpenRouter).
+      It does NOT need to post for real; run it in a safe/dry mode.
+  G2. Never commit .env. Consider AWS SSM Parameter Store / Secrets Manager for the values
+      (itself a nice résumé line: "stored config in SSM Parameter Store, not in the repo").
+
+==============================================================================
+PHASE H — DOCUMENT IT (this is what actually gets you the job)
+==============================================================================
+  H1. A one-page architecture note + a simple diagram (EC2 -> RDS -> S3).
+  H2. INTERVIEW TALKING POINTS written out (the real deliverable):
+      - EC2 vs Fargate/ECS; why docker compose.
+      - RDS vs self-managed PG; single vs multi-AZ.
+      - Security groups: app-only access to the DB, SSH from your IP.
+      - S3 + least-privilege IAM; lifecycle rules.
+      - Cost controls (budgets + billing alarm) — shows ops maturity.
+      - What you would change for PRODUCTION (multi-AZ, ALB, autoscaling, ECS/Fargate,
+        IaC with Terraform, CI/CD to deploy). Being able to say "here is the prod version"
+        is what senior means.
+  H3. Add it to the résumé + a short LinkedIn "building in public" post (real experience).
+
+==============================================================================
+PHASE I — TEARDOWN / FREE-TIER DISCIPLINE
+==============================================================================
+  I1. STOP the EC2 + RDS when not actively practicing (stopped instances do not burn hours,
+      though RDS storage still counts — delete RDS if done for a while, keep a final snapshot).
+  I2. Empty + delete the S3 bucket when done. Confirm $0 in Cost Explorer.
+  I3. Screenshot the console (proof/portfolio) before teardown.
+
+==============================================================================
+EXTRA STACK — TAILORED TO LUBO'S JDs, AWS-NATIVE (Jul 13, 2026)
+==============================================================================
+  JDs reviewed:
+   JD1 SunStrong — Senior Data Engineer, Data Platform (IC; AWS/cloud-agnostic). CLEAN FIT.
+   JD2 Gallagher — Data Engineer MANAGER (AZURE-heavy: ADF/Databricks/Synapse/ADLS; leadership).
+
+  KEY CONSTRAINT (Lubo, Jul 13): he ALREADY HAS a Snowflake project. The gap is AWS. So do NOT
+  redo Snowflake. Build the SAME data-engineering skills the JDs ask for, but on AWS-NATIVE tools.
+  This is a STRONGER story: "data warehousing on Snowflake AND on AWS (Redshift/Athena)".
+
+  JD KEYWORD -> AWS-NATIVE TOOL (what we build):
+   Data lake            -> S3
+   ETL/ELT              -> AWS GLUE (managed Spark ETL) [+ plain Python on EC2 for free transforms]
+   Warehouse / query    -> ATHENA (serverless SQL on S3) and/or REDSHIFT (the AWS warehouse =
+                           the Snowflake-equivalent skill, on AWS)
+   Data modeling (dbt)  -> dbt with the dbt-athena / dbt-redshift adapter (dbt, pointed at AWS)
+   Data quality         -> GLUE DATA QUALITY (or reuse publisher duplicate_checker + validate_post)
+   Orchestration(Airflow)-> AIRFLOW in Docker on EC2 (FREE) or STEP FUNCTIONS (AWS-native, free tier).
+                           NOTE: MWAA (managed Airflow) is NOT free (~$350/mo) -> avoid; use Docker Airflow.
+   CI/CD + IaC          -> TERRAFORM (provisions AWS) + GitHub Actions (or CodePipeline/CodeBuild)
+   Streaming / CDC (JD1+)-> KINESIS / DMS
+   Compute / container  -> EC2 (base) + optional ECS/FARGATE + ECR
+
+  THE PORTFOLIO PROJECT — "Publisher Analytics Pipeline", ALL AWS-NATIVE (no Snowflake). Uses
+  Lubo's REAL data AND answers "why is engagement low". End to end:
+    a. SOURCE  : publisher Postgres (publisher_posts + publisher_destinations = real publish/engagement).
+    b. LAND    : dated raw snapshots to S3 (data lake), partitioned (lineage/auditability).
+    c. TRANSFORM: AWS GLUE job (Spark) — or plain Python on EC2 to stay free — clean + shape.
+    d. WAREHOUSE/QUERY: ATHENA over S3 (serverless), and/or load curated marts to REDSHIFT.
+    e. MODEL   : dbt (dbt-athena or dbt-redshift) -> dim_post, dim_topic, fact_publish + dbt TESTS
+                 (not-null/unique/accepted-values/relationships = data quality). Mart: engagement-by-topic.
+    f. DATA QUALITY: GLUE DATA QUALITY rules, or extend the publisher's dedup/validate into a DQ
+                 layer (schema checks, dedup, reconciliation, exception report). JD1 asks by name.
+    g. ORCHESTRATE: AIRFLOW (Docker on EC2) or STEP FUNCTIONS -> a DAG:
+                 extract -> land(S3) -> transform(Glue) -> dbt run -> dbt test -> load/query.
+    h. IaC     : TERRAFORM provisions S3 + IAM + Glue + Athena (+ Redshift) — the "IaC" line.
+    i. CI/CD   : GitHub Actions -> dbt tests + pytest -> deploy (can reference existing Forgejo CI).
+   RESULT: one authentic AWS project = S3 + Glue + Athena/Redshift + dbt + data quality + Airflow/
+   Step Functions + Terraform + CI/CD = most of JD1's checklist, AWS-native, on real data.
+
+  COST FLAGS (stay ~free):
+   FREE tier   : S3 (5GB), EC2 t2.micro, RDS db.t3.micro, Step Functions (4k transitions/mo),
+                 Athena is pay-per-scan (pennies on tiny data), Glue Data Catalog + crawlers (mostly free).
+   COSTS a bit : Glue Spark JOBS (~a few cents/run — watch; or do transforms in Python on EC2 for $0).
+   NOT free    : MWAA (~$350/mo) -> use Docker Airflow instead. Redshift provisioned -> use REDSHIFT
+                 SERVERLESS free trial ($300 credits, time-limited) and TEAR DOWN, or skip Redshift and
+                 let Athena be the "warehouse".
+   ALWAYS      : $1 budget + billing alarm ON first (Phase A). Tear down when idle.
+
+  ON JD2 (Gallagher): AZURE + a MANAGER role (7+ yrs DE, 3+ yrs leading a team). The AWS work
+   transfers CONCEPTUALLY. If Azure roles are a real target, add a small Azure slice later (ADLS +
+   Azure Data Factory or Databricks). Manager roles lean on leadership stories too — weigh the fit.
+
+  PRIORITY ORDER (AWS-native, free-first, since Snowflake is already covered):
+   1) S3 data lake + ATHENA (query) + Glue Data Catalog   (cheap AWS core; the "AWS lake+query" story)
+   2) TERRAFORM to provision it                            (IaC line, in both JDs)
+   3) AIRFLOW in Docker on EC2 (or Step Functions)         (orchestration line, JD1)
+   4) dbt (dbt-athena/redshift) models + tests             (modeling + data quality; dbt-on-AWS)
+   5) A GLUE ETL job                                       (the explicit "Glue/ETL" line; few cents)
+   6) EC2 + RDS deploy base                                (the "I can operate it" foundation)
+   7) optional: REDSHIFT (serverless trial) / KINESIS or DMS streaming slice
+
+==============================================================================
+FIRST STEP
+==============================================================================
+  JDs are LOCKED (SunStrong IC / Gallagher Azure-manager) -> AWS-native data pipeline, NO Snowflake.
+  1. Phase A — create the account + $1 budget + billing alarm + IAM user. Cost guardrails FIRST.
+  2. Then the AWS-native data slice (priority 1-2 above): S3 data lake + Athena query + Terraform
+     to provision it. That is the highest-value AWS start and near-free.
+  3. Then Airflow (Docker on EC2) + dbt + a Glue job; EC2/RDS deploy as the base.
+  Claude will write the exact commands/Terraform/DAG for each slice when Lubo is ready to build.
+==============================================================================
