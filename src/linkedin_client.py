@@ -30,10 +30,10 @@ async def exchange_code_for_token(
         return response.json()
 
 
-# LinkedIn only supports a rolling ~12-month window of monthly versions; "202401"
-# was stale (426 Upgrade Required). Env-overridable so future rotations are a
-# 1-line .env change. 202506 verified working Jun 2026.
-LINKEDIN_API_VERSION = os.getenv("LINKEDIN_API_VERSION", "202506")
+# LinkedIn only supports a rolling ~12-month window of monthly versions; older ones
+# get 426 Upgrade Required. Env-overridable so future rotations are a 1-line .env change.
+# 202506 went stale Jul 2026 (426) -> bumped to 202607 (verified 200). Re-bump ~yearly.
+LINKEDIN_API_VERSION = os.getenv("LINKEDIN_API_VERSION", "202607")
 
 
 def get_auth_headers(access_token: str) -> dict:
