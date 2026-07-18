@@ -62,6 +62,17 @@
       } catch (e) { alert("Could not start: " + e.message); }
       finally { setTimeout(() => { btn.disabled = false; btn.textContent = label; }, 4000); }
     }
+
+    async function convertCarousel(id, btn) {
+      if (!confirm("Turn this post into a swipeable carousel? Same story, restructured into slides.")) return;
+      btn.disabled = true; btn.textContent = "…";
+      try {
+        const r = await fetch(`/api/posts/${id}/convert-to-carousel`, { method: "POST" });
+        if (!r.ok) throw new Error(await r.text());
+        btn.textContent = "✓ Converting…";
+        alert("Converting to a carousel in the background (~a minute). Refresh to see the slides.");
+      } catch (e) { alert("Convert failed: " + e.message); btn.disabled = false; btn.textContent = "✦ Convert to carousel"; }
+    }
     const when = iso => { try { return new Date(iso).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}); } catch { return ""; } };
 
     async function load() {
@@ -94,9 +105,12 @@
             <button onclick="editText(${p.id})" class="mt-2 text-xs text-emerald-400/80">✏️ Edit text</button>
           </div>
           ${imgs}
-          <label class="block px-4 py-2 text-xs text-sky-400/90 cursor-pointer active:opacity-70">＋ Add image
-            <input type="file" accept="image/*" class="hidden" onchange="addImg(${p.id}, this)">
-          </label>
+          <div class="flex items-center gap-4 px-4 py-2">
+            <label class="text-xs text-sky-400/90 cursor-pointer active:opacity-70">＋ Add image
+              <input type="file" accept="image/*" class="hidden" onchange="addImg(${p.id}, this)">
+            </label>
+            ${imgCount<=1?`<button onclick="convertCarousel(${p.id},this)" class="text-xs text-fuchsia-400/90 active:opacity-70">✦ Convert to carousel</button>`:''}
+          </div>
           ${(p.hashtags&&p.hashtags.length)?`<div class="px-4 pt-1 pb-1 text-emerald-400/80 text-sm">${esc(p.hashtags.join(" "))}</div>`:""}
           <div class="p-3 grid grid-cols-2 gap-2">
             <button onclick="act(${p.id},'approve',this)" class="py-3 rounded-xl bg-emerald-500 text-slate-900 font-semibold active:scale-95 transition">✓ Approve &amp; Post</button>

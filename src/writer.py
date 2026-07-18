@@ -821,6 +821,12 @@ async def write_carousel(
         recent_posts=recent_posts,
     )
 
+    return await _carousel_completion(system_prompt, user_prompt, topic_name)
+
+
+async def _carousel_completion(system_prompt: str, user_prompt: str, topic_name: str) -> CarouselResult | None:
+    """Run a carousel prompt through the NIM->OpenRouter fallback and parse the deck. Shared by
+    write_carousel (from a topic) and carousel_from_text (reshaping an existing post)."""
     providers: list[tuple[str, AsyncOpenAI, str]] = [("NIM", get_llm_client(), NVIDIA_MODEL)]
     fallback = get_fallback_client()
     if fallback is not None:
@@ -843,3 +849,24 @@ async def write_carousel(
 
     logger.warning("All LLM providers failed to produce a carousel")
     return None
+
+
+async def carousel_from_text(
+    post_text: str, topic_name: str, hashtags: list[str] | None = None
+) -> CarouselResult | None:
+    """Reshape an EXISTING single post into a carousel deck — same content and voice, NO new facts.
+    Powers the dashboard 'Convert to carousel' button (Phase 2.25). Uses only what is already in the
+    post (the TRUTH rules + 'invent nothing' keep it honest)."""
+    system_prompt = build_carousel_system_prompt()
+    tags = " ".join(hashtags or [])
+    user_prompt = (
+        f"Below is a LinkedIn post I already wrote about '{topic_name}'. Restructure THIS post into a "
+        "carousel deck. Use ONLY the ideas and facts already in the post — invent nothing new, add no "
+        "numbers or claims that are not already there. Keep my voice. Pull the strongest line as the "
+        "hook, break the body into 4 to 5 short point slides (one idea each), and end with a soft CTA.\n\n"
+        f"POST:\n{post_text.strip()}\n"
+    )
+    if tags:
+        user_prompt += f"\nReuse these hashtags: {tags}\n"
+    user_prompt += "\nRespond in the CAROUSEL JSON format only."
+    return await _carousel_completion(system_prompt, user_prompt, topic_name)

@@ -103,6 +103,69 @@ def generate_carousel_now(category: str | None = None) -> int | None:
     return asyncio.run(_go())
 
 
+def convert_post_to_carousel(post_id: int) -> bool:
+    """Reshape an existing PENDING single post into a carousel IN PLACE (Phase 2.25).
+
+    Keeps the post's story/voice (writer reshapes only the existing text, no new facts) and REUSES
+    the post's existing card as the proof slide (slide 2). Self-contained (own session) so it runs
+    from a FastAPI BackgroundTask. Returns True on success. Never raises."""
+
+    async def _go() -> bool:
+        from src.models import PublisherPost
+        from src.post_processor import process_post
+        from src.screenshotter import take_carousel_screenshots
+        from src.writer import carousel_from_text
+
+        session = SessionLocal()
+        try:
+            post = session.query(PublisherPost).filter_by(id=post_id).first()
+            if post is None or post.status != "pending":
+                logger.warning("Convert: post %s missing or not pending", post_id)
+                return False
+            if post.extra_image_paths:
+                logger.warning("Convert: post %s is already a carousel", post_id)
+                return False
+
+            category = post.topic_category
+            name = next((t["name"] for t in load_topic_categories() if t["sources_key"] == category), category)
+            carousel = await carousel_from_text(post.post_text, name, post.hashtags)
+            if carousel is None:
+                logger.error("Convert: writer could not reshape post %s", post_id)
+                return False
+
+            existing_card = post.image_path  # reuse the single post's card as the proof slide
+            slide_paths = await take_carousel_screenshots(
+                topic_key=category,
+                kicker=name,
+                hook=carousel.hook,
+                points=carousel.points,
+                cta=carousel.cta,
+                has_proof_card=bool(existing_card),
+            )
+            if not slide_paths:
+                logger.error("Convert: no slides rendered for post %s", post_id)
+                return False
+            if existing_card:
+                slide_paths.insert(1, existing_card)  # hook -> CARD (existing) -> points -> CTA
+
+            caption, hashtags = process_post(carousel.caption, carousel.hashtags or post.hashtags)
+            post.post_text = caption
+            post.image_path = slide_paths[0]
+            post.extra_image_paths = slide_paths[1:] or None
+            post.hashtags = hashtags
+            session.commit()
+            logger.info("Convert: post %s -> carousel, %d slides", post_id, len(slide_paths))
+            return True
+        except Exception:
+            session.rollback()
+            logger.exception("Convert to carousel crashed for post %s", post_id)
+            return False
+        finally:
+            session.close()
+
+    return asyncio.run(_go())
+
+
 def _run_publish() -> None:
     """Publish any approved posts to LinkedIn. No-op without a token."""
     token = os.getenv("LINKEDIN_ACCESS_TOKEN")

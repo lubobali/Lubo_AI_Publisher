@@ -1011,3 +1011,28 @@ class TestWriteCarousel:
         ):
             r = await write_carousel(topic_name="Biohacker", topic_description="health", articles=SAMPLE_ARTICLES)
         assert r is None
+
+
+class TestCarouselFromText:
+    """Phase 2.25 — reshape an existing post into a carousel (Convert to carousel button)."""
+
+    @pytest.mark.asyncio
+    async def test_reshapes_existing_post(self):
+        from src.writer import carousel_from_text
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content=_CAROUSEL_JSON))]
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+        with patch("src.writer.get_llm_client", return_value=mock_client):
+            r = await carousel_from_text(
+                "Morning light is underrated. Get sun early. It sets your clock. Free and powerful.",
+                "Biohacker",
+                hashtags=["#Biohacking"],
+            )
+        assert isinstance(r, CarouselResult)
+        assert r.hook and len(r.points) >= 2
+        # the prompt must carry the existing post text (reshape, not invent)
+        sent = mock_client.chat.completions.create.call_args[1]["messages"][1]["content"]
+        assert "Morning light is underrated" in sent
+        assert "invent nothing new" in sent.lower()

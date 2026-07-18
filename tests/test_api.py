@@ -363,3 +363,26 @@ class TestGenerateCarousel:
         assert r.status_code == 202
         assert r.json()["category"] == "today"
         mock_gen.assert_called_once_with(None)
+
+
+class TestConvertToCarousel:
+    """POST /api/posts/{id}/convert-to-carousel reshapes a pending single post (Phase 2.25)."""
+
+    def test_converts_pending_single_post(self, client, db_session):
+        p = _create_post(db_session, status="pending", image_path="/tmp/card.png")
+        with patch("src.cron.convert_post_to_carousel") as mock_conv:
+            r = client.post(f"/api/posts/{p.id}/convert-to-carousel")
+        assert r.status_code == 202
+        assert r.json()["post_id"] == p.id
+        mock_conv.assert_called_once_with(p.id)
+
+    def test_rejects_non_pending(self, client, db_session):
+        p = _create_post(db_session, status="published")
+        assert client.post(f"/api/posts/{p.id}/convert-to-carousel").status_code == 409
+
+    def test_rejects_already_a_carousel(self, client, db_session):
+        p = _create_post(db_session, status="pending", image_path="/tmp/a.png", extra_image_paths=["/tmp/b.png"])
+        assert client.post(f"/api/posts/{p.id}/convert-to-carousel").status_code == 400
+
+    def test_404_when_missing(self, client):
+        assert client.post("/api/posts/999999/convert-to-carousel").status_code == 404

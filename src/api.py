@@ -312,6 +312,22 @@ def generate_carousel(body: GenerateCarouselRequest, background: BackgroundTasks
     return {"status": "generating", "category": body.category or "today"}
 
 
+@app.post("/api/posts/{post_id}/convert-to-carousel", status_code=202)
+def convert_to_carousel(post_id: int, background: BackgroundTasks, session: Session = Depends(get_db_session)):
+    """Turn an existing PENDING single post into a carousel IN PLACE (Phase 2.25), in the BACKGROUND.
+
+    Reshapes the post's own text into a swipe deck (same story/voice) and reuses its card as slide 2.
+    Pending-only; 409 if not pending, 400 if it is already a carousel. Refresh in ~a minute."""
+    post = _require_pending(session.query(PublisherPost).filter_by(id=post_id).first())
+    if post.extra_image_paths:
+        raise HTTPException(status_code=400, detail="This post is already a carousel")
+
+    from src.cron import convert_post_to_carousel
+
+    background.add_task(convert_post_to_carousel, post_id)
+    return {"status": "converting", "post_id": post_id}
+
+
 @app.get("/api/analytics", response_model=AnalyticsResponse)
 def get_analytics(session: Session = Depends(get_db_session)):
     """Get engagement analytics and topic performance."""

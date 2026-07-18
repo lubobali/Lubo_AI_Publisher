@@ -431,8 +431,7 @@ def calculate_compliance_score(total_fixes: int) -> float:
 
 # Words that open an engagement question — used to safely add a dropped '?'.
 _QUESTION_WORDS = frozenset(
-    "what whats how hows why when where who which is are do does did would will "
-    "could should can have has had am was were if".split()
+    ["what", "whats", "how", "hows", "why", "when", "where", "who", "which", "is", "are", "do", "does", "did", "would", "will", "could", "should", "can", "have", "has", "had", "am", "was", "were", "if"]
 )
 
 
