@@ -74,11 +74,24 @@ _DISTILL_AINEWS = (
     "the transcript. No preamble, no title."
 )
 
+# Tech Talk distill (Phase 2.24) — SAME show as ai_news, but the OPINION lens: pull ideas a
+# senior engineer would riff on, not a news recap. One 2h episode -> two posts, two angles.
+_DISTILL_TECHTALK = (
+    "You distill an AI/tech podcast transcript into 3 to 5 MEATY ideas, debates, or trends a senior "
+    "data/AI engineer could form a strong OPINION on — the conceptual and engineering angle, NOT a "
+    "news recap. Prefer the 'why it matters', the trade-off, the architecture shift, or the "
+    "second-order implication for people who actually build. STRIP ads, sponsor reads, intros, outros, "
+    "housekeeping, and off-topic tangents. Attribute claims to the speaker or the show. Each bullet = "
+    "one idea + the tension or insight worth an opinion, on its own line starting with '- '. Use NO "
+    "invented numbers, studies, or company names not in the transcript. No preamble, no title."
+)
+
 # Per-topic distillation prompt — defaults to the market prompt for any unmapped topic.
 _DISTILL_BY_TOPIC = {
     "market_pulse": _DISTILL_SYSTEM,
     "biohacker": _DISTILL_BIOHACKER,
     "ai_news": _DISTILL_AINEWS,
+    "tech_talk": _DISTILL_TECHTALK,
 }
 
 # Invisible chars Megaphone et al. sprinkle around hyperlinked names in show-notes.

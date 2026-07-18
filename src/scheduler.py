@@ -137,16 +137,17 @@ class Pipeline:
                         success=False, error=f"All {len(articles)} articles are duplicates for {category}"
                     )
                 checker.record_url(selected_article.url, used=True)
-        elif category == "ai_news":
-            # Podcast-primary (Phase 2.23): distill the week's Moonshots (Diamandis) episode into
-            # the AI/tech angle in Lubo's voice, cited to the show — broader than OpenAI-heavy news.
-            # Fall back to the news scraper if no usable episode this week.
-            selected_article = self._get_podcast_article(target_date, topic="ai_news", show_offset=show_offset)
+        elif category in ("ai_news", "tech_talk"):
+            # Podcast-primary (Phase 2.23 ai_news / 2.24 tech_talk): distill the week's Moonshots
+            # (Diamandis) episode with the topic's lens — ai_news = newsworthy developments, tech_talk
+            # = meaty ideas for a senior opinion. Same show, different angle. Fall back to the topic's
+            # news/tech scraper if no usable episode this week.
+            selected_article = self._get_podcast_article(target_date, topic=category, show_offset=show_offset)
             if selected_article is None:
-                logger.info("No AI News podcast episode this week — falling back to news scrape")
+                logger.info("No %s podcast episode this week — falling back to scrape", category)
                 articles = await scrape_topic(category)
                 if not articles:
-                    return PipelineResult(success=False, error="No AI News podcast or articles found")
+                    return PipelineResult(success=False, error=f"No {category} podcast or articles found")
                 checker = DuplicateChecker(self.session)
                 selected_article = await self._find_non_duplicate(checker, articles, category)
                 if selected_article is None:

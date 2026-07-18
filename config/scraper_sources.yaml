@@ -522,6 +522,11 @@ podcasts:
     # than the OpenAI-heavy news RSS. Verified live: 275 episodes, mp3 enclosures, weekly AI roundups.
     - name: Moonshots with Peter Diamandis
       url: https://feeds.megaphone.fm/DVVTS2890392624
+  tech_talk:  # Same rich ~2h show (Phase 2.24), but a DIFFERENT lens: Tech Talk pulls the meaty
+    # ideas/debates to form a SENIOR OPINION on (not a news recap — that's ai_news). One episode
+    # feeds two posts from two angles. Falls back to the tech scraper if no usable episode.
+    - name: Moonshots with Peter Diamandis
+      url: https://feeds.megaphone.fm/DVVTS2890392624
   market_pulse:
     - name: Animal Spirits
       url: https://feeds.megaphone.fm/TCP6464651487
