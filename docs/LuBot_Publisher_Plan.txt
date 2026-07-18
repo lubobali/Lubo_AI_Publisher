@@ -2187,7 +2187,20 @@ OPEN / NEXT (not blocking):
       [ ] my_agent_git -> luxury build card (LAST one — currently a terminal git screenshot).
 [ ] Phase 2.13 (B) — polish + multi-week eval of the card library.
 [ ] Phase 2.14 (C) — content & engagement (hooks, link-in-comments, analytics learning).
-[ ] Phase 2.15 (D) — dashboard EDIT before approve (tweak text + change/regenerate image).
+[x] Phase 2.15 (D) — dashboard EDIT BEFORE APPROVE. DONE & LIVE Jul 18 (merge 3ad792e, PR #12).
+      PATCH /api/posts/{id} (edit post_text/hashtags, pending-only 409), POST .../images (upload:
+      EXIF-orient + downsize + safe re-encode into the screenshots volume), DELETE .../images/{idx}
+      (remove; reindex, first remaining becomes the card). Dashboard: inline text editor, per-image
+      ✕ remove, ＋ Add image. Deps added: python-multipart + Pillow. 10 new tests. TAGGING: a real
+      clickable @mention needs the person's LinkedIn URN (not available via API) -> Lubo approves,
+      then edits the live LinkedIn post to tag natively (rare, so no feature needed).
+[x] LinkedIn API 426 fix (Jul 17): version 202506 aged out (>12mo) -> all LinkedIn publishes 426'd,
+      post landed on X only. Bumped LINKEDIN_API_VERSION default 202506->202607 (merge 9fe4e14, PR #11)
+      + env override + worker recreate. Recurring ~yearly; see memory reference_linkedin_api_version
+      (426=version, 401=expired token). [x] Phase 2.20b — per-post layouts + Market Pulse world (Jul).
+      [x] multi-image posts (card + photo) + dashboard shows all images.
+[~] Phase 2.21 (carousels) — NEXT (started Jul 18). Multi-slide swipeable LinkedIn posts (reuse
+      multi-image); the biggest engagement lever. See the Phase 2.21 section above.
 [x] Phase 2.16 (E) — CARD DESIGN SYSTEM: universal luxury frame + bespoke interior. DONE & LIVE
       Jun 27 (merged 490e566, deployed). All 7 topics / 5 card types on the blue-steel frame:
       insight (tech/bio/Investing), ai_news headline, 11 Market Pulse charts (market-standard
