@@ -962,16 +962,24 @@ async def take_carousel_screenshots(
     hook: str,
     points: list[str],
     cta: str = "Try LuBot. lubot.ai",
+    has_proof_card: bool = False,
 ) -> list[str]:
     """Render a swipeable CAROUSEL (Phase 2.21) — one branded PNG per slide (hook, points, cta)
     — and return the ordered file paths. Reuses cards.build_carousel_slides for the visuals and
     the same 1200x627 @2x render as every other card. Non-fatal: returns whatever slides rendered
     (empty list on total failure). The pipeline sets image_path=paths[0], extra_image_paths=rest,
-    so the set posts as a native multi-image carousel."""
+    so the set posts as a native multi-image carousel. `has_proof_card` tells the folio counter a
+    real topic card will be spliced in as slide 2, so the whole deck counts 1..N of N."""
     from src import cards
 
     slides = cards.build_carousel_slides(
-        topic_key=topic_key, kicker=kicker, hook=hook, points=points, cta=cta, logo_uri=cards._logo_data_uri()
+        topic_key=topic_key,
+        kicker=kicker,
+        hook=hook,
+        points=points,
+        cta=cta,
+        logo_uri=cards._logo_data_uri(),
+        has_proof_card=has_proof_card,
     )
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
     paths: list[str] = []

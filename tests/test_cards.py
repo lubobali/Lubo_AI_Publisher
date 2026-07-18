@@ -321,3 +321,15 @@ class TestCarouselSlides:
     def test_no_points_still_makes_hook_and_cta(self):
         s = cards.build_carousel_slides("tech_talk", "Tech", "Just a hook", [])
         assert len(s) == 2  # hook + cta only
+
+    def test_folio_counts_the_spliced_proof_card(self):
+        # With a proof card spliced in as slide 2, the folio counts it: hook 1, card 2,
+        # points 3.., cta N. 3 points + card = total 6. The builder still returns 5 HTMLs
+        # (the pipeline inserts the card image between hook and points).
+        s = cards.build_carousel_slides(
+            "ai_news", "AI News", "The hook", ["one", "two", "three"], cta="lubot.ai", has_proof_card=True
+        )
+        assert len(s) == 5  # hook + 3 points + cta (card is spliced by the pipeline)
+        assert "1 / 6" in s[0]  # hook
+        assert "3 / 6" in s[1]  # first point — slide 2 reserved for the proof card
+        assert "6 / 6" in s[-1]  # cta

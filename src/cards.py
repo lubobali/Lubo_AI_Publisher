@@ -1151,15 +1151,21 @@ def build_carousel_slides(
     points: list[str],
     cta: str = "Try LuBot. lubot.ai",
     logo_uri: str = "",
+    has_proof_card: bool = False,
 ) -> list[str]:
     """A swipeable LinkedIn CAROUSEL (Phase 2.21): one story told across a SET of branded
     slides in the topic's color world. Slide 1 = HOOK (with a 'swipe' cue), the middle slides
     are one numbered POINT each, the last slide = CTA. Returns a list of slide HTMLs (one per
     slide); the screenshotter renders each to a PNG and they post as a multi-image carousel
     (reuses the multi-image publish path). Every slide carries the constant brand chrome +
-    signature, so the set reads as one coherent deck. Pure + deterministic."""
+    signature, so the set reads as one coherent deck. Pure + deterministic.
+
+    `has_proof_card`: the pipeline splices the topic's REAL card in as slide 2, so the folio
+    counter must count it — total includes it and the points number from slide 3 onward, so the
+    whole deck reads 1..N of N (the spliced card is slide 2, with its own magazine header)."""
     b = topic_brand(topic_key)
-    total = 2 + len(points)  # hook + one per point + cta
+    card = 1 if has_proof_card else 0  # the spliced proof card occupies slide 2 when present
+    total = 2 + len(points) + card  # hook + [proof card] + one per point + cta
 
     def foot(i: int) -> str:
         return f"{i} / {total}"
@@ -1202,7 +1208,7 @@ def build_carousel_slides(
                 kicker=kicker,
                 body=body,
                 disclaimer="",
-                folio=foot(1 + idx),
+                folio=foot(1 + card + idx),  # slide 1 = hook, slide 2 = proof card (if any)
                 logo_uri=logo_uri,
                 brand=b,
             )

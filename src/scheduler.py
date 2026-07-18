@@ -377,26 +377,31 @@ class Pipeline:
         # Clean the feed caption the same way as a normal post (ESL apostrophes, dashes, etc.).
         caption, hashtags = process_post(carousel.caption, carousel.hashtags)
 
+        # Render the topic's REAL card FIRST (the proof/visual — chart, git, stat, insight,
+        # headline) so the slide builder can count it in the folio (1..N of N). Non-fatal.
+        card_path = None
+        try:
+            card_path = await self._take_topic_card(category, selected_article, carousel.hook)
+        except Exception:
+            logger.warning("Carousel topic-card render failed (posting deck without it)", exc_info=True)
+
         # Render one branded PNG per slide (hook -> points -> CTA), in the topic color world.
+        # has_proof_card makes the folio counter reserve slide 2 for the card so the whole deck
+        # reads 1..N of N (hook 1, card 2, points 3.., cta N).
         slide_paths = await take_carousel_screenshots(
             topic_key=category,
             kicker=topic["name"],
             hook=carousel.hook,
             points=carousel.points,
             cta=carousel.cta,
+            has_proof_card=bool(card_path),
         )
         if not slide_paths:
             return PipelineResult(success=False, error="Carousel produced no slide images")
 
-        # Splice the topic's REAL card in as slide 2 — the proof/visual (chart, git, stat, insight,
-        # headline). Same card a single post would show, reused so every deck showcases the topic's
-        # signature visual. Non-fatal: if it fails, the deck just posts without the proof slide.
-        try:
-            card_path = await self._take_topic_card(category, selected_article, carousel.hook)
-            if card_path:
-                slide_paths.insert(1, card_path)  # hook (0) -> CARD (1) -> points... -> CTA
-        except Exception:
-            logger.warning("Carousel topic-card splice failed (posting deck without it)", exc_info=True)
+        # Splice the real card in as slide 2 (hook -> CARD -> points... -> CTA).
+        if card_path:
+            slide_paths.insert(1, card_path)
 
         post_embedding = None
         try:
