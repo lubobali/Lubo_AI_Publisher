@@ -48,21 +48,34 @@
       document.getElementById("count").textContent = pending.length + " pending";
       document.getElementById("empty").classList.toggle("hidden", pending.length > 0);
 
-      document.getElementById("pending").innerHTML = pending.map(p => `
+      document.getElementById("pending").innerHTML = pending.map(p => {
+        const imgCount = (p.image_path ? 1 : 0) + (p.extra_image_count||0);
+        const imgs = Array.from({length: imgCount}, (_,k)=>`
+          <div class="relative">
+            <img src="/api/posts/${p.id}/image/${k}" class="w-full border-y border-slate-800" loading="lazy" onerror="this.parentElement.remove()">
+            <button onclick="removeImg(${p.id},${k},this)" title="Remove image" class="absolute top-2 right-2 h-8 w-8 rounded-full bg-slate-950/80 border border-slate-700 text-slate-200 text-sm active:scale-90">✕</button>
+          </div>`).join("");
+        return `
         <div class="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-hidden">
           <div class="px-4 pt-4 flex items-center justify-between">
             <span class="text-xs font-semibold px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-400">${esc(CAT[p.topic_category]||p.topic_category)}</span>
             <span class="text-xs text-slate-500">${when(p.posted_at)}</span>
           </div>
-          <div class="px-4 py-3 pre text-[15px] leading-relaxed">${esc(p.post_text)}</div>
-          ${p.image_path ? `<img src="/api/posts/${p.id}/image" class="w-full border-y border-slate-800" loading="lazy" onerror="this.remove()">` : ""}
-          ${Array.from({length: p.extra_image_count||0}).map((_,i)=>`<img src="/api/posts/${p.id}/image/${i+1}" class="w-full border-b border-slate-800" loading="lazy" onerror="this.remove()">`).join("")}
-          ${(p.hashtags&&p.hashtags.length)?`<div class="px-4 pt-3 text-emerald-400/80 text-sm">${esc(p.hashtags.join(" "))}</div>`:""}
+          <div id="text-${p.id}" class="px-4 py-3">
+            <div class="pre text-[15px] leading-relaxed">${esc(p.post_text)}</div>
+            <button onclick="editText(${p.id})" class="mt-2 text-xs text-emerald-400/80">✏️ Edit text</button>
+          </div>
+          ${imgs}
+          <label class="block px-4 py-2 text-xs text-sky-400/90 cursor-pointer active:opacity-70">＋ Add image
+            <input type="file" accept="image/*" class="hidden" onchange="addImg(${p.id}, this)">
+          </label>
+          ${(p.hashtags&&p.hashtags.length)?`<div class="px-4 pt-1 pb-1 text-emerald-400/80 text-sm">${esc(p.hashtags.join(" "))}</div>`:""}
           <div class="p-3 grid grid-cols-2 gap-2">
             <button onclick="act(${p.id},'approve',this)" class="py-3 rounded-xl bg-emerald-500 text-slate-900 font-semibold active:scale-95 transition">✓ Approve &amp; Post</button>
             <button onclick="act(${p.id},'reject',this)" class="py-3 rounded-xl bg-slate-800 text-slate-300 font-semibold active:scale-95 transition">✕ Reject</button>
           </div>
-        </div>`).join("");
+        </div>`;
+      }).join("");
 
       document.getElementById("recent").innerHTML = recent.map(p => `
         <div class="flex items-center gap-2 text-slate-400">
@@ -78,6 +91,47 @@
         if (!r.ok) throw new Error(await r.text());
         await load();
       } catch (e) { alert("Failed: " + e.message); btn.disabled = false; }
+    }
+
+    // --- edit-before-approve ---
+    function editText(id) {
+      const box = document.getElementById("text-" + id);
+      const cur = box.querySelector(".pre").textContent;
+      box.innerHTML =
+        `<textarea id="ta-${id}" rows="12" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-[15px] leading-relaxed focus:outline-none focus:border-emerald-500">${esc(cur)}</textarea>
+         <div class="flex gap-2 mt-2">
+           <button onclick="saveText(${id},this)" class="px-3 py-1.5 rounded-lg bg-emerald-500 text-slate-900 text-sm font-semibold">Save</button>
+           <button onclick="load()" class="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-sm">Cancel</button>
+         </div>`;
+      document.getElementById("ta-" + id).focus();
+    }
+    async function saveText(id, btn) {
+      const val = document.getElementById("ta-" + id).value;
+      btn.disabled = true; btn.textContent = "…";
+      try {
+        const r = await fetch(`/api/posts/${id}`, { method: "PATCH", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ post_text: val }) });
+        if (!r.ok) throw new Error(await r.text());
+        await load();
+      } catch (e) { alert("Save failed: " + e.message); btn.disabled = false; btn.textContent = "Save"; }
+    }
+    async function addImg(id, input) {
+      if (!input.files || !input.files[0]) return;
+      const fd = new FormData(); fd.append("file", input.files[0]);
+      input.disabled = true;
+      try {
+        const r = await fetch(`/api/posts/${id}/images`, { method: "POST", body: fd });
+        if (!r.ok) throw new Error(await r.text());
+        await load();
+      } catch (e) { alert("Upload failed: " + e.message); input.disabled = false; }
+    }
+    async function removeImg(id, idx, btn) {
+      if (!confirm("Remove this image?")) return;
+      btn.disabled = true;
+      try {
+        const r = await fetch(`/api/posts/${id}/images/${idx}`, { method: "DELETE" });
+        if (!r.ok) throw new Error(await r.text());
+        await load();
+      } catch (e) { alert("Remove failed: " + e.message); btn.disabled = false; }
     }
 
     load();

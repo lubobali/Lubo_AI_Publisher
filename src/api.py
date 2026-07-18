@@ -1,10 +1,12 @@
 """FastAPI backend routes for LuBot Publisher dashboard."""
 
+import io
 import logging
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -12,6 +14,9 @@ from sqlalchemy.orm import Session
 from src.db import SessionLocal
 from src.models import PublisherPost, PublisherTopicPerformance
 from src.observability import get_client
+from src.screenshotter import SCREENSHOT_DIR
+
+MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB cap on uploaded images
 
 DASHBOARD_FILE = Path(__file__).parent.parent / "static" / "dashboard.html"
 
@@ -169,6 +174,94 @@ def _score_human_approval(trace_id: str | None, value: float, comment: str) -> N
         )
     except Exception:
         logger.debug("Langfuse human_approval scoring failed", exc_info=True)
+
+
+class EditPostRequest(BaseModel):
+    post_text: str | None = None
+    hashtags: list[str] | None = None
+
+
+def _require_pending(post: PublisherPost | None) -> PublisherPost:
+    """Only PENDING posts are editable (never touch approved/published/rejected)."""
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if post.status != "pending":
+        raise HTTPException(status_code=409, detail=f"Can only edit a pending post (this one is '{post.status}')")
+    return post
+
+
+def _images(post: PublisherPost) -> list[str]:
+    """Ordered image paths: [card, *extras], dropping any empties."""
+    return [p for p in [post.image_path, *(post.extra_image_paths or [])] if p]
+
+
+def _set_images(post: PublisherPost, images: list[str]) -> None:
+    """Write an ordered image list back to the post (first = card, rest = extras)."""
+    post.image_path = images[0] if images else None
+    post.extra_image_paths = images[1:] or None
+
+
+@app.patch("/api/posts/{post_id}", response_model=PostOut)
+def edit_post(post_id: int, body: EditPostRequest, session: Session = Depends(get_db_session)):
+    """Edit a PENDING post's text and/or hashtags before approving. Pending-only."""
+    post = _require_pending(session.query(PublisherPost).filter_by(id=post_id).first())
+    if body.post_text is not None:
+        text = body.post_text.strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="post_text cannot be empty")
+        post.post_text = text
+    if body.hashtags is not None:
+        post.hashtags = body.hashtags
+    session.commit()
+    session.refresh(post)
+    return post
+
+
+@app.post("/api/posts/{post_id}/images", response_model=PostOut)
+async def add_post_image(post_id: int, file: UploadFile = File(...), session: Session = Depends(get_db_session)):
+    """Add an image to a PENDING post (e.g. a real photo alongside the card). EXIF-oriented,
+    downsized, re-encoded to a safe filename in the shared screenshots volume. Pending-only."""
+    post = _require_pending(session.query(PublisherPost).filter_by(id=post_id).first())
+    if not (file.content_type or "").startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    data = await file.read()
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image too large (max 10MB)")
+
+    from PIL import Image, ImageOps  # lazy — keeps the API importable without Pillow
+
+    try:
+        img = ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Could not read that image") from e
+    img.thumbnail((2000, 2000))  # cap the long edge; keep it lean
+    has_alpha = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
+    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    if has_alpha:
+        path = SCREENSHOT_DIR / f"upload-{post_id}-{uuid.uuid4().hex[:8]}.png"
+        img.save(path, "PNG")
+    else:
+        path = SCREENSHOT_DIR / f"upload-{post_id}-{uuid.uuid4().hex[:8]}.jpg"
+        img.convert("RGB").save(path, "JPEG", quality=88)
+
+    _set_images(post, [*_images(post), str(path)])
+    session.commit()
+    session.refresh(post)
+    return post
+
+
+@app.delete("/api/posts/{post_id}/images/{idx}", response_model=PostOut)
+def remove_post_image(post_id: int, idx: int, session: Session = Depends(get_db_session)):
+    """Remove the idx-th image (0 = card, 1+ = extras) from a PENDING post. Pending-only."""
+    post = _require_pending(session.query(PublisherPost).filter_by(id=post_id).first())
+    images = _images(post)
+    if not (0 <= idx < len(images)):
+        raise HTTPException(status_code=404, detail="No such image on this post")
+    images.pop(idx)
+    _set_images(post, images)
+    session.commit()
+    session.refresh(post)
+    return post
 
 
 @app.post("/api/posts/{post_id}/approve", response_model=PostOut)
