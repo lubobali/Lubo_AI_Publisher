@@ -517,6 +517,11 @@ stock_talk:
 # Podcasts per topic (Phase F) — transcribed (Deepgram) + distilled with a per-topic prompt.
 # Separate from the news RSS above. load_podcast_feeds(topic) reads podcasts[topic].
 podcasts:
+  ai_news:  # Latest AI+tech from a trusted show (Phase 2.23) — primary source for AI News,
+    # distilled in Lubo's voice and cited to the show; the news scraper is the fallback. Broader
+    # than the OpenAI-heavy news RSS. Verified live: 275 episodes, mp3 enclosures, weekly AI roundups.
+    - name: Moonshots with Peter Diamandis
+      url: https://feeds.megaphone.fm/DVVTS2890392624
   market_pulse:
     - name: Animal Spirits
       url: https://feeds.megaphone.fm/TCP6464651487

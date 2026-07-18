@@ -458,6 +458,41 @@ class TestBiohackerPipeline:
         mock_scrape.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_ai_news_uses_podcast_not_scraper(self, db_session):
+        """AI News is podcast-primary (Phase 2.23) — the week's Diamandis episode IS the article,
+        no web scrape, distilled with the ai_news lens."""
+        ai_article = ScrapedArticle(
+            title="Grok 4.5, GPT-5.6 and a new open model in one week",
+            url="https://feeds.megaphone.fm/ep",
+            summary="- new frontier models shipped\n- open-weight race heats up\n- agents move to production",
+            source="Moonshots with Peter Diamandis",
+            published_at=None,
+        )
+        with (
+            patch("src.scheduler.get_todays_topic", return_value={"name": "AI News", "sources_key": "ai_news"}),
+            patch.object(Pipeline, "_get_podcast_article", return_value=ai_article) as mock_pod,
+            patch("src.scheduler.scrape_topic", new_callable=AsyncMock) as mock_scrape,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()),
+            patch(
+                "src.scheduler.take_headline_screenshot",
+                new_callable=AsyncMock,
+                return_value=MagicMock(path="/tmp/h.png"),
+            ),
+            patch("src.scheduler.generate_image", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
+
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 27))
+
+        assert result.success is True
+        mock_pod.assert_called_once()
+        assert mock_pod.call_args.kwargs.get("topic") == "ai_news"
+        mock_scrape.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_explicit_topic_and_show_offset_override_rotation(self, db_session):
         """generate_post(topic=..., show_offset=N) uses that slot, not get_todays_topic."""
         with (
@@ -859,6 +894,8 @@ class TestMyAgentScreenshots:
                 "src.scheduler.get_todays_topic",
                 return_value={"name": "AI News", "sources_key": "ai_news", "description": "test"},
             ),
+            # ai_news is podcast-primary (Phase 2.23); force the scraper-fallback path for this card test
+            patch.object(Pipeline, "_get_podcast_article", return_value=None),
             patch("src.scheduler.scrape_topic", new_callable=AsyncMock, return_value=articles),
             patch("src.scheduler.DuplicateChecker") as mock_dedup_cls,
             patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=writer_result),

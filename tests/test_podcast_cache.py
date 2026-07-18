@@ -14,10 +14,20 @@ from sqlalchemy.orm import sessionmaker
 
 from src.models import Base, PublisherPodcastTranscript
 from src.podcast_insights import (
+    _DISTILL_AINEWS,
+    _DISTILL_BY_TOPIC,
     PodcastInsights,
     get_cached_transcript,
     store_transcript,
 )
+
+
+def test_ai_news_has_its_own_distill_lens():
+    """AI News (Phase 2.23) distills the AI/tech angle, not the market lens."""
+    assert _DISTILL_BY_TOPIC.get("ai_news") is _DISTILL_AINEWS
+    lens = _DISTILL_AINEWS.lower()
+    assert "ai" in lens and ("model" in lens or "tech" in lens)
+
 
 # A minimal podcast feed with one market-relevant episode (audio + guid).
 FEED_XML = """<?xml version="1.0"?>

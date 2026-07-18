@@ -60,10 +60,25 @@ _DISTILL_BIOHACKER = (
     "numbers, studies, or dosages not in the transcript. No preamble, no title."
 )
 
+# AI News / tech distill (Phase 2.23) — Lubo wants latest AI+tech from a trusted show
+# (Moonshots w/ Peter Diamandis), NOT just OpenAI headlines from the scraper.
+_DISTILL_AINEWS = (
+    "You distill an AI/tech podcast transcript into the most NEWSWORTHY developments in AI and "
+    "technology the hosts discussed this episode. Focus on CONCRETE things: new models, product "
+    "launches, research breakthroughs, company/funding moves, policy, and where the tech is heading. "
+    "STRIP ads, sponsor reads, intros, outros, housekeeping, and off-topic tangents (skip pure space/"
+    "longevity/energy unless it ties to the AI/tech story). Attribute claims to the speaker or the "
+    "show. Prefer specific, verifiable developments over vague hype; flag speculation vs shipped. "
+    "Output 3 to 5 short plain-language bullets, each on its own line starting with '- ', each = one "
+    "concrete development + why it matters. Use NO invented numbers, dates, or company names not in "
+    "the transcript. No preamble, no title."
+)
+
 # Per-topic distillation prompt — defaults to the market prompt for any unmapped topic.
 _DISTILL_BY_TOPIC = {
     "market_pulse": _DISTILL_SYSTEM,
     "biohacker": _DISTILL_BIOHACKER,
+    "ai_news": _DISTILL_AINEWS,
 }
 
 # Invisible chars Megaphone et al. sprinkle around hyperlinked names in show-notes.
