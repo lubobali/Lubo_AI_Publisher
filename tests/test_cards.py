@@ -303,10 +303,11 @@ class TestCarouselSlides:
     def test_last_slide_is_the_cta(self):
         assert "lubot.ai" in self._slides()[-1]
 
-    def test_points_are_numbered_and_present(self):
+    def test_points_have_text_and_small_folio_counter(self):
         mids = self._slides()[1:-1]
-        assert "It anchors your circadian clock" in mids[1]
-        assert ">2<" in mids[1]  # the ghost number for the 2nd point
+        assert "It anchors your circadian clock" in mids[1]  # the point text is the hero
+        assert "3 / 5" in mids[1]  # small folio counter carries the position (2nd of 3 points)
+        assert "150px" not in mids[1]  # the giant ghost number is gone
 
     def test_every_slide_carries_brand_and_signature(self):
         for s in self._slides():

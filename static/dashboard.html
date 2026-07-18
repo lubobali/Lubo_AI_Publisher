@@ -74,11 +74,15 @@
 
       document.getElementById("pending").innerHTML = pending.map(p => {
         const imgCount = (p.image_path ? 1 : 0) + (p.extra_image_count||0);
-        const imgs = Array.from({length: imgCount}, (_,k)=>`
-          <div class="relative">
+        // Horizontal SWIPE strip (snap) so a carousel previews left-to-right, exactly how
+        // LinkedIn shows it — not stacked vertically. Single-image posts just show one frame.
+        const imgs = imgCount ? `<div class="flex overflow-x-auto snap-x snap-mandatory scroll-smooth">` +
+          Array.from({length: imgCount}, (_,k)=>`
+          <div class="relative shrink-0 w-full snap-start">
             <img src="/api/posts/${p.id}/image/${k}" class="w-full border-y border-slate-800" loading="lazy" onerror="this.parentElement.remove()">
             <button onclick="removeImg(${p.id},${k},this)" title="Remove image" class="absolute top-2 right-2 h-8 w-8 rounded-full bg-slate-950/80 border border-slate-700 text-slate-200 text-sm active:scale-90">✕</button>
-          </div>`).join("");
+            ${imgCount>1?`<span class="absolute bottom-2 left-2 text-[11px] px-2 py-0.5 rounded-full bg-slate-950/70 text-slate-300">${k+1}/${imgCount}</span>`:''}
+          </div>`).join("") + `</div>${imgCount>1?`<div class="px-4 pt-1 text-[11px] text-slate-500">← swipe ${imgCount} slides →</div>`:''}` : "";
         return `
         <div class="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-hidden">
           <div class="px-4 pt-4 flex items-center justify-between">

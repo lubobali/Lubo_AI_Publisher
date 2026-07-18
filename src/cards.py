@@ -1188,15 +1188,14 @@ def build_carousel_slides(
         )
     )
 
-    # Middle slides — one numbered point each (big ghost number + the point text).
+    # Middle slides — one idea each. The POINT TEXT is the hero; NO giant number (the small
+    # folio counter at the bottom carries the position, e.g. "3 / 6").
     for idx, pt in enumerate(points, start=1):
         p = " ".join(str(pt).split())
-        psize = 46 if len(p) <= 92 else 38 if len(p) <= 150 else 32
+        psize = 56 if len(p) <= 92 else 46 if len(p) <= 150 else 38
         body = (
-            f'<div style="font-family:Fraunces;font-weight:400;font-size:150px;line-height:.82;'
-            f'color:{b["blue"]};opacity:.92">{idx}</div>'
-            f'<div style="font-family:Grotesk;font-weight:500;font-size:{psize}px;line-height:1.28;'
-            f'color:{b["text"]};margin-top:26px;max-width:94%">{html_lib.escape(p)}</div>'
+            f'<div style="font-family:Grotesk;font-weight:600;font-size:{psize}px;line-height:1.3;'
+            f'color:{b["text"]};max-width:95%">{html_lib.escape(p)}</div>'
         )
         slides.append(
             _frame(
