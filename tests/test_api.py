@@ -2,6 +2,7 @@
 
 import os
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -265,3 +266,81 @@ class TestDashboard:
         r = client.get(f"/api/posts/{post.id}/image")
         assert r.status_code == 200
         assert r.headers["content-type"].startswith("image")
+
+
+# ---------------------------------------------------------------------------
+# Edit-before-approve: text edit + image add/remove (pending-only)
+# ---------------------------------------------------------------------------
+
+
+def _png_bytes(size=(12, 12), color=(20, 120, 240)) -> bytes:
+    import io
+
+    from PIL import Image
+
+    b = io.BytesIO()
+    Image.new("RGB", size, color).save(b, "PNG")
+    return b.getvalue()
+
+
+class TestEditBeforeApprove:
+    def test_edit_text_and_hashtags_on_pending(self, client, db_session):
+        p = _create_post(db_session, status="pending", post_text="old")
+        r = client.patch(f"/api/posts/{p.id}", json={"post_text": "new take @Zach", "hashtags": ["#AI"]})
+        assert r.status_code == 200 and r.json()["post_text"] == "new take @Zach"
+        db_session.refresh(p)
+        assert p.post_text == "new take @Zach" and p.hashtags == ["#AI"]
+
+    def test_edit_rejected_when_not_pending(self, client, db_session):
+        p = _create_post(db_session, status="published", post_text="live")
+        r = client.patch(f"/api/posts/{p.id}", json={"post_text": "nope"})
+        assert r.status_code == 409
+        db_session.refresh(p)
+        assert p.post_text == "live"  # unchanged
+
+    def test_edit_empty_text_rejected(self, client, db_session):
+        p = _create_post(db_session, status="pending", post_text="old")
+        assert client.patch(f"/api/posts/{p.id}", json={"post_text": "   "}).status_code == 400
+
+    def test_add_first_image_becomes_card(self, client, db_session, tmp_path, monkeypatch):
+        monkeypatch.setattr("src.api.SCREENSHOT_DIR", tmp_path)
+        p = _create_post(db_session, status="pending", image_path=None)
+        r = client.post(f"/api/posts/{p.id}/images", files={"file": ("photo.png", _png_bytes(), "image/png")})
+        assert r.status_code == 200
+        db_session.refresh(p)
+        assert p.image_path and p.image_path.endswith(".jpg")  # RGB -> re-encoded jpg
+        assert Path(p.image_path).exists()
+
+    def test_add_second_image_appends_as_extra(self, client, db_session, tmp_path, monkeypatch):
+        monkeypatch.setattr("src.api.SCREENSHOT_DIR", tmp_path)
+        p = _create_post(db_session, status="pending", image_path="/tmp/card.png")
+        r = client.post(f"/api/posts/{p.id}/images", files={"file": ("photo.png", _png_bytes(), "image/png")})
+        assert r.status_code == 200
+        db_session.refresh(p)
+        assert p.image_path == "/tmp/card.png" and p.extra_image_count == 1
+
+    def test_add_rejects_non_image(self, client, db_session):
+        p = _create_post(db_session, status="pending")
+        r = client.post(f"/api/posts/{p.id}/images", files={"file": ("x.txt", b"hi", "text/plain")})
+        assert r.status_code == 400
+
+    def test_add_rejects_non_pending(self, client, db_session):
+        p = _create_post(db_session, status="published")
+        r = client.post(f"/api/posts/{p.id}/images", files={"file": ("x.png", _png_bytes(), "image/png")})
+        assert r.status_code == 409
+
+    def test_remove_extra_image(self, client, db_session):
+        p = _create_post(db_session, status="pending", image_path="/tmp/card.png", extra_image_paths=["/tmp/photo.jpg"])
+        assert client.delete(f"/api/posts/{p.id}/images/1").status_code == 200
+        db_session.refresh(p)
+        assert p.image_path == "/tmp/card.png" and not p.extra_image_paths
+
+    def test_remove_card_promotes_next(self, client, db_session):
+        p = _create_post(db_session, status="pending", image_path="/tmp/card.png", extra_image_paths=["/tmp/photo.jpg"])
+        assert client.delete(f"/api/posts/{p.id}/images/0").status_code == 200
+        db_session.refresh(p)
+        assert p.image_path == "/tmp/photo.jpg" and not p.extra_image_paths
+
+    def test_remove_bad_index_404(self, client, db_session):
+        p = _create_post(db_session, status="pending", image_path="/tmp/card.png")
+        assert client.delete(f"/api/posts/{p.id}/images/5").status_code == 404
