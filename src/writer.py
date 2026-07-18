@@ -53,6 +53,19 @@ class WriterResult:
     card_headline: str = ""  # short pull-quote for the insight card (opinion categories)
 
 
+@dataclass
+class CarouselResult:
+    """A generated swipeable CAROUSEL (Phase 2.21): the feed CAPTION (post_text that sits above
+    the deck) plus the slide content — a scroll-stopping HOOK (slide 1), 3-5 short POINT slides
+    (one idea each), and a soft CTA slide. cards.build_carousel_slides() renders these to PNGs."""
+
+    caption: str
+    hook: str
+    points: list[str]
+    cta: str
+    hashtags: list[str] = field(default_factory=list)
+
+
 def load_voice_rules() -> dict:
     """Load writing style rules from YAML config."""
     with open(CONFIG_DIR / "voice_rules.yaml") as f:
@@ -133,6 +146,40 @@ card_headline: a short, punchy 4-8 word version of your single core point — fo
 STYLE REFERENCE — these are Lubo's real posts. Match this voice exactly:
 
 {samples}"""
+
+
+# Carousel override — appended AFTER the full voice/truth base so a carousel reuses every voice,
+# ESL, and TRUTH rule; only the STRUCTURE and RESPONSE FORMAT change. The final format wins.
+CAROUSEL_FORMAT = """============================================================
+CAROUSEL MODE — this OVERRIDES the single-post STRUCTURE and RESPONSE FORMAT above.
+============================================================
+You are NOT writing one paragraph post. You are writing a SWIPEABLE CAROUSEL — a set of big-font
+slides people swipe through on LinkedIn. Same voice, same ESL grammar (no apostrophes), same TRUTH
+rules as above. A carousel lives and dies on the first slide, so the hook has to stop the scroll.
+
+Build these pieces:
+- HOOK (slide 1): ONE scroll-stopping line, max about 9 words. Bold claim, sharp question, or a
+  surprising truth. This is the whole game — a weak hook means nobody swipes.
+- POINTS (3 to 5 slides): ONE idea per slide, ONE short line each (max about 14 words). Real value,
+  a concrete insight, no filler and no repeating the hook. Each must stand on its own. Do NOT number
+  them yourself (the slide design adds the number). No colons-as-labels, no "Tip 1:".
+- CTA (last slide): ONE short line that softly points the reader to LuBot or to follow. Not salesy.
+- CAPTION: the text that sits ABOVE the carousel in the feed — 2 to 4 short lines in Lubo voice.
+  Open with the hook or a related thought, add one line of context, nudge them to swipe. No hashtags
+  inside it.
+
+Slide rules: plain words only. No markdown, no emojis, no hashtags on slides, no quotes, no arrows,
+no em-dashes. Keep every slide SHORT — long lines get cut off on a big-font slide. TRUTH rules fully
+apply: no invented numbers, tools, or personal claims; points are insight and opinion, never a faked
+experience.
+
+RESPONSE FORMAT (respond with valid JSON ONLY, nothing before or after):
+{"caption": "the feed caption in Lubo voice", "hook": "the slide 1 hook line", "points": ["point one", "point two", "point three"], "cta": "the closing line", "hashtags": ["#Tag1", "#Tag2", "#Tag3"]}"""
+
+
+def build_carousel_system_prompt() -> str:
+    """The full voice/truth system prompt + the CAROUSEL_FORMAT override (Phase 2.21)."""
+    return build_system_prompt() + "\n\n" + CAROUSEL_FORMAT
 
 
 def build_user_prompt(
@@ -414,6 +461,34 @@ def build_user_prompt(
     return "\n".join(prompt_parts)
 
 
+def build_carousel_user_prompt(
+    topic_name: str,
+    topic_description: str,
+    articles: list[ScrapedArticle],
+    performance_context: str | None = None,
+    book_concepts: list[str] | None = None,
+    podcast_context: str | None = None,
+    recent_posts: list[str] | None = None,
+) -> str:
+    """Reuse the full single-post material (topic rules, articles, concepts, anti-repeat) then
+    override the closing ask: turn it into a CAROUSEL instead of one paragraph post."""
+    base = build_user_prompt(
+        topic_name=topic_name,
+        topic_description=topic_description,
+        articles=articles,
+        performance_context=performance_context,
+        book_concepts=book_concepts,
+        podcast_context=podcast_context,
+        recent_posts=recent_posts,
+    )
+    return base + (
+        "\n\nNOW MAKE THIS A CAROUSEL, not a single paragraph post (ignore the screenshot_url ask). "
+        "Distill the topic into one scroll-stopping hook, 3 to 5 short point slides (one idea each, "
+        "real value, no filler), a soft CTA to LuBot, and a feed caption. Respond in the CAROUSEL JSON "
+        "format only."
+    )
+
+
 def _strip_trailing_hashtags(text: str) -> str:
     """Remove trailing lines that are only hashtags."""
     lines = text.rstrip().split("\n")
@@ -517,6 +592,62 @@ def parse_response(raw_text: str) -> WriterResult | None:
         hashtags=data.get("hashtags", []),
         card_headline=(data.get("card_headline") or "").strip(),
     )
+
+
+def _extract_json_block(text: str, anchor: str) -> dict | None:
+    """Extract a JSON object that contains `"<anchor>"` — direct parse first, then the brace
+    span around the anchor (skips chain-of-thought), with a raw-newline escape retry. Generalizes
+    the post_text extractor for carousel keys (hook/points)."""
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return data
+    except json.JSONDecodeError:
+        pass
+
+    idx = text.find(f'"{anchor}"')
+    if idx == -1:
+        return None
+    first_brace = text.rfind("{", 0, idx)
+    last_brace = text.rfind("}")
+    if first_brace == -1 or last_brace <= first_brace:
+        return None
+
+    candidate = text[first_brace : last_brace + 1]
+    for attempt in (candidate, candidate.replace("\n", "\\n").replace("\r", "\\r")):
+        try:
+            data = json.loads(attempt)
+            if isinstance(data, dict):
+                return data
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
+def parse_carousel_response(raw_text: str) -> CarouselResult | None:
+    """Parse an LLM carousel response into a CarouselResult. Requires a hook and >=2 points;
+    returns None otherwise (a carousel with no real points is not worth posting)."""
+    text = raw_text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text).strip()
+
+    data = _extract_json_block(text, "points")
+    if data is None:
+        logger.warning("Carousel response was not parseable JSON")
+        return None
+
+    hook = " ".join(str(data.get("hook", "")).split())
+    points = [" ".join(str(p).split()) for p in (data.get("points") or []) if str(p).strip()]
+    if not hook or len(points) < 2:
+        logger.warning("Carousel response missing a hook or enough points (hook=%r, points=%d)", hook, len(points))
+        return None
+
+    points = points[:5]  # keep the deck tight — 5 slides max
+    caption = _strip_trailing_hashtags(str(data.get("caption", "")).strip()) or hook
+    cta = " ".join(str(data.get("cta", "")).split()) or "Try LuBot. lubot.ai"
+    hashtags = data.get("hashtags") or []
+    return CarouselResult(caption=caption, hook=hook, points=points, cta=cta, hashtags=hashtags)
 
 
 def derive_card_headline(post_text: str, max_words: int = 12) -> str:
@@ -662,4 +793,52 @@ async def write_post(
         logger.warning("LLM via %s (%s) returned empty content", name, model)
 
     logger.warning("All LLM providers failed or returned empty content")
+    return None
+
+
+@observe(as_type="generation")
+async def write_carousel(
+    topic_name: str,
+    topic_description: str,
+    articles: list[ScrapedArticle],
+    performance_context: str | None = None,
+    book_concepts: list[str] | None = None,
+    podcast_context: str | None = None,
+    recent_posts: list[str] | None = None,
+) -> CarouselResult | None:
+    """Generate a swipeable CAROUSEL (Phase 2.21) from a topic — hook, points, CTA + feed caption.
+    Same provider fallback (NIM -> OpenRouter) and same material as write_post; only the prompt and
+    parser differ. Returns CarouselResult, or None if every provider fails/returns an unusable deck."""
+    system_prompt = build_carousel_system_prompt()
+    user_prompt = build_carousel_user_prompt(
+        topic_name=topic_name,
+        topic_description=topic_description,
+        articles=articles,
+        performance_context=performance_context,
+        book_concepts=book_concepts,
+        podcast_context=podcast_context,
+        recent_posts=recent_posts,
+    )
+
+    providers: list[tuple[str, AsyncOpenAI, str]] = [("NIM", get_llm_client(), NVIDIA_MODEL)]
+    fallback = get_fallback_client()
+    if fallback is not None:
+        providers.append(("OpenRouter", fallback, OPENROUTER_MODEL))
+
+    for name, client, model in providers:
+        try:
+            raw_text = await _generate_once(client, model, system_prompt, user_prompt, topic_name)
+        except Exception as e:
+            logger.warning("Carousel LLM via %s (%s) failed: %s", name, model, e)
+            continue
+        if raw_text:
+            result = parse_carousel_response(raw_text)
+            if result:
+                logger.info("Carousel via %s (%s): %d points", name, model, len(result.points))
+                return result
+            logger.warning("Carousel LLM via %s (%s) returned an unparseable/empty deck", name, model)
+        else:
+            logger.warning("Carousel LLM via %s (%s) returned empty content", name, model)
+
+    logger.warning("All LLM providers failed to produce a carousel")
     return None

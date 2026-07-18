@@ -21,6 +21,7 @@ from src.publisher import get_publisher
 from src.scraper import ScrapedArticle, scrape_topic
 from src.screenshotter import (
     take_card_screenshot,
+    take_carousel_screenshots,
     take_devtrack_screenshot,
     take_git_screenshot,
     take_headline_screenshot,
@@ -32,7 +33,7 @@ from src.self_learner import SelfLearner
 from src.stock_insights import StockInsights, build_stock_screenshot_fields, select_chart_symbols
 from src.topic_rotator import get_todays_topic, get_week_number
 from src.wakatime_insights import WakaTimeInsights, build_screenshot_fields
-from src.writer import WriterResult, derive_card_headline, write_post
+from src.writer import WriterResult, derive_card_headline, write_carousel, write_post
 
 logger = logging.getLogger(__name__)
 
@@ -70,13 +71,17 @@ class Pipeline:
         self._podcast: PodcastInsights | None = None
 
     @observe()
-    async def generate_post(self, target_date: date, topic: dict | None = None, show_offset: int = 0) -> PipelineResult:
+    async def generate_post(
+        self, target_date: date, topic: dict | None = None, show_offset: int = 0, as_carousel: bool = False
+    ) -> PipelineResult:
         """Run the full pipeline: topic → scrape → dedup → write → screenshot → save.
 
         `topic` lets the caller (cron) pick the exact topic for a slot, since a day can
         have more than one post; if omitted it falls back to the day's primary topic.
         `show_offset` biases podcast show selection for topics that post multiple times a
-        week (biohacker), so each slot pulls a different show. Saves post as PENDING.
+        week (biohacker), so each slot pulls a different show. `as_carousel` forks the tail
+        into a swipeable multi-slide carousel (Phase 2.21) reusing the same inputs. Saves as
+        PENDING.
         """
         # 1. Pick the topic (explicit slot topic, or the day's primary)
         if topic is None:
@@ -157,6 +162,21 @@ class Pipeline:
 
         # 4.5. RAG — book concepts for technical categories only (invisible background)
         book_concepts = self._get_book_concepts(category, topic, selected_article)
+
+        # 5(carousel). Swipeable carousel path (Phase 2.21) — reuses ALL the input gathering
+        # above (topic, article, performance, book concepts), then forks to the carousel writer
+        # + multi-slide render + a multi-image pending post. Single posts continue below.
+        if as_carousel:
+            return await self._finish_carousel(
+                topic=topic,
+                category=category,
+                selected_article=selected_article,
+                extra_articles=extra_articles,
+                feedback=feedback,
+                book_concepts=book_concepts,
+                podcast_context=podcast_context,
+                target_date=target_date,
+            )
 
         # 5. Write post
         writer_result: WriterResult | None = await write_post(
@@ -329,6 +349,80 @@ class Pipeline:
             logger.debug("Could not store Langfuse trace ID", exc_info=True)
 
         logger.info("Post saved as PENDING: #%d — %s", post.id, selected_article.title)
+        return PipelineResult(success=True, post_id=post.id)
+
+    async def _finish_carousel(
+        self,
+        *,
+        topic: dict,
+        category: str,
+        selected_article: ScrapedArticle,
+        extra_articles: list[ScrapedArticle],
+        feedback: str | None,
+        book_concepts: list[str] | None,
+        podcast_context: str | None,
+        target_date: date,
+    ) -> PipelineResult:
+        """Carousel tail (Phase 2.21): write hook/points/CTA, render one branded slide per PNG,
+        and save a PENDING multi-image post (caption = post_text, slides = image_path + extras).
+        Publishes as a native swipeable carousel through the existing multi-image publish path."""
+        carousel = await write_carousel(
+            topic_name=topic["name"],
+            topic_description=topic.get("description", ""),
+            articles=[selected_article, *extra_articles],
+            performance_context=feedback,
+            book_concepts=book_concepts,
+            podcast_context=podcast_context,
+            recent_posts=self._get_recent_posts(category),
+        )
+        if carousel is None:
+            return PipelineResult(success=False, error="Writer failed to generate a carousel")
+
+        # Clean the feed caption the same way as a normal post (ESL apostrophes, dashes, etc.).
+        caption, hashtags = process_post(carousel.caption, carousel.hashtags)
+
+        # Render one branded PNG per slide (hook -> points -> CTA), in the topic color world.
+        slide_paths = await take_carousel_screenshots(
+            topic_key=category,
+            kicker=topic["name"],
+            hook=carousel.hook,
+            points=carousel.points,
+            cta=carousel.cta,
+        )
+        if not slide_paths:
+            return PipelineResult(success=False, error="Carousel produced no slide images")
+
+        post_embedding = None
+        try:
+            post_embedding = await DuplicateChecker(self.session).get_embedding(caption)
+        except Exception:
+            logger.debug("Carousel embedding for dedup failed", exc_info=True)
+
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category=category,
+            topic_title=selected_article.title,
+            source_url=selected_article.url,
+            post_text=caption,
+            image_path=slide_paths[0],
+            extra_image_paths=slide_paths[1:] or None,
+            hashtags=hashtags,
+            status="pending",
+            day_of_week=target_date.strftime("%A").lower(),
+            post_embedding=post_embedding,
+        )
+        self.session.add(post)
+        self.session.flush()
+
+        try:
+            trace_id = get_client().get_current_trace_id()
+            if trace_id:
+                post.langfuse_trace_id = trace_id
+                self.session.flush()
+        except Exception:
+            logger.debug("Could not store Langfuse trace ID", exc_info=True)
+
+        logger.info("Carousel saved as PENDING: #%d — %d slides", post.id, len(slide_paths))
         return PipelineResult(success=True, post_id=post.id)
 
     def _get_git_article(self) -> ScrapedArticle | None:
