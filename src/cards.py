@@ -352,7 +352,7 @@ def _spotlight(brand: dict) -> str:
     """A soft bloom so the headline feels lit, not flat."""
     return (
         f'<div style="position:absolute;left:0;top:38%;width:760px;height:300px;'
-        f'background:radial-gradient(closest-side,{brand["blue"]}1f,transparent 70%);'
+        f"background:radial-gradient(closest-side,{brand['blue']}1f,transparent 70%);"
         f'filter:blur(20px);pointer-events:none"></div>'
     )
 
@@ -1142,3 +1142,88 @@ def build_build_card(
         decor=_decor_for(brand),
         brand=brand,
     )
+
+
+def build_carousel_slides(
+    topic_key: str,
+    kicker: str,
+    hook: str,
+    points: list[str],
+    cta: str = "Try LuBot. lubot.ai",
+    logo_uri: str = "",
+) -> list[str]:
+    """A swipeable LinkedIn CAROUSEL (Phase 2.21): one story told across a SET of branded
+    slides in the topic's color world. Slide 1 = HOOK (with a 'swipe' cue), the middle slides
+    are one numbered POINT each, the last slide = CTA. Returns a list of slide HTMLs (one per
+    slide); the screenshotter renders each to a PNG and they post as a multi-image carousel
+    (reuses the multi-image publish path). Every slide carries the constant brand chrome +
+    signature, so the set reads as one coherent deck. Pure + deterministic."""
+    b = topic_brand(topic_key)
+    total = 2 + len(points)  # hook + one per point + cta
+
+    def foot(i: int) -> str:
+        return f"{i} / {total}"
+
+    slides: list[str] = []
+
+    # Slide 1 — the hook. Big Fraunces line + an uppercase "swipe" cue in the accent color.
+    h = " ".join(hook.split())
+    hsize = 84 if len(h) <= 42 else 66 if len(h) <= 78 else 52
+    hook_body = (
+        f'<div style="font-family:Fraunces;font-weight:400;font-size:{hsize}px;line-height:1.06;'
+        f'letter-spacing:-1px;color:{b["headline"]};text-shadow:0 2px 30px rgba(0,0,0,.4)">'
+        f"{html_lib.escape(h)}</div>"
+        f'<div style="margin-top:34px;font-family:Grotesk;font-weight:700;font-size:19px;'
+        f'letter-spacing:4px;text-transform:uppercase;color:{b["blue"]}">Swipe →</div>'
+    )
+    slides.append(
+        _frame(
+            kicker=kicker,
+            body=hook_body,
+            disclaimer="",
+            folio=foot(1),
+            logo_uri=logo_uri,
+            decor=_decor_for(b),
+            brand=b,
+        )
+    )
+
+    # Middle slides — one numbered point each (big ghost number + the point text).
+    for idx, pt in enumerate(points, start=1):
+        p = " ".join(str(pt).split())
+        psize = 46 if len(p) <= 92 else 38 if len(p) <= 150 else 32
+        body = (
+            f'<div style="font-family:Fraunces;font-weight:400;font-size:150px;line-height:.82;'
+            f'color:{b["blue"]};opacity:.92">{idx}</div>'
+            f'<div style="font-family:Grotesk;font-weight:500;font-size:{psize}px;line-height:1.28;'
+            f'color:{b["text"]};margin-top:26px;max-width:94%">{html_lib.escape(p)}</div>'
+        )
+        slides.append(
+            _frame(
+                kicker=kicker,
+                body=body,
+                disclaimer="",
+                folio=foot(1 + idx),
+                logo_uri=logo_uri,
+                brand=b,
+            )
+        )
+
+    # Final slide — the call to action.
+    c = " ".join(cta.split())
+    cta_body = (
+        f'<div style="font-family:Fraunces;font-weight:400;font-size:72px;line-height:1.06;'
+        f'letter-spacing:-1px;color:{b["headline"]}">{html_lib.escape(c)}</div>'
+    )
+    slides.append(
+        _frame(
+            kicker=kicker,
+            body=cta_body,
+            disclaimer="Follow for more",
+            folio=foot(total),
+            logo_uri=logo_uri,
+            decor=_decor_for(b),
+            brand=b,
+        )
+    )
+    return slides
