@@ -348,7 +348,15 @@ class Pipeline:
             # which looks generic and leaks nav/login junk (Phase 2.16 E).
             from urllib.parse import urlparse
 
-            source = urlparse(selected_article.url or "").netloc.replace("www.", "")
+            url = selected_article.url or ""
+            host = urlparse(url).netloc.replace("www.", "")
+            # For a podcast-sourced post (Phase 2.23) the url is an mp3 on a CDN, so show the SHOW
+            # NAME (e.g. "Moonshots with Peter Diamandis"), not "traffic.megaphone.fm". Scraped
+            # articles keep their clean domain.
+            podcast_host = url.lower().endswith(".mp3") or any(
+                h in host for h in ("megaphone", "libsyn", "art19", "anchor", "spreaker", "simplecast", "pdst", "acast")
+            )
+            source = (selected_article.source or host) if podcast_host else host
             summary = (getattr(selected_article, "summary", "") or "").strip()
             dek = summary.split(". ")[0][:150] if summary else ""
             screenshot = await take_headline_screenshot(
