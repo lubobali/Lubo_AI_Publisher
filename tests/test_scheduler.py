@@ -1504,7 +1504,8 @@ class TestCarouselPipeline:
             patch("src.scheduler.scrape_topic", new_callable=AsyncMock, return_value=articles),
             patch("src.scheduler.DuplicateChecker") as mock_dedup_cls,
             patch("src.scheduler.write_carousel", new_callable=AsyncMock, return_value=carousel),
-            patch("src.scheduler.take_carousel_screenshots", new_callable=AsyncMock, return_value=slide_paths),
+            patch("src.scheduler.take_carousel_screenshots", new_callable=AsyncMock, return_value=list(slide_paths)),
+            patch.object(Pipeline, "_take_topic_card", new_callable=AsyncMock, return_value="/tmp/topic-card.png"),
             patch("src.scheduler.SelfLearner") as mock_learner_cls,
         ):
             mock_dedup = MagicMock()
@@ -1524,8 +1525,9 @@ class TestCarouselPipeline:
         assert result.success is True
         post = db_session.query(PublisherPost).filter_by(id=result.post_id).first()
         assert post.status == "pending"
-        assert post.image_path == slide_paths[0]  # slide 1 = the card
-        assert post.extra_image_paths == slide_paths[1:]  # rest = swipe images
+        # Hook stays slide 1; the topic card is spliced in as slide 2; points + cta follow.
+        assert post.image_path == slide_paths[0]  # slide 1 = the hook
+        assert post.extra_image_paths == ["/tmp/topic-card.png", *slide_paths[1:]]  # card, then swipe images
         assert "Swipe" in post.post_text  # caption is the feed text
 
     @pytest.mark.asyncio

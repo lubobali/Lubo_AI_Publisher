@@ -3,6 +3,7 @@
 import os
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -344,3 +345,21 @@ class TestEditBeforeApprove:
     def test_remove_bad_index_404(self, client, db_session):
         p = _create_post(db_session, status="pending", image_path="/tmp/card.png")
         assert client.delete(f"/api/posts/{p.id}/images/5").status_code == 404
+
+
+class TestGenerateCarousel:
+    """POST /api/carousels kicks off background carousel generation (Phase 2.21)."""
+
+    def test_returns_202_and_schedules_background_task(self, client):
+        with patch("src.cron.generate_carousel_now") as mock_gen:
+            r = client.post("/api/carousels", json={"category": "ai_news"})
+        assert r.status_code == 202
+        assert r.json()["category"] == "ai_news"
+        mock_gen.assert_called_once_with("ai_news")
+
+    def test_defaults_to_today_when_no_category(self, client):
+        with patch("src.cron.generate_carousel_now") as mock_gen:
+            r = client.post("/api/carousels", json={})
+        assert r.status_code == 202
+        assert r.json()["category"] == "today"
+        mock_gen.assert_called_once_with(None)

@@ -23,7 +23,13 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from src.backup import run_backup
 from src.db import SessionLocal
 from src.scheduler import Pipeline, publish_approved_posts
-from src.topic_rotator import get_random_post_time, get_todays_posts, load_schedule_config
+from src.topic_rotator import (
+    get_random_post_time,
+    get_todays_posts,
+    get_todays_topic,
+    load_schedule_config,
+    load_topic_categories,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +58,49 @@ def _run_generation(topic: dict, show_offset: int = 0) -> None:
             session.close()
 
     asyncio.run(_go())
+
+
+def resolve_topic(category: str | None) -> dict:
+    """A specific category (by sources_key) if given, else today's rotation topic.
+
+    Shared by the dashboard 'generate carousel' button and scripts.make_carousel.
+    """
+    gen_date = datetime.now(ZoneInfo(TIMEZONE)).date()
+    if category:
+        for topic in load_topic_categories():
+            if topic["sources_key"] == category:
+                return topic
+        raise ValueError(f"Unknown category '{category}'")
+    return get_todays_topic(gen_date)
+
+
+def generate_carousel_now(category: str | None = None) -> int | None:
+    """Generate ONE carousel (Phase 2.21) for a category (or today's topic), saved as PENDING.
+
+    Synchronous + self-contained (own DB session) so it can run from a FastAPI BackgroundTask
+    or a CLI script. Returns the new post id, or None on failure. Never raises."""
+
+    async def _go() -> int | None:
+        session = SessionLocal()
+        try:
+            topic = resolve_topic(category)
+            gen_date = datetime.now(ZoneInfo(TIMEZONE)).date()
+            logger.info("Generating CAROUSEL for %s (%s)", topic["name"], topic["sources_key"])
+            result = await Pipeline(session).generate_post(gen_date, topic=topic, as_carousel=True)
+            session.commit()
+            if result.success:
+                logger.info("Carousel generated: pending #%s", result.post_id)
+                return result.post_id
+            logger.error("Carousel generation failed: %s", result.error)
+            return None
+        except Exception:
+            session.rollback()
+            logger.exception("Carousel generation crashed")
+            return None
+        finally:
+            session.close()
+
+    return asyncio.run(_go())
 
 
 def _run_publish() -> None:

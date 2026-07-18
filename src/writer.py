@@ -160,9 +160,10 @@ rules as above. A carousel lives and dies on the first slide, so the hook has to
 Build these pieces:
 - HOOK (slide 1): ONE scroll-stopping line, max about 9 words. Bold claim, sharp question, or a
   surprising truth. This is the whole game — a weak hook means nobody swipes.
-- POINTS (3 to 5 slides): ONE idea per slide, ONE short line each (max about 14 words). Real value,
+- POINTS (4 to 5 slides): ONE idea per slide, ONE short line each (max about 14 words). Real value,
   a concrete insight, no filler and no repeating the hook. Each must stand on its own. Do NOT number
-  them yourself (the slide design adds the number). No colons-as-labels, no "Tip 1:".
+  them yourself (the slide design adds the number). The final deck also includes a data/proof card
+  slide, so 4 to 5 points lands a tight ~7-slide carousel. No colons-as-labels, no "Tip 1:".
 - CTA (last slide): ONE short line that softly points the reader to LuBot or to follow. Not salesy.
 - CAPTION: the text that sits ABOVE the carousel in the feed — 2 to 4 short lines in Lubo voice.
   Open with the hook or a related thought, add one line of context, nudge them to swipe. No hashtags

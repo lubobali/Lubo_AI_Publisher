@@ -214,100 +214,9 @@ class Pipeline:
             except Exception:
                 logger.debug("data_fidelity scoring failed", exc_info=True)
 
-        # 6. Take screenshot — my_agent uses lubot.ai, everything else uses article URL
-        image_path = None
-        # Magazine folio number — a running issue count so cards read like one collection.
-        issue_no = self.session.query(PublisherPost).count() + 1
-
-        if category == "my_agent_git" and self._git_insights and self._git_insights.best_commit:
-            bc = self._git_insights.best_commit
-            screenshot = await take_git_screenshot(
-                commit_message=bc.message,
-                lines_added=bc.lines_added,
-                lines_deleted=bc.lines_deleted,
-                files_changed=bc.files_changed,
-                changed_files=bc.changed_files,
-                commit_hash=bc.hash,
-                commit_date=bc.date.strftime("%B %d, %Y"),
-                issue=issue_no,
-            )
-            if screenshot:
-                image_path = screenshot.path
-                logger.info("My Agent Build card: %s", image_path)
-        elif category == "my_agent":
-            screenshot = await take_screenshot("https://staging.lubot.ai")
-            if screenshot:
-                image_path = screenshot.path
-                logger.info("Screenshot from staging: %s", image_path)
-        elif category == "wakatime":
-            # Render our own stat card. Prefer the luxury DevTrack card; else the WakaTime card.
-            if self._devtrack and self._devtrack.report:
-                fields = build_devtrack_screenshot_fields(self._devtrack.report)
-                screenshot = await take_devtrack_screenshot(**fields)
-                if screenshot:
-                    image_path = screenshot.path
-                    logger.info("DevTrack build-report card: %s", image_path)
-            elif self._wakatime and self._wakatime.weekly_stats:
-                fields = build_screenshot_fields(self._wakatime.weekly_stats, self._wakatime.include_costs)
-                screenshot = await take_wakatime_screenshot(**fields)
-                if screenshot:
-                    image_path = screenshot.path
-                    logger.info("WakaTime stat-card screenshot: %s", image_path)
-        elif category == "market_pulse":
-            # Render our own market card from real data (never screenshot a finance site).
-            if self._stock and self._stock.market_week:
-                fields = build_stock_screenshot_fields(self._stock.market_week)
-                # Rotate the LUXURY card LAYOUT per post (by how many market_pulse posts
-                # exist) so consecutive posts differ in layout + colors (Phase 2.10e). The
-                # SAME MarketWeek feeds the writer summary AND the card -> numbers match.
-                layout_idx = self.session.query(PublisherPost).filter_by(topic_category="market_pulse").count()
-                screenshot = await take_card_screenshot(**fields, layout_index=layout_idx)
-                if screenshot:
-                    image_path = screenshot.path
-                    logger.info("Market-pulse card screenshot: %s", image_path)
-        elif category in INSIGHT_CARDS:
-            # Opinion categories (tech_talk / biohacker / Investing Principle): render Lubo's
-            # own branded pull-quote card, never a third-party / staging screenshot (Phase 2.16 E).
-            kicker, disclaimer = INSIGHT_CARDS[category]
-            headline = writer_result.card_headline or derive_card_headline(writer_result.post_text)
-            # Rotate the card COMPOSITION per same-topic post (Phase 2.20) so two e.g.
-            # biohacker posts never share a layout. Count this category's existing posts.
-            cat_count = self.session.query(PublisherPost).filter_by(topic_category=category).count()
-            screenshot = await take_insight_screenshot(
-                headline,
-                kicker=kicker,
-                date_range=datetime.now().strftime("%B %d, %Y"),
-                disclaimer=disclaimer,
-                issue=issue_no,
-                category=category,
-                layout_index=cat_count,
-            )
-            if screenshot:
-                image_path = screenshot.path
-                logger.info("%s insight card: %s", kicker, image_path)
-        elif category == "ai_news":
-            # Branded headline card — never screenshot the third-party article page,
-            # which looks generic and leaks nav/login junk (Phase 2.16 E).
-            from urllib.parse import urlparse
-
-            source = urlparse(selected_article.url or "").netloc.replace("www.", "")
-            summary = (getattr(selected_article, "summary", "") or "").strip()
-            dek = summary.split(". ")[0][:150] if summary else ""
-            screenshot = await take_headline_screenshot(
-                headline=selected_article.title,
-                source=source,
-                date_range=datetime.now().strftime("%B %d, %Y"),
-                dek=dek,
-                issue=issue_no,
-            )
-            if screenshot:
-                image_path = screenshot.path
-                logger.info("AI News headline card: %s", image_path)
-        elif selected_article.url:
-            screenshot = await take_screenshot(selected_article.url)
-            if screenshot:
-                image_path = screenshot.path
-                logger.info("Screenshot from article: %s", image_path)
+        # 6. Render the topic's branded card (shared with the carousel splice below).
+        headline = writer_result.card_headline or derive_card_headline(writer_result.post_text)
+        image_path = await self._take_topic_card(category, selected_article, headline)
 
         # Fall back to AI-generated image
         if not image_path:
@@ -351,6 +260,93 @@ class Pipeline:
         logger.info("Post saved as PENDING: #%d — %s", post.id, selected_article.title)
         return PipelineResult(success=True, post_id=post.id)
 
+    async def _take_topic_card(self, category: str, selected_article: ScrapedArticle, headline: str) -> str | None:
+        """Render the topic's REAL single-post card and return its path (or None).
+
+        This is the topic's signature visual — git-commit card, market chart, DevTrack/WakaTime
+        stat card, insight pull-quote, AI-News headline card, or a staging screenshot. Shared by
+        the single-post pipeline (step 6) AND the carousel splice (slide 2), so a carousel always
+        showcases the same proof card a normal post would. `headline` is the pull-quote for the
+        opinion insight card (the post's card_headline for a single post; the hook for a deck)."""
+        # Magazine folio number — a running issue count so cards read like one collection.
+        issue_no = self.session.query(PublisherPost).count() + 1
+
+        if category == "my_agent_git" and self._git_insights and self._git_insights.best_commit:
+            bc = self._git_insights.best_commit
+            screenshot = await take_git_screenshot(
+                commit_message=bc.message,
+                lines_added=bc.lines_added,
+                lines_deleted=bc.lines_deleted,
+                files_changed=bc.files_changed,
+                changed_files=bc.changed_files,
+                commit_hash=bc.hash,
+                commit_date=bc.date.strftime("%B %d, %Y"),
+                issue=issue_no,
+            )
+            return screenshot.path if screenshot else None
+        if category == "my_agent":
+            screenshot = await take_screenshot("https://staging.lubot.ai")
+            return screenshot.path if screenshot else None
+        if category == "wakatime":
+            # Render our own stat card. Prefer the luxury DevTrack card; else the WakaTime card.
+            if self._devtrack and self._devtrack.report:
+                fields = build_devtrack_screenshot_fields(self._devtrack.report)
+                screenshot = await take_devtrack_screenshot(**fields)
+                return screenshot.path if screenshot else None
+            if self._wakatime and self._wakatime.weekly_stats:
+                fields = build_screenshot_fields(self._wakatime.weekly_stats, self._wakatime.include_costs)
+                screenshot = await take_wakatime_screenshot(**fields)
+                return screenshot.path if screenshot else None
+            return None
+        if category == "market_pulse":
+            # Render our own market card from real data (never screenshot a finance site).
+            if self._stock and self._stock.market_week:
+                fields = build_stock_screenshot_fields(self._stock.market_week)
+                # Rotate the LUXURY card LAYOUT per post (by how many market_pulse posts
+                # exist) so consecutive posts differ in layout + colors (Phase 2.10e). The
+                # SAME MarketWeek feeds the writer summary AND the card -> numbers match.
+                layout_idx = self.session.query(PublisherPost).filter_by(topic_category="market_pulse").count()
+                screenshot = await take_card_screenshot(**fields, layout_index=layout_idx)
+                return screenshot.path if screenshot else None
+            return None
+        if category in INSIGHT_CARDS:
+            # Opinion categories (tech_talk / biohacker / Investing Principle): render Lubo's
+            # own branded pull-quote card, never a third-party / staging screenshot (Phase 2.16 E).
+            kicker, disclaimer = INSIGHT_CARDS[category]
+            # Rotate the card COMPOSITION per same-topic post (Phase 2.20) so two e.g.
+            # biohacker posts never share a layout. Count this category's existing posts.
+            cat_count = self.session.query(PublisherPost).filter_by(topic_category=category).count()
+            screenshot = await take_insight_screenshot(
+                headline,
+                kicker=kicker,
+                date_range=datetime.now().strftime("%B %d, %Y"),
+                disclaimer=disclaimer,
+                issue=issue_no,
+                category=category,
+                layout_index=cat_count,
+            )
+            return screenshot.path if screenshot else None
+        if category == "ai_news":
+            # Branded headline card — never screenshot the third-party article page,
+            # which looks generic and leaks nav/login junk (Phase 2.16 E).
+            from urllib.parse import urlparse
+
+            source = urlparse(selected_article.url or "").netloc.replace("www.", "")
+            summary = (getattr(selected_article, "summary", "") or "").strip()
+            dek = summary.split(". ")[0][:150] if summary else ""
+            screenshot = await take_headline_screenshot(
+                headline=selected_article.title,
+                source=source,
+                date_range=datetime.now().strftime("%B %d, %Y"),
+                dek=dek,
+                issue=issue_no,
+            )
+            return screenshot.path if screenshot else None
+        if selected_article.url:
+            screenshot = await take_screenshot(selected_article.url)
+            return screenshot.path if screenshot else None
+        return None
+
     async def _finish_carousel(
         self,
         *,
@@ -391,6 +387,16 @@ class Pipeline:
         )
         if not slide_paths:
             return PipelineResult(success=False, error="Carousel produced no slide images")
+
+        # Splice the topic's REAL card in as slide 2 — the proof/visual (chart, git, stat, insight,
+        # headline). Same card a single post would show, reused so every deck showcases the topic's
+        # signature visual. Non-fatal: if it fails, the deck just posts without the proof slide.
+        try:
+            card_path = await self._take_topic_card(category, selected_article, carousel.hook)
+            if card_path:
+                slide_paths.insert(1, card_path)  # hook (0) -> CARD (1) -> points... -> CTA
+        except Exception:
+            logger.warning("Carousel topic-card splice failed (posting deck without it)", exc_info=True)
 
         post_embedding = None
         try:
