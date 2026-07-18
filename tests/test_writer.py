@@ -6,13 +6,18 @@ import pytest
 
 from src.scraper import ScrapedArticle
 from src.writer import (
+    CarouselResult,
     WriterResult,
+    build_carousel_system_prompt,
+    build_carousel_user_prompt,
     build_system_prompt,
     build_user_prompt,
     get_llm_client,
     load_voice_rules,
     load_voice_samples,
+    parse_carousel_response,
     parse_response,
+    write_carousel,
     write_post,
 )
 
@@ -915,3 +920,94 @@ class TestProviderFallback:
         from src.writer import get_fallback_client
 
         assert get_fallback_client() is not None
+
+
+# ---------------------------------------------------------------------------
+# Carousels (Phase 2.21) — prompt assembly, parsing, orchestration
+# ---------------------------------------------------------------------------
+
+_CAROUSEL_JSON = (
+    '{"caption": "Most people get morning light wrong. Here is the fix. Swipe.", '
+    '"hook": "Morning light beats most supplements", '
+    '"points": ["Get sun in your eyes within 30 min of waking", '
+    '"It anchors your circadian clock for the day", "Free, and it works better than a pill"], '
+    '"cta": "I build in public at lubot.ai", "hashtags": ["#Biohacking", "#Health"]}'
+)
+
+
+class TestCarouselPrompts:
+    def test_system_prompt_keeps_voice_and_adds_carousel_format(self):
+        p = build_carousel_system_prompt()
+        assert "Lubo Bali" in p  # reuses the full voice base
+        assert "CAROUSEL MODE" in p and '"points"' in p  # carousel override + JSON shape
+        assert "NEVER uses apostrophes" in p  # ESL rule carried over
+
+    def test_user_prompt_reuses_material_and_overrides_ask(self):
+        u = build_carousel_user_prompt(topic_name="Biohacker", topic_description="health", articles=SAMPLE_ARTICLES)
+        assert "Biohacker" in u  # topic material reused
+        assert "CAROUSEL" in u  # closing ask overridden
+
+
+class TestParseCarousel:
+    def test_parses_valid_carousel(self):
+        r = parse_carousel_response(_CAROUSEL_JSON)
+        assert isinstance(r, CarouselResult)
+        assert r.hook == "Morning light beats most supplements"
+        assert len(r.points) == 3
+        assert r.cta and r.caption
+        assert r.hashtags == ["#Biohacking", "#Health"]
+
+    def test_extracts_json_from_reasoning_noise(self):
+        noisy = "Let me think about this...\n\n" + _CAROUSEL_JSON + "\n\nThat should work."
+        r = parse_carousel_response(noisy)
+        assert r is not None and len(r.points) == 3
+
+    def test_strips_code_fence(self):
+        r = parse_carousel_response("```json\n" + _CAROUSEL_JSON + "\n```")
+        assert r is not None and r.hook
+
+    def test_rejects_too_few_points(self):
+        bad = '{"hook": "x", "points": ["only one"], "cta": "y", "caption": "z"}'
+        assert parse_carousel_response(bad) is None
+
+    def test_rejects_missing_hook(self):
+        bad = '{"hook": "", "points": ["a", "b", "c"], "cta": "y"}'
+        assert parse_carousel_response(bad) is None
+
+    def test_caps_points_at_five(self):
+        many = '{"hook": "h", "points": ["1","2","3","4","5","6","7"], "cta": "c", "caption": "cap"}'
+        r = parse_carousel_response(many)
+        assert r is not None and len(r.points) == 5
+
+    def test_caption_falls_back_to_hook(self):
+        no_cap = '{"hook": "the hook", "points": ["a", "b"], "cta": "c"}'
+        r = parse_carousel_response(no_cap)
+        assert r is not None and r.caption == "the hook"
+
+    def test_unparseable_returns_none(self):
+        assert parse_carousel_response("no json here at all") is None
+
+
+class TestWriteCarousel:
+    @pytest.mark.asyncio
+    async def test_returns_carousel_result(self):
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content=_CAROUSEL_JSON))]
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        with patch("src.writer.get_llm_client", return_value=mock_client):
+            r = await write_carousel(topic_name="Biohacker", topic_description="health", articles=SAMPLE_ARTICLES)
+        assert isinstance(r, CarouselResult)
+        assert r.hook and len(r.points) >= 2
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_provider_fails(self):
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(side_effect=Exception("API down"))
+        with (
+            patch("src.writer.get_llm_client", return_value=mock_client),
+            patch("src.writer.get_fallback_client", return_value=None),
+        ):
+            r = await write_carousel(topic_name="Biohacker", topic_description="health", articles=SAMPLE_ARTICLES)
+        assert r is None

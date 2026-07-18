@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from src.models import Base, PublisherDestination, PublisherPost
 from src.scheduler import Pipeline, _x_reply_link, approve_post, publish_approved_posts, reject_post
 from src.scraper import ScrapedArticle
-from src.writer import WriterResult
+from src.writer import CarouselResult, WriterResult
 
 TEST_DB_URL = os.getenv("DATABASE_URL", "postgresql://publisher:publisher_dev@localhost:5433/publisher_test")
 
@@ -1480,3 +1480,74 @@ class TestPublishFanout:
         assert platforms == {"linkedin"}
         assert db_session.query(PublisherPost).filter_by(id=post.id).first().status == "approved"
         assert n == 0
+
+
+# ---------------------------------------------------------------------------
+# Carousel pipeline (Phase 2.21) — as_carousel forks to a multi-image pending post
+# ---------------------------------------------------------------------------
+
+
+class TestCarouselPipeline:
+    @pytest.mark.asyncio
+    async def test_as_carousel_creates_multi_image_pending_post(self, db_session):
+        articles = _make_articles()
+        carousel = CarouselResult(
+            caption="Dashboards are done. Swipe.",
+            hook="Dashboards are dead",
+            points=["Agents query and act", "Plain English beats SQL", "Chat is the new UI"],
+            cta="Try it at lubot.ai",
+            hashtags=["#AI", "#Agents"],
+        )
+        slide_paths = [f"/tmp/carousel-{i}.png" for i in range(1, 6)]  # hook + 3 points + cta
+
+        with (
+            patch("src.scheduler.scrape_topic", new_callable=AsyncMock, return_value=articles),
+            patch("src.scheduler.DuplicateChecker") as mock_dedup_cls,
+            patch("src.scheduler.write_carousel", new_callable=AsyncMock, return_value=carousel),
+            patch("src.scheduler.take_carousel_screenshots", new_callable=AsyncMock, return_value=list(slide_paths)),
+            patch.object(Pipeline, "_take_topic_card", new_callable=AsyncMock, return_value="/tmp/topic-card.png"),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_dedup = MagicMock()
+            mock_dedup.check_article = AsyncMock(return_value=MagicMock(is_duplicate=False))
+            mock_dedup.record_url = MagicMock()
+            mock_dedup.get_embedding = AsyncMock(return_value=None)
+            mock_dedup_cls.return_value = mock_dedup
+
+            mock_learner = MagicMock()
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = "No data yet"
+            mock_learner.generate_performance_report.return_value = mock_report
+            mock_learner_cls.return_value = mock_learner
+
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 3, 23), as_carousel=True)
+
+        assert result.success is True
+        post = db_session.query(PublisherPost).filter_by(id=result.post_id).first()
+        assert post.status == "pending"
+        # Hook stays slide 1; the topic card is spliced in as slide 2; points + cta follow.
+        assert post.image_path == slide_paths[0]  # slide 1 = the hook
+        assert post.extra_image_paths == ["/tmp/topic-card.png", *slide_paths[1:]]  # card, then swipe images
+        assert "Swipe" in post.post_text  # caption is the feed text
+
+    @pytest.mark.asyncio
+    async def test_as_carousel_fails_gracefully_when_writer_returns_none(self, db_session):
+        articles = _make_articles()
+        with (
+            patch("src.scheduler.scrape_topic", new_callable=AsyncMock, return_value=articles),
+            patch("src.scheduler.DuplicateChecker") as mock_dedup_cls,
+            patch("src.scheduler.write_carousel", new_callable=AsyncMock, return_value=None),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_dedup = MagicMock()
+            mock_dedup.check_article = AsyncMock(return_value=MagicMock(is_duplicate=False))
+            mock_dedup.record_url = MagicMock()
+            mock_dedup_cls.return_value = mock_dedup
+            mock_learner = MagicMock()
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = "x"
+            mock_learner.generate_performance_report.return_value = mock_report
+            mock_learner_cls.return_value = mock_learner
+
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 3, 23), as_carousel=True)
+        assert result.success is False

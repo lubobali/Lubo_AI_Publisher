@@ -2249,30 +2249,54 @@ PHASE 2.21: CAROUSEL / SLIDE POSTS — the LinkedIn reach multiplier (planned Ju
   supports up to 20 swipeable images; X up to 4). So a carousel REUSES multi-image posting.
   The new work is the STORY + the per-slide cards.
 
-  SLIDE STRUCTURE (what makes a carousel work):
-    Slide 1  = HOOK (title card, the scroll-stopper — the whole post lives or dies here).
-    Slides 2..n-1 = ONE idea per slide (value; e.g. "5 things I learned building an AI agent").
-    Slide n  = CTA (try LuBot -> lubot.ai / follow for more).
+  FINAL DESIGN (decided Jul 18 with Lubo — "make it exceptional, no reason to defer"):
+    - LENGTH: 7 slides is the target (sweet spot for swipe-through + dwell; 3 is too thin,
+      12+ = drop-off). Shape = 1 HOOK + 4-5 body slides + 1 CTA.
+    - LOOK: consistent brand FRAME + color world + signature on EVERY slide (reads as one
+      premium deck), but VARIED interiors so it is not monotonous. NOT all-identical (cheap),
+      NOT all-bespoke (chaotic + off-brand). The middle path.
+    - SWIPE MAGNET: point slides carry a big changing PROGRESS NUMBER (1 -> 2 -> 3 ...) — people
+      swipe to finish the count. The HOOK is ~80% of the outcome; invest there.
+    - DATA-CARD SPLICE (ALL 7 TOPICS, not just data ones): every carousel splices in that
+      topic's REAL single-post card as one slide — the actual proof/visual, reusing the
+      existing card builders. tech_talk/biohacker -> insight card; ai_news -> headline card;
+      market_pulse -> the real yfinance chart card; wakatime -> DevTrack/WakaTime stat card;
+      my_agent_git -> git-commit card; my_agent -> staging screenshot. So the deck showcases
+      the topic's signature visual + gives real substance, no bespoke redesign per topic.
+
+  SLIDE STRUCTURE (7-slide default):
+    Slide 1  = HOOK (the scroll-stopper — the whole post lives or dies here; 'swipe' cue).
+    Slide 2  = the topic's REAL card (chart / insight / headline / git / stat) = proof.
+    Slides 3..6 = ONE idea per slide (big progress number + one punchy line).
+    Slide 7  = CTA (try LuBot -> lubot.ai / follow for more).
 
   SUBSTEPS (RECR):
-  C1. Writer: a carousel mode -> generate {hook, 4-6 points, CTA} for carousel-suitable
-      topics (tech_talk, my_agent_build, biohacker "5 free X", building-in-public). Not all
-      topics fit (market_pulse = a chart). Grounded + on-voice + anti-repeat like normal posts.
-  C2. Cards: render EACH slide as a branded card via the card engine — slide layouts:
-      title/hook slide, numbered point slide (big number + one line), CTA slide. Per-topic
-      color world + signature + folio, consistent across the set. Slide counter (2/7).
-  C3. Assemble + post: image_path = slide 1, extra_image_paths = slides 2..n -> the existing
-      multi-image publish sends them as a LinkedIn carousel. X gets the best 4 slides as a
-      multi-image tweet (already works).
-  C4. Cadence: carousels are higher-effort/higher-reach -> ~1-2/week, NOT every post. Slot
-      them into the weekly_plan (replace/augment a slot). Keep single-card posts for the rest.
-  C5. Dashboard: already shows all slide images (multi-image dashboard support shipped).
+  C1. [x] Writer carousel mode — write_carousel() -> CarouselResult{caption,hook,points,cta,
+      hashtags}; reuses the FULL voice/ESL/TRUTH system prompt + a CAROUSEL_FORMAT override;
+      parse_carousel_response() (hook + >=2 points, tolerant); NIM->OpenRouter fallback.
+      TODO: bump points target to 4-6 so decks land at ~7 slides.
+  C2. [x] Slide cards — cards.build_carousel_slides() (hook/point/CTA layouts, per-topic color
+      world + signature + folio counter) + screenshotter.take_carousel_screenshots() -> PNGs.
+      TODO: splice the topic's real card in as slide 2 (see DATA-CARD SPLICE above) — extract
+      the per-category single-post screenshot dispatch out of generate_post() into a shared
+      helper that both the single post and the carousel call.
+  C3. [x] Assemble + post — Pipeline.generate_post(as_carousel=True) -> _finish_carousel():
+      image_path = slide 1, extra_image_paths = slides 2..n -> existing multi-image publish
+      posts a LinkedIn carousel; X gets the best 4 slides (already works).
+  C4. Cadence — DASHBOARD TOGGLE (Lubo's pick): a 'make this a carousel' control on a pending
+      post / a generate-carousel action in the UI. Manual, full control. (No fixed cron
+      auto-dispatch for now; scripts.make_carousel exists for CLI.)
+  C5. [x] Dashboard shows all slide images (multi-image support shipped). Add the toggle (C4).
   C6. Test + one real carousel end-to-end, eyeball, approve, publish. Measure reach vs
-      single-card posts.
+      single-card posts. (Live-verified generation+render already; full post pending toggle.)
   LATER: true PDF "document" post (LinkedIn's native carousel look, page-turn + "N pages"
     badge) if the API supports document upload; X THREADS (image-per-tweet slide story).
-  ACCEPTANCE: one grounded, on-brand carousel posts as a swipeable LinkedIn gallery + a
-  4-slide X version; it measurably out-reaches single-card posts.
+  STATUS (Jul 18): C1/C2/C3/C5 core DONE on branch feature/carousels (writer+render+pipeline
+    wired, 21 tests, live AI-News deck rendered). REMAINING: 7-slide splice (real topic card as
+    slide 2, all topics) + points 4-6 + dashboard toggle (C4).
+  ACCEPTANCE: one grounded, on-brand 7-slide carousel (with the topic's real card spliced in)
+  posts as a swipeable LinkedIn gallery + a 4-slide X version; it measurably out-reaches
+  single-card posts.
 
 ==============================================================================
 PHASE 2.22: AWS PRACTICE DEPLOYMENT — résumé/job-change experience (planned Jul 13)

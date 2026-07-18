@@ -273,3 +273,50 @@ class TestNumberIntegrity:
         for layout in cards.LAYOUTS:
             html = layout["builder"](SERIES, "r", cards.PALETTES[0], "/*LIB*/")
             assert "6.4" in html
+
+
+class TestCarouselSlides:
+    """Phase 2.21 — a swipeable carousel = a SET of branded slide HTMLs (hook, points, cta)."""
+
+    def _slides(self):
+        return cards.build_carousel_slides(
+            topic_key="biohacker",
+            kicker="Biohacker",
+            hook="Morning light is the most underrated biohack",
+            points=[
+                "Get sun in your eyes within 30 min of waking",
+                "It anchors your circadian clock",
+                "Free, and it beats most supplements",
+            ],
+            cta="Try LuBot. lubot.ai",
+        )
+
+    def test_slide_count_is_hook_plus_points_plus_cta(self):
+        # 1 hook + 3 points + 1 cta = 5
+        assert len(self._slides()) == 5
+
+    def test_first_slide_is_the_hook_with_swipe_cue(self):
+        first = self._slides()[0]
+        assert "Morning light is the most underrated biohack" in first
+        assert "Swipe" in first
+
+    def test_last_slide_is_the_cta(self):
+        assert "lubot.ai" in self._slides()[-1]
+
+    def test_points_are_numbered_and_present(self):
+        mids = self._slides()[1:-1]
+        assert "It anchors your circadian clock" in mids[1]
+        assert ">2<" in mids[1]  # the ghost number for the 2nd point
+
+    def test_every_slide_carries_brand_and_signature(self):
+        for s in self._slides():
+            assert "Lubo Bali" in s  # signature on every slide
+            assert cards.topic_brand("biohacker")["blue"] in s  # topic color world
+
+    def test_html_is_escaped(self):
+        s = cards.build_carousel_slides("ai_news", "AI", "hook", ["a < b & c"], cta="x")
+        assert "&lt; b &amp;" in s[1]
+
+    def test_no_points_still_makes_hook_and_cta(self):
+        s = cards.build_carousel_slides("tech_talk", "Tech", "Just a hook", [])
+        assert len(s) == 2  # hook + cta only

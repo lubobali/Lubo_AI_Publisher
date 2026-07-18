@@ -21,6 +21,11 @@
       <span id="count" class="text-sm text-emerald-400 font-semibold">…</span>
     </header>
 
+    <div class="flex gap-2 mb-5">
+      <select id="carCat" class="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500"></select>
+      <button onclick="genCarousel(this)" class="px-4 py-2 rounded-xl bg-sky-500 text-slate-900 font-semibold text-sm active:scale-95 transition whitespace-nowrap">✦ Carousel</button>
+    </div>
+
     <div id="pending" class="space-y-4"></div>
     <div id="empty" class="hidden text-center text-slate-500 py-16">
       <div class="text-4xl mb-2">✓</div>
@@ -38,6 +43,25 @@
       my_agent_git:"My Agent Build"
     };
     const esc = s => (s||"").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+    // Populate the carousel category picker from CAT (once).
+    (function fillCarCats() {
+      const sel = document.getElementById("carCat");
+      sel.innerHTML = `<option value="">Carousel: today's topic</option>` +
+        Object.entries(CAT).map(([k,v]) => `<option value="${k}">Carousel: ${esc(v)}</option>`).join("");
+    })();
+
+    async function genCarousel(btn) {
+      const category = document.getElementById("carCat").value || null;
+      btn.disabled = true; const label = btn.textContent; btn.textContent = "…";
+      try {
+        const r = await fetch("/api/carousels", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ category }) });
+        if (!r.ok) throw new Error(await r.text());
+        btn.textContent = "✓ Generating…";
+        alert("Carousel is generating in the background. It takes about a minute, then shows up below as pending. Refresh to see it.");
+      } catch (e) { alert("Could not start: " + e.message); }
+      finally { setTimeout(() => { btn.disabled = false; btn.textContent = label; }, 4000); }
+    }
     const when = iso => { try { return new Date(iso).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}); } catch { return ""; } };
 
     async function load() {

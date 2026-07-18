@@ -956,6 +956,54 @@ async def take_insight_screenshot(
         Path(tmp_path).unlink(missing_ok=True)
 
 
+async def take_carousel_screenshots(
+    topic_key: str,
+    kicker: str,
+    hook: str,
+    points: list[str],
+    cta: str = "Try LuBot. lubot.ai",
+) -> list[str]:
+    """Render a swipeable CAROUSEL (Phase 2.21) — one branded PNG per slide (hook, points, cta)
+    — and return the ordered file paths. Reuses cards.build_carousel_slides for the visuals and
+    the same 1200x627 @2x render as every other card. Non-fatal: returns whatever slides rendered
+    (empty list on total failure). The pipeline sets image_path=paths[0], extra_image_paths=rest,
+    so the set posts as a native multi-image carousel."""
+    from src import cards
+
+    slides = cards.build_carousel_slides(
+        topic_key=topic_key, kicker=kicker, hook=hook, points=points, cta=cta, logo_uri=cards._logo_data_uri()
+    )
+    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    paths: list[str] = []
+    try:
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            try:
+                context = await browser.new_context(
+                    viewport={"width": SCREENSHOT_WIDTH, "height": SCREENSHOT_HEIGHT}, device_scale_factor=2
+                )
+                page = await context.new_page()
+                stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                for i, slide_html in enumerate(slides):
+                    with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
+                        f.write(slide_html)
+                        tmp_path = f.name
+                    try:
+                        await page.goto(f"file://{tmp_path}", wait_until="networkidle")
+                        await page.wait_for_timeout(300)
+                        filepath = SCREENSHOT_DIR / f"{stamp}-carousel-{i + 1:02d}.png"
+                        filepath.write_bytes(await page.screenshot(full_page=False))
+                        paths.append(str(filepath))
+                    finally:
+                        Path(tmp_path).unlink(missing_ok=True)
+                logger.info("Carousel rendered: %d slides", len(paths))
+            finally:
+                await browser.close()
+    except Exception as e:
+        logger.warning("Carousel screenshot failed after %d slides: %s", len(paths), e)
+    return paths
+
+
 async def take_devtrack_screenshot(metrics: dict, date_range: str = "") -> ScreenshotResult | None:
     """Render the luxury Building-in-Public stat-card (Phase 2.11) to a PNG. Non-fatal."""
     from src import cards

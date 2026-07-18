@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -292,6 +292,24 @@ def reject_post(post_id: int, session: Session = Depends(get_db_session)):
     session.refresh(post)
     _score_human_approval(post.langfuse_trace_id, 0.0, "rejected")
     return post
+
+
+class GenerateCarouselRequest(BaseModel):
+    category: str | None = None  # a sources_key (e.g. "ai_news"); None = today's rotation topic
+
+
+@app.post("/api/carousels", status_code=202)
+def generate_carousel(body: GenerateCarouselRequest, background: BackgroundTasks):
+    """Kick off a swipeable CAROUSEL generation (Phase 2.21) for a topic, in the BACKGROUND.
+
+    Generation is slow (LLM + Playwright renders ~7 slides), so we return 202 immediately and
+    do the work in a background task; the new carousel shows up on the dashboard as PENDING in
+    ~1 minute. `category` picks a specific topic (sources_key) or defaults to today's rotation."""
+    # Lazy import — keeps the heavy pipeline (Playwright, RAG, models) out of API import time.
+    from src.cron import generate_carousel_now
+
+    background.add_task(generate_carousel_now, body.category)
+    return {"status": "generating", "category": body.category or "today"}
 
 
 @app.get("/api/analytics", response_model=AnalyticsResponse)
