@@ -147,6 +147,16 @@ class TestBuildSystemPrompt:
         prompt = build_system_prompt().lower()
         assert "tool" in prompt and ("didnt actually use" in prompt or "did not actually use" in prompt)
 
+    def test_forbids_fabricated_setup_claims(self):
+        """Never invent a personal hardware/infra claim ('I self-host X at N tok/s')."""
+        prompt = build_system_prompt().lower()
+        assert "self-host" in prompt
+        assert "tokens per second" in prompt or "on my own hardware" in prompt
+        # and it must appear in the carousel prompt too (convert + write_carousel reuse the base)
+        from src.writer import build_carousel_system_prompt
+
+        assert "self-host" in build_carousel_system_prompt().lower()
+
     def test_forbids_markdown(self):
         prompt = build_system_prompt().lower()
         assert "no markdown" in prompt or "plain text only" in prompt
