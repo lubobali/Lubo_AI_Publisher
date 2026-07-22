@@ -93,13 +93,19 @@ def dashboard():
     return HTMLResponse(DASHBOARD_FILE.read_text())
 
 
+# Slide images are served BY POSITION (/image/{idx}), so after an edit/delete the positions
+# shift. Without no-store, the browser reuses the CACHED image at that index and edits/deletes
+# look like they did nothing (cards appear duplicated, undeletable). Never cache these.
+_NO_CACHE = {"Cache-Control": "no-store, max-age=0"}
+
+
 @app.get("/api/posts/{post_id}/image")
 def post_image(post_id: int, session: Session = Depends(get_db_session)):
     """Serve the primary image (the card) for a post so the dashboard can show it."""
     post = session.query(PublisherPost).filter_by(id=post_id).first()
     if not post or not post.image_path or not Path(post.image_path).exists():
         raise HTTPException(status_code=404, detail="No image for this post")
-    return FileResponse(post.image_path)
+    return FileResponse(post.image_path, headers=_NO_CACHE)
 
 
 @app.get("/api/posts/{post_id}/image/{idx}")
@@ -109,7 +115,7 @@ def post_image_n(post_id: int, idx: int, session: Session = Depends(get_db_sessi
     paths = [post.image_path, *(post.extra_image_paths or [])] if post else []
     if not (0 <= idx < len(paths)) or not paths[idx] or not Path(paths[idx]).exists():
         raise HTTPException(status_code=404, detail="No such image for this post")
-    return FileResponse(paths[idx])
+    return FileResponse(paths[idx], headers=_NO_CACHE)
 
 
 @app.get("/api/health")

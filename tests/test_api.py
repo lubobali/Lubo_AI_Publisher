@@ -386,3 +386,17 @@ class TestConvertToCarousel:
 
     def test_404_when_missing(self, client):
         assert client.post("/api/posts/999999/convert-to-carousel").status_code == 404
+
+
+class TestImageNoCache:
+    """Slide images are served by position, so they must never be browser-cached (edits/deletes
+    shift positions -> stale cached images look like duplicates you cannot delete)."""
+
+    def test_image_endpoints_send_no_store(self, client, db_session, tmp_path):
+        img = tmp_path / "s.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"x" * 100)
+        p = _create_post(db_session, image_path=str(img))
+        for url in (f"/api/posts/{p.id}/image", f"/api/posts/{p.id}/image/0"):
+            r = client.get(url)
+            assert r.status_code == 200
+            assert "no-store" in r.headers.get("cache-control", "")
