@@ -403,16 +403,19 @@ class TestBuildUserPrompt:
         assert "100% NVIDIA powered" not in prompt
         assert "ONLY use features from this list" not in prompt
 
-    def test_building_in_public_prompt_includes_stats_rules(self):
-        """Building in Public posts get WakaTime-stats build-in-public instructions."""
+    def test_building_in_public_prompt_is_reflection_not_stats(self):
+        """Building in Public leads with a reflection/insight; WakaTime stats stay on the card, not
+        recited in the text (no stat dump)."""
         prompt = build_user_prompt(
             topic_name="Building in Public",
             topic_description="Lubo's real coding week",
             articles=SAMPLE_ARTICLES,
         )
         assert "BUILDING IN PUBLIC" in prompt
-        assert "EXACT numbers" in prompt
         assert "WakaTime" in prompt
+        assert "Keep them OUT of the" in prompt  # stats stay on the card
+        assert "NEVER open with a number" in prompt
+        assert "Stats get their own short lines" not in prompt  # the old stat-forcing rule is gone
 
     def test_my_agent_build_includes_topic_specific_rules(self):
         """My Agent Build has its own topic-specific rules in voice_rules.yaml."""
