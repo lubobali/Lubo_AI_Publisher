@@ -380,16 +380,18 @@ class TestBuildUserPrompt:
         assert "ONLY use features from this list" not in prompt
         assert "100% NVIDIA powered" not in prompt
 
-    def test_my_agent_build_prompt_includes_git_context(self):
-        """My Agent Build posts include build log instructions."""
+    def test_my_agent_build_prompt_is_story_not_metrics(self):
+        """My Agent Build leads with the DECISION/lesson, and keeps line-count metrics OUT of the
+        text (they live on the card) — never a changelog/metrics dump."""
         prompt = build_user_prompt(
             topic_name="My Agent Build",
             topic_description="What Lubo built this week",
             articles=SAMPLE_ARTICLES,
         )
-        assert "BUILD LOG" in prompt
         assert "THIS WEEK I BUILT" in prompt
-        assert "EXACT numbers" in prompt
+        assert "do NOT put those numbers in the text" in prompt  # metrics stay on the card
+        assert "judgment" in prompt.lower()  # senior framing, not a status update
+        assert "stats get their own" not in prompt  # the old metrics-forcing rule is gone
 
     def test_my_agent_build_prompt_no_marketing_features(self):
         """My Agent Build should NOT include the marketing features list."""

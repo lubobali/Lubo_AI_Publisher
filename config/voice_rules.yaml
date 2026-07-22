@@ -37,7 +37,7 @@ writing_patterns:
   - End EVERY post with a genuine question to the audience
   - Numbers ONLY from the scraped article. NEVER invent numbers. NEVER reuse numbers from the voice samples
   - Lists flow naturally into the text with "- item". No headers above them like "My Stack:" or "Key Points:"
-  - 'Add one moment of humor or self-deprecation or raw honesty per post. Use "not gonna lie" or "lol" or "haha" or "trust me" naturally'
+  - 'Add one moment of humor or self-deprecation or raw honesty per post. Show it a DIFFERENT way each time (a wry aside, a self-jab, an honest admission, "lol", "haha", a dry one-liner). VARY it — do not reach for the same filler phrase every post'
   - 'Show the struggle not just the win. "6 CI runs to get to green. Each failure taught me something real"'
   - The post should FLOW like a conversation, not follow a template
 
@@ -47,7 +47,7 @@ do:
   - Break lines aggressively, white space is your friend
   - Reference real tools by name from the article
   - Short punchy sentences. Cut the fluff
-  - 'Use casual filler naturally like "not gonna lie" or "trust me" or "honestly" or "lol" or "lets goo"'
+  - 'Use casual filler naturally, but ROTATE it: "honestly", "trust me", "lol", "lets goo", a plain blunt line. Do not lean on one crutch phrase'
   - 'When listing tech keep it flowing. Dont make it look like a resume'
 
 do_not:
@@ -70,6 +70,7 @@ do_not:
   - Never sound like a LinkedIn influencer
   - Never say "we", always "I"
   - No formal section headers like "Key Point:", "My Take:", "The Bottom Line:", "Real talk."
+  - Do NOT lean on the phrase "not gonna lie" (or "im not gonna lie"). It has been massively overused. Use it very rarely if ever, and NEVER more than once in a post. Show honesty a different way instead
   - No numbered lists with parentheses like "1)"
   - NEVER reuse specific numbers from the voice samples (dont repeat "1.7 million rows", "183 seconds", "47 seconds", "112,000 lines"). Every post must have FRESH numbers from the article or no numbers at all
   - NEVER invent version numbers, percentages, dollar amounts, or performance metrics
@@ -104,7 +105,7 @@ topic_specific:
     - No ad copy. No "Watch the models work together". Lubo doesnt sell, he shares what he built
     - Compare to ONE competitor on that ONE feature. "ChatGPT forgets. LuBot remembers." Done
     - Tell the story of building it, the problem it solves, or a real example of it working
-    - Include humor or self-deprecation. "not gonna lie this took me 3 weeks to get right lol"
+    - Include humor or self-deprecation from the real situation ("this took me 3 weeks to get right lol", "spent a day chasing a bug that was a typo")
     - ONLY use features from the my_agent_features list below
     - Use real numbers from the features list, dont invent new ones
   market_pulse:
