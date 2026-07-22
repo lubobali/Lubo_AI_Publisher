@@ -413,7 +413,7 @@ class TestBuildUserPrompt:
         )
         assert "BUILDING IN PUBLIC" in prompt
         assert "WakaTime" in prompt
-        assert "Keep them OUT of the" in prompt  # stats stay on the card
+        assert "Do NOT restate ANY of them" in prompt  # stats stay on the card (digits OR words)
         assert "NEVER open with a number" in prompt
         assert "Stats get their own short lines" not in prompt  # the old stat-forcing rule is gone
 
