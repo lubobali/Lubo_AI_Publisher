@@ -1051,3 +1051,88 @@ class TestCarouselFromText:
         sent = mock_client.chat.completions.create.call_args[1]["messages"][1]["content"]
         assert "Morning light is underrated" in sent
         assert "invent nothing new" in sent.lower()
+
+
+# ---------------------------------------------------------------------------
+# X-native thread writer (Phase 2.27)
+# ---------------------------------------------------------------------------
+
+_X_JSON = (
+    '{"tweets": ["LuBot cuts LLM cost to almost zero.", '
+    '"95% of questions never hit the big model.", "Only the hard 5% go to the LLM. Wild difference in the bill."]}'
+)
+
+
+class TestXSystemPrompt:
+    def test_reuses_voice_base_and_adds_x_override(self):
+        from src.writer import build_x_system_prompt
+
+        p = build_x_system_prompt()
+        assert "Lubo Bali" in p  # full voice base reused
+        assert "X MODE" in p and '"tweets"' in p  # X override + JSON shape
+        assert "NEVER uses apostrophes" in p  # ESL carried over
+
+
+class TestParseXThread:
+    def test_parses_1_to_4_tweets(self):
+        from src.writer import parse_x_thread
+
+        out = parse_x_thread(_X_JSON)
+        assert isinstance(out, list) and len(out) == 3
+        assert out[0].startswith("LuBot cuts LLM cost")
+
+    def test_single_tweet(self):
+        from src.writer import parse_x_thread
+
+        out = parse_x_thread('{"tweets": ["one sharp take"]}')
+        assert out == ["one sharp take"]
+
+    def test_caps_at_four(self):
+        from src.writer import parse_x_thread
+
+        out = parse_x_thread('{"tweets": ["1","2","3","4","5","6"]}')
+        assert len(out) == 4
+
+    def test_strips_swipe_markdown_and_links(self):
+        from src.writer import parse_x_thread
+
+        out = parse_x_thread('{"tweets": ["**built it** swipe to see more", "try lubot.ai now"]}')
+        joined = " ".join(out).lower()
+        assert "swipe" not in joined
+        assert "**" not in joined
+        assert "lubot.ai" not in joined
+
+    def test_unparseable_returns_none(self):
+        from src.writer import parse_x_thread
+
+        assert parse_x_thread("no json here") is None
+
+
+class TestWriteXThread:
+    @pytest.mark.asyncio
+    async def test_returns_tweet_list(self):
+        from src.writer import write_x_thread
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content=_X_JSON))]
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+        with patch("src.writer.get_llm_client", return_value=mock_client):
+            out = await write_x_thread("My Agent", "LuBot cuts LLM cost. 95% never hit the big model.")
+        assert isinstance(out, list) and 1 <= len(out) <= 4
+        # the prompt carries the LinkedIn text to rewrite
+        sent = mock_client.chat.completions.create.call_args[1]["messages"][1]["content"]
+        assert "LuBot cuts LLM cost" in sent
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_failure(self):
+        from src.writer import write_x_thread
+
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(side_effect=Exception("down"))
+        with (
+            patch("src.writer.get_llm_client", return_value=mock_client),
+            patch("src.writer.get_fallback_client", return_value=None),
+        ):
+            out = await write_x_thread("My Agent", "some post")
+        assert out is None
