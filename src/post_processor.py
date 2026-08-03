@@ -6,6 +6,8 @@ Runs deterministic cleanup on generated posts before saving to DB.
 import json
 import logging
 import re
+from datetime import date
+from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 from src.observability import get_client, observe
 
@@ -557,3 +559,74 @@ def process_post(text: str, hashtags: list[str]) -> tuple[str, list[str]]:
         logger.debug("Langfuse compliance reporting failed", exc_info=True)
 
     return text, hashtags
+
+
+# ---------------------------------------------------------------------------
+# Outbound-URL UTM tagger (attribution). Rewrites every EXACT lubot.ai root URL
+# in post text to carry utm_source/medium/campaign, PER PLATFORM, right before the
+# platform client posts it. The viewer clicks the same lubot.ai; our analytics DB
+# now records which post + platform + campaign drove the click. Pure + idempotent.
+# NOTE: linkedin_client.py is intentionally untouched — the tagging happens here.
+# ---------------------------------------------------------------------------
+
+# platform -> (utm_source, default utm_medium)
+_PLATFORM_UTM = {
+    "linkedin": ("linkedin", "post"),
+    "x": ("twitter", "post"),
+    "twitter": ("twitter", "post"),
+    "reddit": ("reddit", "comment"),  # a Reddit submission would pass medium="post"
+}
+
+# Match an EXACT lubot.ai root URL: optional scheme, then lubot.ai, then optional
+# /path ?query #fragment. The lookbehind (?<![\w.@-]) rejects subdomains/emails
+# (staging.lubot.ai, l.lubot.ai, me@lubot.ai); (?![\w]) rejects lubot.aiX. `rest`
+# starts at /?# and runs to whitespace or a closing quote/paren/bracket/angle.
+_LUBOT_URL_RE = re.compile(
+    r"(?<![\w.@-])(?:https?://)?lubot\.ai(?![\w])(?P<rest>[/?#][^\s\"'`)<>\]]*)?",
+    re.IGNORECASE,
+)
+
+_TRAILING_PUNCT_RE = re.compile(r"[.,;:!?]+$")
+
+
+def _slugify(text: str) -> str:
+    """Lowercase kebab slug: 'ai_news' -> 'ai-news', 'Stock Tool' -> 'stock-tool'."""
+    return re.sub(r"[^a-z0-9]+", "-", text.strip().lower()).strip("-")
+
+
+def build_campaign(topic_slug: str | None, on: date) -> str:
+    """utm_campaign = '<topic-slug>-<yyyy-mm-dd>', or 'organic-<date>' when no topic is known."""
+    base = _slugify(topic_slug) if topic_slug and topic_slug.strip() else "organic"
+    return f"{base or 'organic'}-{on:%Y-%m-%d}"
+
+
+def _tag_one(match: re.Match, source: str, medium: str, campaign: str) -> str:
+    """Rewrite a single matched lubot.ai URL to include the UTM params (idempotent)."""
+    rest = match.group("rest") or ""
+    # Peel a trailing sentence punctuation run ('lubot.ai.' -> tag 'lubot.ai', keep '.').
+    trailer = ""
+    mt = _TRAILING_PUNCT_RE.search(rest)
+    if mt:
+        trailer, rest = mt.group(0), rest[: mt.start()]
+
+    parts = urlsplit("https://lubot.ai" + rest)  # force https, parse path/query/fragment
+    query_pairs = parse_qsl(parts.query, keep_blank_values=True)
+    if any(k == "utm_source" for k, _ in query_pairs):
+        return match.group(0)  # already tagged -> leave the original untouched
+
+    utm = f"utm_source={source}&utm_medium={medium}&utm_campaign={campaign}"
+    new_query = f"{parts.query}&{utm}" if parts.query else utm
+    tagged = urlunsplit((parts.scheme, parts.netloc, parts.path, new_query, parts.fragment))
+    return tagged + trailer
+
+
+def tag_urls(text: str, *, platform: str, campaign: str, medium: str | None = None) -> str:
+    """Add UTM params to every exact lubot.ai root URL in `text` for the given platform.
+
+    LinkedIn -> utm_source=linkedin, X -> twitter, Reddit -> reddit. Idempotent (skips URLs
+    already carrying utm_source), preserves existing query/fragment, upgrades http->https, and
+    never touches subdomains (staging./l.lubot.ai) or other domains. `medium` overrides the
+    platform default (e.g. a Reddit submission = 'post')."""
+    source, default_medium = _PLATFORM_UTM.get(platform, (platform, "post"))
+    med = medium or default_medium
+    return _LUBOT_URL_RE.sub(lambda m: _tag_one(m, source, med, campaign), text)
