@@ -400,3 +400,22 @@ class TestImageNoCache:
             r = client.get(url)
             assert r.status_code == 200
             assert "no-store" in r.headers.get("cache-control", "")
+
+
+class TestGoRedirect:
+    """GET /go/{code} resolves a tiny short code to a 302 UTM redirect (Phase 2.26)."""
+
+    def test_known_code_redirects_with_utm(self, client, db_session):
+        from src.shortlinks import get_or_create_code
+
+        code = get_or_create_code(db_session, platform="linkedin", campaign="my-agent-2026-08-03")
+        db_session.flush()
+        r = client.get(f"/go/{code}", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == ("/?utm_source=linkedin&utm_medium=post&utm_campaign=my-agent-2026-08-03")
+        assert "no-store" in r.headers.get("cache-control", "")
+
+    def test_unknown_code_redirects_to_bare_lubot(self, client):
+        r = client.get("/go/zzzzz", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "https://lubot.ai/"

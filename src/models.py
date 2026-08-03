@@ -126,3 +126,20 @@ class PublisherPodcastTranscript(Base):
     transcript = Column(Text, nullable=False)
     distilled = Column(Text, nullable=True)  # P5.5 market-theme bullets
     created_at = Column(DateTime, server_default=func.now())
+
+
+class PublisherShortLink(Base):
+    """Tiny branded short link for attribution (Phase 2.26). code -> lubot.ai/?utm_...
+
+    A click on lubot.ai/go/<code> (routed to the publisher by nginx) resolves the code to a
+    302 redirect carrying utm_source/medium/campaign, so the lubot.ai analytics DB knows which
+    post + platform + campaign drove the click. One code per (platform, campaign, dest_path)."""
+
+    __tablename__ = "publisher_short_links"
+
+    id = Column(Integer, primary_key=True)
+    code = Column(String(16), unique=True, nullable=False, index=True)  # the /go/<code> token
+    platform = Column(String(20), nullable=False)  # linkedin | x | twitter | reddit
+    campaign = Column(String(120), nullable=False)  # utm_campaign, e.g. my-agent-2026-08-03
+    dest_path = Column(String(200), nullable=False, default="/")  # landing path (default root)
+    created_at = Column(DateTime, server_default=func.now())

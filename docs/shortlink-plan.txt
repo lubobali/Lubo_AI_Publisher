@@ -1,0 +1,132 @@
+================================================================================
+TINY SHORT LINKS in the FIRST COMMENT   —   lubot.ai/go/a7x
+Plan v3 (write-first, build-second). Staff-engineer pace. Slow + safe.
+Author: pairing session, Aug 3 2026.
+================================================================================
+
+THE FINAL PICTURE
+-----------------
+- CARD (image):  clean "· lubot.ai" — UNCHANGED.
+- POST BODY:     clean — NO tracking URL.
+- FIRST COMMENT: a tiny link  ->  lubot.ai/go/a7x
+                 which 302-redirects to lubot.ai/?utm_source=linkedin&utm_medium=post&utm_campaign=my-agent-2026-08-03
+- We still know exactly which post drove the click (per-post), but the visible link is tiny.
+
+THE SAFETY-FIRST DESIGN (why this shape)
+----------------------------------------
+The shortener lives ENTIRELY in the PUBLISHER (the app we already own + deploy):
+  - a tiny short_links table in the PUBLISHER DB (we control it)
+  - the redirect route GET /go/{code} served by the PUBLISHER's FastAPI
+  - short codes generated LOCALLY at publish time (a normal local DB write — no cross-system
+    call, no new network failure mode)
+The LuBot PRODUCT APP and its DB are NOT TOUCHED AT ALL. No product route, no product
+migration (so the D-OPS-4b lockstep rule does not apply), no product deploy.
+The ONLY shared-infra change is ONE nginx line: lubot.ai/go/ -> the publisher (127.0.0.1:8100).
+Blast radius = the publisher + one nginx rule. Nothing else.
+
+FLOW
+----
+click lubot.ai/go/a7x
+  -> nginx routes /go/ to the publisher (:8100)
+  -> publisher looks up "a7x" in short_links -> 302 to lubot.ai/?utm_source=...&utm_campaign=...
+  -> browser lands on the real lubot.ai (LuBot frontend), which logs the UTM to user_events (as today)
+
+--------------------------------------------------------------------------------
+PHASE 0 — DESIGN (locked)
+--------------------------------------------------------------------------------
+0.1 Code: 5-char base62 (~916M combos), URL-safe, no ambiguous chars if easy. Unique.
+0.2 Idempotent: one code per (platform, campaign). Same topic+day+platform reuses its code
+    (utm_campaign = topic-date already, so this is correct, not a bug). Re-publish = same code.
+0.3 short_links row: code (unique), platform, campaign, dest_path (default "/"), created_at.
+    dest = "/{dest_path}?utm_source={src}&utm_medium={med}&utm_campaign={campaign}".
+0.4 Unknown code on click -> 302 to bare lubot.ai/ (graceful; never a dead 404 for a visitor).
+0.5 Redirect target is RELATIVE ("/?utm_...") so host is inherited (works even if tested on
+    publisher.lubot.ai directly). For the live link we force host lubot.ai in the emitted link,
+    but the 302 Location stays relative -> lands on whatever host served it (lubot.ai in prod).
+0.6 Body stays clean: publisher STOPS tagging the body. The one tracked link is the comment.
+
+--------------------------------------------------------------------------------
+PHASE 1 — Publisher shortener core (code + tests, deploy is safe/no behavior change)
+--------------------------------------------------------------------------------
+Work in /srv/lubot-publisher, feature branch.
+1.1 Model: PublisherShortLink (code unique, platform, campaign, dest_path, created_at) in
+    src/models.py. Auto-created by create_all (publisher pattern — no migration file needed).
+1.2 src/shortlinks.py:
+      - get_or_create_code(session, *, platform, campaign, dest_path="/") -> code
+        (reuse existing (platform,campaign) row; else generate a unique 5-char code, insert)
+      - resolve(session, code) -> dest string or None
+      - _utm_dest(platform, campaign, dest_path) -> "/{path}?utm_source=..&utm_medium=..&utm_campaign=.."
+        (platform li/tw/rd -> linkedin/twitter/reddit; medium li/tw->post, rd->comment)
+1.3 Redirect route in src/api.py: GET /go/{code} -> resolve -> RedirectResponse(dest, 302);
+    unknown -> 302 to "/" ... NO: to "https://lubot.ai/" bare (graceful). Cache-Control: no-store.
+1.4 Tests (tests/unit + test_api): code gen unique+idempotent, resolve, /go/{code} 302 +
+    Location has utm, unknown code -> graceful redirect, non-lubot never involved.
+ACCEPTANCE: tests green. Deploying this is SAFE — it only ADDS a table + a /go endpoint;
+    it does NOT change how posts are published yet. Nothing posts a short link.
+ROLLBACK: drop the route + model usage; table is inert.
+
+--------------------------------------------------------------------------------
+PHASE 2 — Verify the redirect on the PUBLISHER host (before any nginx change)
+--------------------------------------------------------------------------------
+2.1 Deploy the publisher (build publisher-web && up -d) — safe (Phase 1 is inert to posting).
+2.2 Make a test code (script/REPL): get_or_create_code(platform="linkedin", campaign="test-2026-08-03").
+2.3 curl -sSi https://publisher.lubot.ai/go/<code>  -> expect 302, Location lubot.ai/?utm_source=linkedin...
+2.4 Browser: open publisher.lubot.ai/go/<code> -> lands on lubot.ai with utm in the URL.
+ACCEPTANCE: the redirect works end-to-end on the publisher host. No lubot.ai change yet.
+ROLLBACK: none needed (read-only test on a safe new endpoint).
+
+--------------------------------------------------------------------------------
+PHASE 3 — nginx: make lubot.ai/go/ reach the publisher (the ONE shared-infra touch)
+--------------------------------------------------------------------------------
+3.1 Add to the PROD lubot.ai vhost (/etc/nginx/sites-enabled/lubot):
+      location /go/ { proxy_pass http://127.0.0.1:8100/go/; <copy proxy headers from /api/>; }
+    (Confirm /go is not already used by lubot.ai — verified: it is not.)
+3.2 nginx -t   (MUST pass — do NOT reload on error)  ->  systemctl reload nginx
+3.3 curl -sSi https://lubot.ai/go/<code>  -> 302 to lubot.ai/?utm_source=... ; browser-confirm.
+3.4 "Is it safe?" checkpoint with Lubo BEFORE this reload (shared infra; other sites live on
+    the same nginx). Rollback is one line + reload.
+ACCEPTANCE: lubot.ai/go/<code> redirects live in prod.
+ROLLBACK: remove the /go/ location -> nginx -t -> reload.
+
+--------------------------------------------------------------------------------
+PHASE 4 — Publisher: LinkedIn first comment + wire it up (behavior change, LAST)
+--------------------------------------------------------------------------------
+Only after Phase 3 is live (so links resolve).
+4.1 LinkedInPublisher.comment(post_urn, text) — NEW, mirrors XPublisher.reply(); LinkedIn
+    comments API (w_member_social) on the returned share urn. Transport in the client.
+4.2 In publish_approved_posts, AFTER a successful publish, post the CTA + tiny link:
+      code = get_or_create_code(session, platform=<platform>, campaign=_campaign_for(post))
+      link = f"https://lubot.ai/go/{code}"
+      LinkedIn -> comment(urn, f"{cta} {link}")   |   X -> reply(urn, f"{cta} {link}")
+    NON-FATAL: comment/reply failure never fails the main post (log + continue).
+4.3 Body: _publish_to_platform sends post.post_text UNCHANGED (stop tagging the body).
+4.4 Tests: comment called with a lubot.ai/go/<code> link after a LinkedIn publish; body untagged;
+    X reply uses the short link too.
+4.5 Deploy publisher. Approve ONE real post -> confirm: clean card, clean body, first comment
+    shows lubot.ai/go/<code>, it redirects, and public.user_events gets the linkedin/post/<campaign>
+    row (Lubo runs the query against the lubot.ai DB).
+ACCEPTANCE: a real post has a clean body + a tiny tracked link in the comment that attributes.
+ROLLBACK: revert Phase 4 (no comment link; body as-is). /go route + nginx stay, harmless.
+
+--------------------------------------------------------------------------------
+NOT IN SCOPE
+--------------------------------------------------------------------------------
+- Touching the LuBot product app or its DB (deliberately avoided for safety).
+- Per-click analytics at the redirect (we rely on the existing landing UTM capture).
+- Rewording the writer to say "link in comments" (optional later prompt tweak).
+- The card "lubot.ai" is a PNG signature, not a link — stays clean, never tagged.
+
+RISKS / SAFETY
+--------------
+- nginx: shared infra; ALWAYS nginx -t before reload; "is it safe?" gate (Phase 3.4).
+- Publisher must be UP for lubot.ai/go links to resolve (it already serves publisher.lubot.ai;
+  if it is down, lubot.ai itself is unaffected — only the /go links pause).
+- LinkedIn comment API real behavior only provable on a real post (4.5, Lubo-gated); non-fatal.
+- Strict order: redirect live (Phase 3) BEFORE the publisher emits short links (Phase 4) = no dead links.
+
+OPEN QUESTIONS FOR LUBO
+-----------------------
+Q1 First-comment CTA wording? default: "More on what I am building:" then the link. (reuse X style)
+Q2 Code length 5 chars ok (lubot.ai/go/a7x9k)? shorter=more collisions to retry; 5 is plenty.
+Q3 On an UNKNOWN/expired code, redirect to bare lubot.ai/ (graceful) — agreed?
+================================================================================
