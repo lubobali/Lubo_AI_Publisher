@@ -1081,8 +1081,8 @@ class TestPublishApproved:
         mock_publisher.publish_images.assert_awaited()  # card (+ any extra images) sent as a carousel
 
     @pytest.mark.asyncio
-    async def test_publish_body_clean_and_tracked_link_in_comment(self, db_session):
-        """Body is sent UNCHANGED (clean); the tiny tracked link goes in the LinkedIn comment."""
+    async def test_linkedin_body_clean_and_no_comment(self, db_session):
+        """LinkedIn: body sent UNCHANGED (clean), and NO comment (its API is partner-gated)."""
         post = PublisherPost(
             posted_at=datetime(2026, 8, 4, tzinfo=UTC),
             topic_category="my_agent",
@@ -1102,12 +1102,34 @@ class TestPublishApproved:
         with patch("src.scheduler.get_publisher", return_value=mock_pub):
             await publish_approved_posts(db_session, "tok", "urn", platforms=[("linkedin", {})])
 
-        # body untouched — no utm, no /go link in the post body
-        assert mock_pub.publish_text.call_args.args[0] == post.post_text
+        assert mock_pub.publish_text.call_args.args[0] == post.post_text  # body untouched
         assert "/go/" not in mock_pub.publish_text.call_args.args[0]
-        # the tracked short link is posted as a first comment
-        mock_pub.comment.assert_awaited_once()
-        assert "https://lubot.ai/go/" in mock_pub.comment.call_args.args[1]
+        mock_pub.comment.assert_not_awaited()  # LinkedIn comment is not attempted (403 partner API)
+
+    @pytest.mark.asyncio
+    async def test_x_reply_carries_tracked_short_link(self, db_session):
+        """X: the tiny tracked link is posted as a self-reply (X has no partner wall)."""
+        post = PublisherPost(
+            posted_at=datetime(2026, 8, 4, tzinfo=UTC),
+            topic_category="my_agent",
+            topic_title="Test",
+            post_text="i built this. runs live at lubot.ai and it is great",
+            image_path=None,
+            status="approved",
+        )
+        db_session.add(post)
+        db_session.flush()
+
+        mock_pub = AsyncMock()
+        mock_pub.platform_name = "x"
+        mock_pub.publish_text = AsyncMock(return_value="tweet1")
+        mock_pub.reply = AsyncMock(return_value="tweet2")
+
+        with patch("src.scheduler.get_publisher", return_value=mock_pub):
+            await publish_approved_posts(db_session, "tok", "urn", platforms=[("x", {})])
+
+        mock_pub.reply.assert_awaited_once()
+        assert "https://lubot.ai/go/" in mock_pub.reply.call_args.args[1]
 
     @pytest.mark.asyncio
     async def test_publishes_card_plus_extra_photo_as_carousel(self, db_session):

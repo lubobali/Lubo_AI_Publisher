@@ -1,0 +1,119 @@
+================================================================================
+X-NATIVE POSTS  —  one idea, two versions (LinkedIn untouched, X made native)
+Build plan (write-first, build-second). Staff-engineer pace. Publisher-only, safe.
+Author: pairing session, Aug 3 2026.  Driver: memory project_x_native_style.
+================================================================================
+
+WHY
+---
+LinkedIn grows (2600), X is stuck (~60) because the SAME LinkedIn-style post (long +
+polished cards) is forced onto X. Small X accounts need NATIVE X style. So: keep LinkedIn
+exactly as-is; generate a SEPARATE short, punchy, TEXT-ONLY version for X.
+
+THE X RULES (from Groq, Lubo agrees) — the writer's spec:
+  short + direct + human; strong first-line HOOK; mostly <280 chars; 2-4 short lines;
+  NO cards (text-only); no "swipe to see"; no LinkedIn storytelling; no soft openings.
+  Per topic: building-in-public=one update/number; ai_news=one sharp take; tech_talk=one
+  idea said simply; biohacker=stopped/started + result. Goal: stop the scroll in 1 second.
+  The link stays in the X self-reply (already working: lubot.ai/go/<code>).
+
+DESIGN (locked)
+---------------
+- X version is a NATIVE REWRITE of the already-written LinkedIn post (same facts, X style) —
+  ONE extra LLM call, grounded in the truthful LinkedIn text (no new hallucination), applying
+  the X rules + few-shots. (Mirrors writer.carousel_from_text: reshape existing -> new format.)
+- Stored on the post as a new column x_post_text (nullable). Generated at GENERATION time so
+  Lubo can review/EDIT it before approving.
+- Publish is PER-PLATFORM: LinkedIn = post_text + cards (unchanged); X = x_post_text, TEXT-ONLY
+  (no images) + the self-reply link. If x_post_text is missing, X falls back to post_text (safe).
+- All in the publisher. No product app, no nginx, no new outward permission. One real post at the end.
+
+--------------------------------------------------------------------------------
+PHASE 0 — Finalize short links (tiny cleanup)  [1 small change]
+--------------------------------------------------------------------------------
+0.1 LinkedIn: STOP attempting the comment (it 403s every post — Community Mgmt API wall, Option B).
+    In publish_approved_posts, only do the CTA for platform == "x" (keep the X self-reply). LinkedIn
+    body stays clean, no link. Keep LinkedInPublisher.comment() in place (harmless, unused) in case
+    we ever get the partner API.
+0.2 Test: publishing to LinkedIn no longer calls comment; X still gets the reply link.
+ACCEPTANCE: no more 403s on LinkedIn; X reply unchanged.
+
+--------------------------------------------------------------------------------
+PHASE 1 — X-native writer (code + tests)
+--------------------------------------------------------------------------------
+1.1 writer.write_x_post(topic_name, linkedin_text, hashtags=None) -> str | None.
+    system = build_system_prompt() + X_FORMAT override (the X rules above + 3-4 few-shot examples
+    per Groq). user = "Here is my LinkedIn post about <topic>. Rewrite it as a NATIVE X post:
+    <rules>. Use ONLY facts already in it. Return plain text (no cards, no swipe)."
+    Reuse the NIM->OpenRouter provider loop (share a helper with write_carousel if clean).
+1.2 A light parser/guard: strip to plain text, drop any leaked "swipe"/markdown, soft length
+    nudge (not a hard truncate — X premium allows longer; keep it short by prompt).
+1.3 Tests: prompt carries the X rules + the linkedin text; output is short-ish; no "swipe";
+    provider-failure -> None (caller falls back to post_text).
+ACCEPTANCE: write_x_post returns a short native rewrite; tests green.
+
+--------------------------------------------------------------------------------
+PHASE 2 — Store + generate the X version (code + tests)
+--------------------------------------------------------------------------------
+2.1 Model: PublisherPost.x_post_text = Column(Text, nullable=True). create_all picks it up
+    (same as short_links — additive, no migration file). Expose in api PostOut for the dashboard.
+2.2 In Pipeline.generate_post (and _finish_carousel): after the LinkedIn post_text is finalized
+    (post-processed), call write_x_post(topic, post_text, hashtags) and store x_post_text.
+    NON-FATAL: on failure leave x_post_text=None (X will fall back to post_text). Inside the same
+    Langfuse trace.
+2.3 Tests: a generated post has x_post_text populated (mock write_x_post); failure -> None + post
+    still saved.
+ACCEPTANCE: pending posts carry both post_text (LinkedIn) and x_post_text (X).
+
+--------------------------------------------------------------------------------
+PHASE 3 — Publish per-platform: X gets the short text, TEXT-ONLY (code + tests)
+--------------------------------------------------------------------------------
+3.1 _publish_to_platform becomes platform-aware:
+      - LinkedIn: post.post_text + images (card/carousel) — unchanged.
+      - X: (post.x_post_text or post.post_text), and NO images (text-only). Use publish_text.
+    Cleanest: pass the platform / branch on publisher.platform_name; skip the image load for X.
+3.2 X self-reply link stays (Phase 0 keeps the X CTA).
+3.3 Tests: X publish uses x_post_text and calls publish_text (never publish_images); LinkedIn
+    still sends images; X falls back to post_text when x_post_text is None.
+ACCEPTANCE: on publish, LinkedIn = long + cards, X = short text-only + reply link.
+
+--------------------------------------------------------------------------------
+PHASE 4 — Dashboard: show + edit the X version (code + tests)
+--------------------------------------------------------------------------------
+4.1 PostOut exposes x_post_text. Dashboard renders a second "X version" block under the LinkedIn
+    text (labelled), so Lubo sees BOTH before approving.
+4.2 Edit-before-approve for X: PATCH /api/posts/{id} accepts x_post_text (reuse EditPostRequest);
+    dashboard gets an "Edit X text" button (mirror editText).
+4.3 Tests: PATCH updates x_post_text (pending-only); dashboard shows the X block.
+ACCEPTANCE: Lubo can review + edit the X version on the dashboard before approving.
+
+--------------------------------------------------------------------------------
+PHASE 5 — End-to-end + one real post (Lubo-gated)
+--------------------------------------------------------------------------------
+5.1 Full suite green in-container; ruff/lint; merge to main; deploy (build web+worker, up -d).
+5.2 Generate a fresh post -> dashboard shows LinkedIn (long+cards) + X (short text-only).
+5.3 Lubo approves ONE -> confirm LinkedIn posts long+cards, X posts the SHORT text-only + reply
+    link, both read right. (This is the outward step — Lubo picks the post.)
+ACCEPTANCE: one idea publishes as two native versions.
+
+--------------------------------------------------------------------------------
+NOT IN SCOPE
+--------------------------------------------------------------------------------
+- Simple X images/screenshots (Groq's "if needed") — v1 is text-only; add later if wanted.
+- Changing LinkedIn content at all (it stays exactly as today).
+- LinkedIn Community Management API / comment tracking (separate, deferred).
+
+RISKS / SAFETY
+--------------
+- Publish-path change (Phase 3) is the sharp edge — test that X never sends images and LinkedIn
+  never loses them. Fallback (x_post_text None -> post_text) keeps X safe if generation fails.
+- Extra LLM call per post = pennies (9 posts/week); non-fatal so it never blocks a post.
+- All publisher-only; container-testable; one real post at the very end.
+
+OPEN QUESTIONS FOR LUBO
+-----------------------
+Q1 X version = native REWRITE of the LinkedIn post (plan's pick, grounded+consistent) — ok?
+Q2 X strictly TEXT-ONLY for v1 (no card, no image)? (plan: yes)
+Q3 Do you have X Premium (longer than 280)? If yes we can relax the length; if no, keep it tight.
+Q4 Dashboard: always show the X block (even if you rarely edit it)? (plan: yes, editable)
+================================================================================

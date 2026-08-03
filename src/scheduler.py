@@ -702,17 +702,16 @@ async def publish_approved_posts(
             try:
                 post_urn = await _publish_to_platform(publisher, post)
 
-                # The CTA + tiny tracked link goes in a COMMENT / SELF-REPLY, never the body.
-                # Non-fatal: a failed comment never blocks the (already published) main post.
-                cta = _tracked_cta(session, post, platform)
-                if cta:
-                    try:
-                        if platform == "x":
+                # X: put the tracked link in a SELF-REPLY (works with our creds). LinkedIn's
+                # comment API needs the partner Community Management product we do not have (403),
+                # so LinkedIn stays clean with no link (the card shows lubot.ai). Non-fatal.
+                if platform == "x":
+                    cta = _tracked_cta(session, post, platform)
+                    if cta:
+                        try:
                             await publisher.reply(post_urn, cta)
-                        elif platform == "linkedin":
-                            await publisher.comment(post_urn, cta)
-                    except Exception:
-                        logger.warning("%s comment/reply failed for post #%d (main post is up)", platform, post.id)
+                        except Exception:
+                            logger.warning("X self-reply failed for post #%d (main post is up)", post.id)
 
                 session.add(
                     PublisherDestination(
