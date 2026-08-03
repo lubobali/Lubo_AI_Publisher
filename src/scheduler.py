@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
@@ -16,7 +17,7 @@ from src.knowledge_base import KnowledgeBase
 from src.models import PublisherDestination, PublisherPost
 from src.observability import get_client, observe
 from src.podcast_insights import PodcastInsights
-from src.post_processor import build_campaign, numbers_grounded, process_post, tag_urls, validate_post
+from src.post_processor import build_campaign, numbers_grounded, process_post, validate_post
 from src.publisher import get_publisher
 from src.scraper import ScrapedArticle, scrape_topic
 from src.screenshotter import (
@@ -30,6 +31,7 @@ from src.screenshotter import (
     take_wakatime_screenshot,
 )
 from src.self_learner import SelfLearner
+from src.shortlinks import get_or_create_code
 from src.stock_insights import StockInsights, build_stock_screenshot_fields, select_chart_symbols
 from src.topic_rotator import get_todays_topic, get_week_number
 from src.wakatime_insights import WakaTimeInsights, build_screenshot_fields
@@ -628,14 +630,28 @@ def _campaign_for(post) -> str:
     return build_campaign(post.topic_category, (post.posted_at or datetime.now(UTC)).date())
 
 
+# A bare lubot.ai root url in a CTA string (to swap for the tracked short link).
+_LUBOT_BARE_RE = re.compile(r"(?<![\w./@-])(?:https?://)?lubot\.ai(?![\w./])", re.IGNORECASE)
+
+
+def _tracked_cta(session, post, platform: str) -> str | None:
+    """The first-comment / self-reply CTA, with lubot.ai swapped for a tiny tracked short link
+    (Phase 2.26). Reuses the category-aware CTA (_x_reply_link): a lubot.ai CTA gets the tracked
+    lubot.ai/go/<code> link; an external source-article CTA (ai_news/tech_talk) is left as-is."""
+    base = _x_reply_link(post)
+    if base and "lubot.ai" in base.lower():
+        code = get_or_create_code(session, platform=platform, campaign=_campaign_for(post))
+        return _LUBOT_BARE_RE.sub(f"https://lubot.ai/go/{code}", base, count=1)
+    return base
+
+
 async def _publish_to_platform(publisher, post) -> str:
     """Publish one post via a publisher. Sends the card + any extra images (a carousel) if
     present, else text. Missing image files are skipped. Returns the platform urn/id.
 
-    UTM tagging (attribution): every lubot.ai URL in the text is tagged for THIS platform right
-    before handoff, so a click is attributed to the post + platform + campaign. Per-platform on
-    purpose (LinkedIn vs X get different utm_source); linkedin_client stays untouched."""
-    text = tag_urls(post.post_text, platform=publisher.platform_name, campaign=_campaign_for(post))
+    The post BODY stays clean — the tracked link lives in the first comment / self-reply
+    (see _tracked_cta + publish_approved_posts), never in the body."""
+    text = post.post_text
     paths = [post.image_path, *(post.extra_image_paths or [])]
     images = []
     for p in paths:
@@ -686,16 +702,17 @@ async def publish_approved_posts(
             try:
                 post_urn = await _publish_to_platform(publisher, post)
 
-                # X: put the marketing link in a SELF-REPLY (never the main post).
-                if platform == "x":
-                    link = _x_reply_link(post)
-                    if link:
-                        # Tag the reply link too — it is the real click target on X (source=twitter).
-                        link = tag_urls(link, platform="x", campaign=_campaign_for(post))
-                        try:
-                            await publisher.reply(post_urn, link)
-                        except Exception:
-                            logger.warning("X self-reply failed for post #%d (main post is up)", post.id)
+                # The CTA + tiny tracked link goes in a COMMENT / SELF-REPLY, never the body.
+                # Non-fatal: a failed comment never blocks the (already published) main post.
+                cta = _tracked_cta(session, post, platform)
+                if cta:
+                    try:
+                        if platform == "x":
+                            await publisher.reply(post_urn, cta)
+                        elif platform == "linkedin":
+                            await publisher.comment(post_urn, cta)
+                    except Exception:
+                        logger.warning("%s comment/reply failed for post #%d (main post is up)", platform, post.id)
 
                 session.add(
                     PublisherDestination(

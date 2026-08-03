@@ -1081,13 +1081,13 @@ class TestPublishApproved:
         mock_publisher.publish_images.assert_awaited()  # card (+ any extra images) sent as a carousel
 
     @pytest.mark.asyncio
-    async def test_publish_tags_lubot_url_with_utm(self, db_session):
-        """The publish path UTM-tags lubot.ai in the text for THIS platform (attribution)."""
+    async def test_publish_body_clean_and_tracked_link_in_comment(self, db_session):
+        """Body is sent UNCHANGED (clean); the tiny tracked link goes in the LinkedIn comment."""
         post = PublisherPost(
             posted_at=datetime(2026, 8, 4, tzinfo=UTC),
-            topic_category="ai_news",
+            topic_category="my_agent",
             topic_title="Test",
-            post_text="i built this. try it at lubot.ai and tell me what you think",
+            post_text="i built this. runs live at lubot.ai and it is great",
             image_path=None,
             status="approved",
         )
@@ -1097,12 +1097,17 @@ class TestPublishApproved:
         mock_pub = AsyncMock()
         mock_pub.platform_name = "linkedin"
         mock_pub.publish_text = AsyncMock(return_value="urn:li:share:1")
+        mock_pub.comment = AsyncMock(return_value="urn:li:comment:1")
 
         with patch("src.scheduler.get_publisher", return_value=mock_pub):
             await publish_approved_posts(db_session, "tok", "urn", platforms=[("linkedin", {})])
 
-        sent = mock_pub.publish_text.call_args.args[0]
-        assert "https://lubot.ai?utm_source=linkedin&utm_medium=post&utm_campaign=ai-news-2026-08-04" in sent
+        # body untouched — no utm, no /go link in the post body
+        assert mock_pub.publish_text.call_args.args[0] == post.post_text
+        assert "/go/" not in mock_pub.publish_text.call_args.args[0]
+        # the tracked short link is posted as a first comment
+        mock_pub.comment.assert_awaited_once()
+        assert "https://lubot.ai/go/" in mock_pub.comment.call_args.args[1]
 
     @pytest.mark.asyncio
     async def test_publishes_card_plus_extra_photo_as_carousel(self, db_session):
@@ -1652,3 +1657,39 @@ class TestCarouselPipeline:
 
             result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 3, 23), as_carousel=True)
         assert result.success is False
+
+
+class TestTrackedCta:
+    """_tracked_cta swaps lubot.ai for a tiny tracked short link; leaves external CTAs alone."""
+
+    def test_swaps_lubot_for_short_link(self, db_session):
+        from src.scheduler import _tracked_cta
+
+        post = PublisherPost(
+            posted_at=datetime(2026, 8, 4, tzinfo=UTC),
+            topic_category="my_agent",
+            topic_title="t",
+            post_text="x",
+            status="approved",
+        )
+        db_session.add(post)
+        db_session.flush()
+        cta = _tracked_cta(db_session, post, "linkedin")
+        assert "https://lubot.ai/go/" in cta  # bare lubot.ai became the tracked short link
+        assert cta.rstrip().endswith("/go/" + cta.split("/go/")[-1])  # link is at the end
+
+    def test_leaves_source_article_cta_untouched(self, db_session):
+        from src.scheduler import _tracked_cta
+
+        post = PublisherPost(
+            posted_at=datetime(2026, 8, 4, tzinfo=UTC),
+            topic_category="ai_news",
+            topic_title="t",
+            post_text="x",
+            source_url="https://techcrunch.com/x",
+            status="approved",
+        )
+        db_session.add(post)
+        db_session.flush()
+        cta = _tracked_cta(db_session, post, "linkedin")
+        assert cta == "https://techcrunch.com/x"  # external source link, no /go tracking
