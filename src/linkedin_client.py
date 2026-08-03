@@ -178,3 +178,31 @@ async def create_multi_image_post(
         )
         response.raise_for_status()
         return response.headers.get("x-restli-id", "")
+
+
+async def create_comment(
+    access_token: str,
+    person_urn: str,
+    object_urn: str,
+    text: str,
+) -> str:
+    """Post a comment on one of our own posts — the first-comment CTA link (Phase 2.26).
+
+    Uses the versioned Social Actions API: POST /rest/socialActions/{urlencoded-share-urn}/comments.
+    `object_urn` is the share/ugcPost URN returned when the post was created. Returns the comment
+    URN (from x-restli-id). Raises on HTTP error so the caller can treat it as non-fatal."""
+    from urllib.parse import quote
+
+    encoded = quote(object_urn, safe="")
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            url=f"{LINKEDIN_API_BASE}/rest/socialActions/{encoded}/comments",
+            headers=get_auth_headers(access_token),
+            json={
+                "actor": person_urn,
+                "object": object_urn,
+                "message": {"text": text},
+            },
+        )
+        response.raise_for_status()
+        return response.headers.get("x-restli-id", "")

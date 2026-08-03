@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -121,6 +121,20 @@ def post_image_n(post_id: int, idx: int, session: Session = Depends(get_db_sessi
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.get("/go/{code}")
+def go_redirect(code: str, session: Session = Depends(get_db_session)):
+    """Resolve a tiny short code -> 302 to lubot.ai/?utm_... (attribution). Phase 2.26.
+
+    nginx routes lubot.ai/go/ to the publisher, so a click on lubot.ai/go/<code> lands here.
+    Unknown/expired code -> graceful 302 to bare lubot.ai (never a dead 404 for a visitor)."""
+    from src.shortlinks import resolve
+
+    dest = resolve(session, code)
+    if not dest:
+        return RedirectResponse("https://lubot.ai/", status_code=302, headers=_NO_CACHE)
+    return RedirectResponse(dest, status_code=302, headers=_NO_CACHE)
 
 
 @app.get("/api/posts", response_model=list[PostOut])

@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 
 from src import x_client
 from src.linkedin_client import (
+    create_comment,
     create_image_post,
     create_multi_image_post,
     create_text_post,
@@ -92,6 +93,16 @@ class LinkedInPublisher(Publisher):
             urns.append(image_urn)
         return await create_multi_image_post(
             access_token=self._access_token, person_urn=self._person_urn, text=text, image_urns=urns
+        )
+
+    async def comment(self, object_urn: str, text: str) -> str:
+        """Post a first comment on one of our posts (the tracked CTA link). Returns comment urn.
+        Mirrors XPublisher.reply — links live in the comment, not the post body."""
+        return await create_comment(
+            access_token=self._access_token,
+            person_urn=self._person_urn,
+            object_urn=object_urn,
+            text=text,
         )
 
     def get_post_url(self, post_urn: str) -> str:
