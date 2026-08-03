@@ -16,7 +16,7 @@ from src.knowledge_base import KnowledgeBase
 from src.models import PublisherDestination, PublisherPost
 from src.observability import get_client, observe
 from src.podcast_insights import PodcastInsights
-from src.post_processor import numbers_grounded, process_post, validate_post
+from src.post_processor import build_campaign, numbers_grounded, process_post, tag_urls, validate_post
 from src.publisher import get_publisher
 from src.scraper import ScrapedArticle, scrape_topic
 from src.screenshotter import (
@@ -623,9 +623,19 @@ def _enabled_platforms(access_token: str, person_urn: str) -> list[tuple[str, di
     return platforms
 
 
+def _campaign_for(post) -> str:
+    """utm_campaign for a post: '<topic>-<yyyy-mm-dd>' (or 'organic-<date>'). Publish-day dated."""
+    return build_campaign(post.topic_category, (post.posted_at or datetime.now(UTC)).date())
+
+
 async def _publish_to_platform(publisher, post) -> str:
     """Publish one post via a publisher. Sends the card + any extra images (a carousel) if
-    present, else text. Missing image files are skipped. Returns the platform urn/id."""
+    present, else text. Missing image files are skipped. Returns the platform urn/id.
+
+    UTM tagging (attribution): every lubot.ai URL in the text is tagged for THIS platform right
+    before handoff, so a click is attributed to the post + platform + campaign. Per-platform on
+    purpose (LinkedIn vs X get different utm_source); linkedin_client stays untouched."""
+    text = tag_urls(post.post_text, platform=publisher.platform_name, campaign=_campaign_for(post))
     paths = [post.image_path, *(post.extra_image_paths or [])]
     images = []
     for p in paths:
@@ -633,8 +643,8 @@ async def _publish_to_platform(publisher, post) -> str:
             with open(p, "rb") as f:
                 images.append(f.read())
     if images:
-        return await publisher.publish_images(post.post_text, images)
-    return await publisher.publish_text(post.post_text)
+        return await publisher.publish_images(text, images)
+    return await publisher.publish_text(text)
 
 
 async def publish_approved_posts(
@@ -680,6 +690,8 @@ async def publish_approved_posts(
                 if platform == "x":
                     link = _x_reply_link(post)
                     if link:
+                        # Tag the reply link too — it is the real click target on X (source=twitter).
+                        link = tag_urls(link, platform="x", campaign=_campaign_for(post))
                         try:
                             await publisher.reply(post_urn, link)
                         except Exception:

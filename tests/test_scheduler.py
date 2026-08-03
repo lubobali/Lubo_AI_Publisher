@@ -1081,6 +1081,30 @@ class TestPublishApproved:
         mock_publisher.publish_images.assert_awaited()  # card (+ any extra images) sent as a carousel
 
     @pytest.mark.asyncio
+    async def test_publish_tags_lubot_url_with_utm(self, db_session):
+        """The publish path UTM-tags lubot.ai in the text for THIS platform (attribution)."""
+        post = PublisherPost(
+            posted_at=datetime(2026, 8, 4, tzinfo=UTC),
+            topic_category="ai_news",
+            topic_title="Test",
+            post_text="i built this. try it at lubot.ai and tell me what you think",
+            image_path=None,
+            status="approved",
+        )
+        db_session.add(post)
+        db_session.flush()
+
+        mock_pub = AsyncMock()
+        mock_pub.platform_name = "linkedin"
+        mock_pub.publish_text = AsyncMock(return_value="urn:li:share:1")
+
+        with patch("src.scheduler.get_publisher", return_value=mock_pub):
+            await publish_approved_posts(db_session, "tok", "urn", platforms=[("linkedin", {})])
+
+        sent = mock_pub.publish_text.call_args.args[0]
+        assert "https://lubot.ai?utm_source=linkedin&utm_medium=post&utm_campaign=ai-news-2026-08-04" in sent
+
+    @pytest.mark.asyncio
     async def test_publishes_card_plus_extra_photo_as_carousel(self, db_session):
         """A post with extra_image_paths sends the card + the photo together (2 images)."""
         post = PublisherPost(
