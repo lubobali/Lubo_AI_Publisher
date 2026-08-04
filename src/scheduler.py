@@ -616,13 +616,29 @@ def reject_post(session: Session, post_id: int) -> bool:
     return True
 
 
+# Podcast/audio source URLs (mp3 etc.) are NOT a nice reader link — never use them as the CTA.
+_AUDIO_HOSTS = ("megaphone", "libsyn", "art19", "anchor", "spreaker", "simplecast", "pdst", "acast", "buzzsprout")
+
+
+def _is_article_link(url: str | None) -> bool:
+    """True only for a real web ARTICLE page — not a podcast mp3/audio file (which now backs
+    ai_news/tech_talk since they went podcast-primary)."""
+    if not url:
+        return False
+    u = url.lower()
+    if u.endswith((".mp3", ".m4a", ".wav", ".ogg")):
+        return False
+    return not any(h in u for h in _AUDIO_HOSTS)
+
+
 def _x_reply_link(post) -> str | None:
     """Category-aware self-reply link for X (the conversion hook; links go in a reply, not the
-    post). Stock -> LuBot stock CTA; ai_news/tech_talk -> the source article (value); else lubot.ai."""
+    post). Stock -> LuBot stock CTA; ai_news/tech_talk -> the source ARTICLE if it is a real web
+    page (NOT a podcast mp3); else the tracked lubot.ai CTA."""
     cat = post.topic_category
     if cat in ("market_pulse", "stock_talk"):
         return "Built with my own stock AI: lubot.ai"
-    if cat in ("ai_news", "tech_talk") and post.source_url:
+    if cat in ("ai_news", "tech_talk") and _is_article_link(post.source_url):
         return post.source_url
     return "More on what I am building: lubot.ai"
 

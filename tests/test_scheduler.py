@@ -1784,3 +1784,25 @@ class TestXThreadOnGenerate:
 
         post = db_session.query(PublisherPost).filter_by(id=result.post_id).first()
         assert post.x_thread == ["hook tweet", "second tweet"]
+
+
+class TestXReplyLink:
+    """_x_reply_link must NOT use a podcast mp3 as the CTA link (Phase 2.27 fix)."""
+
+    def test_podcast_mp3_source_falls_back_to_lubot(self):
+        from src.scheduler import _x_reply_link
+
+        post = MagicMock(topic_category="ai_news", source_url="https://traffic.megaphone.fm/DVVTS123.mp3")
+        assert _x_reply_link(post) == "More on what I am building: lubot.ai"
+
+    def test_real_article_source_is_used(self):
+        from src.scheduler import _x_reply_link
+
+        post = MagicMock(topic_category="ai_news", source_url="https://techcrunch.com/some-article")
+        assert _x_reply_link(post) == "https://techcrunch.com/some-article"
+
+    def test_no_source_uses_lubot(self):
+        from src.scheduler import _x_reply_link
+
+        post = MagicMock(topic_category="tech_talk", source_url=None)
+        assert _x_reply_link(post) == "More on what I am building: lubot.ai"

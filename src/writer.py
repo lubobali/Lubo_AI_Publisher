@@ -197,12 +197,15 @@ short, punchy, human posts.
 
 RULES:
 - FIRST LINE is a scroll-stopping HOOK. Weak hook = nobody reads. This is the whole game.
-- Short. Direct. Human. A real person talking, not an article. Sentence fragments are fine.
-- Keep each tweet TIGHT (about 1 to 3 short lines). NO LinkedIn storytelling, NO "swipe to see",
-  NO polished-card language, NO soft/slow openings, NO long explanations, NO markdown, NO hashtags.
+- BREVITY IS EVERYTHING. Each tweet is 1 to 2 SHORT lines, MAX. Ruthlessly cut every word that is
+  not needed. If a tweet is 3+ lines or reads like a paragraph, it is TOO LONG — trim it hard or
+  split it. Think a punchy text message, NOT a LinkedIn paragraph. One idea per tweet.
+- Direct. Human. A real person talking. Sentence fragments are good. NO LinkedIn storytelling, NO
+  "swipe to see", NO polished-card language, NO soft/slow openings, NO long explanations, NO
+  multi-clause run-on sentences, NO markdown, NO hashtags.
 - 1 to 4 tweets. ONE tweet when the idea is a single sharp beat. A short THREAD (2-4 tweets) ONLY
-  when the content genuinely has 2-4 distinct beats, each standing alone and pulling to the next.
-  Do NOT pad one idea into a thread.
+  when the content genuinely has 2-4 distinct beats, each a tight standalone line that pulls to the
+  next. Do NOT pad one idea into a thread. Fewer, sharper tweets beat more, longer ones.
 - Use ONLY facts already in the LinkedIn post. Invent nothing new (same TRUTH rules).
 - Do NOT put any link or lubot.ai in the tweets (the link goes in a reply later).
 
