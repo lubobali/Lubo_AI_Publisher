@@ -776,6 +776,25 @@ def _published_platforms(session: Session, post_id: int) -> set[str]:
     }
 
 
+def _resolve_post_status(session: Session, post, enabled) -> None:
+    """Move a post out of the pending queue once EVERY enabled platform is decided — each platform
+    is either published (posted) or rejected (declined) via its own dashboard buttons. Overall
+    status is "published" if any platform went out, else "rejected". Until every platform is
+    decided the post stays visible so the other one can still be posted or rejected."""
+    decided = {
+        d.platform: d.status
+        for d in session.query(PublisherDestination)
+        .filter(
+            PublisherDestination.post_id == post.id,
+            PublisherDestination.status.in_(("published", "rejected")),
+        )
+        .all()
+    }
+    if all(p in decided for p in enabled):
+        post.status = "published" if "published" in decided.values() else "rejected"
+    session.flush()
+
+
 async def publish_post_platform(
     session: Session,
     post_id: int,
@@ -784,9 +803,9 @@ async def publish_post_platform(
     person_urn: str,
 ) -> bool:
     """User-triggered single-platform publish (the dashboard "Post to LinkedIn"/"Post to X"
-    buttons). Publishes a PENDING post to just `platform` now, then flips the post to "published"
-    once EVERY enabled platform has been posted (so it moves to Recent); until then it stays visible
-    so the other platform can still be posted. Returns True on success."""
+    buttons). Publishes a PENDING post to just `platform` now, then moves the post to Recent once
+    EVERY enabled platform is decided (posted or rejected); until then it stays visible so the
+    other platform can still be posted or rejected. Returns True on success."""
     post = session.query(PublisherPost).filter_by(id=post_id).first()
     if post is None:
         return False
@@ -796,12 +815,36 @@ async def publish_post_platform(
         return False
 
     ok = await _publish_one(session, post, platform, enabled[platform])
-
-    published = _published_platforms(session, post.id)
-    if all(p in published for p in enabled) and post.status != "published":
-        post.status = "published"
-    session.flush()
+    if ok:
+        _resolve_post_status(session, post, enabled)
     return ok
+
+
+def reject_post_platform(
+    session: Session,
+    post_id: int,
+    platform: str,
+    access_token: str,
+    person_urn: str,
+) -> bool:
+    """User-triggered single-platform REJECT (the per-version "Reject" button). Declines just this
+    platform (records a rejected PublisherDestination), never touches the other. Once every enabled
+    platform is decided the post leaves the pending queue. A platform already PUBLISHED cannot be
+    un-posted, so its rejection is ignored. Returns True on success."""
+    post = session.query(PublisherPost).filter_by(id=post_id).first()
+    if post is None:
+        return False
+
+    existing = session.query(PublisherDestination).filter_by(post_id=post_id, platform=platform).first()
+    if existing is None:
+        session.add(PublisherDestination(post_id=post_id, platform=platform, status="rejected"))
+    elif existing.status != "published":
+        existing.status = "rejected"
+    session.flush()
+
+    enabled = dict(_enabled_platforms(access_token, person_urn))
+    _resolve_post_status(session, post, enabled)
+    return True
 
 
 async def publish_approved_posts(

@@ -1907,3 +1907,106 @@ class TestPerPlatformPublish:
         dests = db_session.query(PublisherDestination).filter_by(post_id=post.id, platform="x").all()
         assert len(dests) == 1  # never double-posted
         assert mock_pub.publish_text.await_count == 1
+
+
+class TestPerPlatformReject:
+    """reject_post_platform declines ONE platform; the post leaves the pending queue only once
+    every platform is decided (published or rejected)."""
+
+    def test_reject_one_keeps_post_pending(self, db_session):
+        from src.scheduler import reject_post_platform
+
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category="ai_news",
+            topic_title="T",
+            post_text="hi",
+            x_thread=["h"],
+            status="pending",
+        )
+        db_session.add(post)
+        db_session.flush()
+
+        with patch("src.scheduler._enabled_platforms", return_value=[("linkedin", {}), ("x", {})]):
+            ok = reject_post_platform(db_session, post.id, "x", "t", "u")
+
+        assert ok is True
+        db_session.refresh(post)
+        assert post.status == "pending"  # LinkedIn still undecided
+        d = db_session.query(PublisherDestination).filter_by(post_id=post.id, platform="x").first()
+        assert d.status == "rejected"
+
+    @pytest.mark.asyncio
+    async def test_publish_one_reject_other_marks_published(self, db_session):
+        from src.scheduler import publish_post_platform, reject_post_platform
+
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category="ai_news",
+            topic_title="T",
+            post_text="hi",
+            x_thread=["hook"],
+            status="pending",
+        )
+        db_session.add(post)
+        db_session.flush()
+
+        mock_pub = AsyncMock()
+        mock_pub.publish_text = AsyncMock(return_value="t1")
+        mock_pub.reply = AsyncMock(return_value="t2")
+        mock_pub.platform_name = "x"
+
+        with (
+            patch("src.scheduler._enabled_platforms", return_value=[("linkedin", {}), ("x", {})]),
+            patch("src.scheduler.get_publisher", return_value=mock_pub),
+        ):
+            await publish_post_platform(db_session, post.id, "x", "t", "u")
+            reject_post_platform(db_session, post.id, "linkedin", "t", "u")
+
+        db_session.refresh(post)
+        assert post.status == "published"  # X went out, LinkedIn declined -> resolved as published
+
+    def test_reject_both_marks_rejected(self, db_session):
+        from src.scheduler import reject_post_platform
+
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category="ai_news",
+            topic_title="T",
+            post_text="hi",
+            x_thread=["h"],
+            status="pending",
+        )
+        db_session.add(post)
+        db_session.flush()
+
+        with patch("src.scheduler._enabled_platforms", return_value=[("linkedin", {}), ("x", {})]):
+            reject_post_platform(db_session, post.id, "x", "t", "u")
+            reject_post_platform(db_session, post.id, "linkedin", "t", "u")
+
+        db_session.refresh(post)
+        assert post.status == "rejected"  # nothing went out
+
+    def test_reject_ignored_if_already_published(self, db_session):
+        from src.scheduler import reject_post_platform
+
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category="ai_news",
+            topic_title="T",
+            post_text="hi",
+            x_thread=["h"],
+            status="pending",
+        )
+        db_session.add(post)
+        db_session.flush()
+        db_session.add(
+            PublisherDestination(post_id=post.id, platform="linkedin", status="published", platform_post_urn="urn:li:1")
+        )
+        db_session.flush()
+
+        with patch("src.scheduler._enabled_platforms", return_value=[("linkedin", {}), ("x", {})]):
+            reject_post_platform(db_session, post.id, "linkedin", "t", "u")
+
+        d = db_session.query(PublisherDestination).filter_by(post_id=post.id, platform="linkedin").first()
+        assert d.status == "published"  # an already-live platform is never flipped to rejected

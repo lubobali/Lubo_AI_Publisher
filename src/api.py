@@ -55,6 +55,7 @@ class PostOut(BaseModel):
     day_of_week: str | None = None
     posting_time_ct: str | None = None
     published_platforms: list[str] = []  # platforms already posted (drives per-platform buttons)
+    platform_status: dict[str, str] = {}  # platform -> "published" | "rejected" (per-version buttons)
 
     model_config = {"from_attributes": True}
 
@@ -140,12 +141,19 @@ def go_redirect(code: str, session: Session = Depends(get_db_session)):
 
 
 def _serialize(session: Session, post) -> PostOut:
-    """Build a PostOut, filling published_platforms from PublisherDestination so the dashboard can
-    show which platform each post has already been posted to."""
+    """Build a PostOut, filling platform_status (platform -> published/rejected) from
+    PublisherDestination so the dashboard can drive each version's Post/Reject buttons."""
     out = PostOut.model_validate(post)
-    out.published_platforms = sorted(
-        d.platform for d in session.query(PublisherDestination).filter_by(post_id=post.id, status="published").all()
+    decided = (
+        session.query(PublisherDestination)
+        .filter(
+            PublisherDestination.post_id == post.id,
+            PublisherDestination.status.in_(("published", "rejected")),
+        )
+        .all()
     )
+    out.platform_status = {d.platform: d.status for d in decided}
+    out.published_platforms = sorted(p for p, st in out.platform_status.items() if st == "published")
     return out
 
 
@@ -338,6 +346,25 @@ def publish_post_to_platform(post_id: int, platform: str, session: Session = Dep
     session.expire_all()  # cron committed in its own session — re-read status + destinations
     post = session.query(PublisherPost).filter_by(id=post_id).first()
     _score_human_approval(post.langfuse_trace_id, 1.0, f"approved:{platform}")
+    return _serialize(session, post)
+
+
+@app.post("/api/posts/{post_id}/reject/{platform}", response_model=PostOut)
+def reject_post_for_platform(post_id: int, platform: str, session: Session = Depends(get_db_session)):
+    """Reject a SINGLE platform version (per-version "Reject" button). Declines just that platform;
+    the other stays available. Once every platform is decided the post moves to Recent."""
+    if platform not in ("linkedin", "x"):
+        raise HTTPException(status_code=400, detail="platform must be 'linkedin' or 'x'")
+    post = session.query(PublisherPost).filter_by(id=post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    from src.cron import reject_post_platform_now
+
+    if not reject_post_platform_now(post_id, platform):
+        raise HTTPException(status_code=500, detail=f"Reject of {platform} failed")
+    session.expire_all()  # cron committed in its own session
+    post = session.query(PublisherPost).filter_by(id=post_id).first()
     return _serialize(session, post)
 
 

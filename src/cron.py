@@ -22,7 +22,12 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 from src.backup import run_backup
 from src.db import SessionLocal
-from src.scheduler import Pipeline, publish_approved_posts, publish_post_platform
+from src.scheduler import (
+    Pipeline,
+    publish_approved_posts,
+    publish_post_platform,
+    reject_post_platform,
+)
 from src.topic_rotator import (
     get_random_post_time,
     get_todays_posts,
@@ -189,6 +194,23 @@ def publish_post_platform_now(post_id: int, platform: str) -> bool:
             session.close()
 
     return asyncio.run(_go())
+
+
+def reject_post_platform_now(post_id: int, platform: str) -> bool:
+    """Reject ONE platform of a post (the per-version 'Reject' button). Pure DB — no publishing."""
+    token = os.getenv("LINKEDIN_ACCESS_TOKEN") or ""
+    person_urn = os.getenv("LINKEDIN_PERSON_URN") or ""
+    session = SessionLocal()
+    try:
+        ok = reject_post_platform(session, post_id, platform, token, person_urn)
+        session.commit()
+        return ok
+    except Exception:
+        session.rollback()
+        logger.exception("Per-platform reject failed for post #%s -> %s", post_id, platform)
+        return False
+    finally:
+        session.close()
 
 
 def _run_publish() -> None:
