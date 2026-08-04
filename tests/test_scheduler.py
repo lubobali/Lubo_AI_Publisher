@@ -1074,6 +1074,7 @@ class TestPublishApproved:
 
         mock_publisher = AsyncMock()
         mock_publisher.publish_images = AsyncMock(return_value="urn:li:share:pub123")
+        mock_publisher.publish_text = AsyncMock(return_value="urn:x:txt")  # X thread path (text-only)
         mock_publisher.platform_name = "linkedin"
 
         with (
@@ -1138,6 +1139,38 @@ class TestPublishApproved:
 
         mock_pub.reply.assert_awaited_once()
         assert "https://lubot.ai/go/" in mock_pub.reply.call_args.args[1]
+
+    @pytest.mark.asyncio
+    async def test_x_publishes_thread_as_chain_text_only(self, db_session):
+        """X posts x_thread as a reply-CHAIN, TEXT-ONLY (never images), link in the final reply."""
+        post = PublisherPost(
+            posted_at=datetime(2026, 8, 4, tzinfo=UTC),
+            topic_category="my_agent",
+            topic_title="Test",
+            post_text="the long linkedin version",
+            image_path="/tmp/card.png",  # LinkedIn would use this; X must NOT
+            x_thread=["hook tweet", "second tweet", "third tweet"],
+            status="approved",
+        )
+        db_session.add(post)
+        db_session.flush()
+
+        mock_pub = AsyncMock()
+        mock_pub.platform_name = "x"
+        mock_pub.publish_text = AsyncMock(return_value="t1")
+        mock_pub.reply = AsyncMock(side_effect=["t2", "t3", "tlink"])
+        mock_pub.publish_images = AsyncMock()
+
+        with patch("src.scheduler.get_publisher", return_value=mock_pub):
+            await publish_approved_posts(db_session, "tok", "urn", platforms=[("x", {})])
+
+        mock_pub.publish_text.assert_awaited_once_with("hook tweet")  # first tweet = the hook
+        mock_pub.publish_images.assert_not_awaited()  # X is TEXT-ONLY, never cards
+        calls = mock_pub.reply.await_args_list
+        assert calls[0].args == ("t1", "second tweet")  # chain: t2 off t1
+        assert calls[1].args == ("t2", "third tweet")  # t3 off t2
+        assert calls[2].args[0] == "t3"  # link off the LAST tweet
+        assert "https://lubot.ai/go/" in calls[2].args[1]  # final reply = the tracked link
 
     @pytest.mark.asyncio
     async def test_publishes_card_plus_extra_photo_as_carousel(self, db_session):

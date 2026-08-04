@@ -683,6 +683,33 @@ async def _publish_to_platform(publisher, post) -> str:
     return await publisher.publish_text(text)
 
 
+async def _publish_x_thread(publisher, post, session) -> str:
+    """Publish the X-NATIVE version (Phase 2.27): the x_thread as a reply-CHAIN, TEXT-ONLY (no
+    cards — cards flop on X), then the tracked short link in a FINAL reply. Returns the FIRST tweet
+    id (the 'main post'). Fallback: a single tweet of post_text when x_thread is empty. Each
+    continuation is non-fatal — the first tweet always stands."""
+    tweets = [t for t in (post.x_thread or []) if t and t.strip()] or [post.post_text]
+    first_id = await publisher.publish_text(tweets[0])
+
+    prev_id = first_id
+    for tweet in tweets[1:]:
+        try:
+            prev_id = await publisher.reply(prev_id, tweet)
+        except Exception:
+            logger.warning("X thread continuation failed for post #%d (thread partially up)", post.id)
+            break
+
+    # The tracked link goes in the FINAL reply, after the whole thread.
+    cta = _tracked_cta(session, post, "x")
+    if cta:
+        try:
+            await publisher.reply(prev_id, cta)
+        except Exception:
+            logger.warning("X link reply failed for post #%d (thread is up)", post.id)
+
+    return first_id
+
+
 async def publish_approved_posts(
     session: Session,
     access_token: str,
@@ -720,18 +747,13 @@ async def publish_approved_posts(
                 continue
 
             try:
-                post_urn = await _publish_to_platform(publisher, post)
-
-                # X: put the tracked link in a SELF-REPLY (works with our creds). LinkedIn's
-                # comment API needs the partner Community Management product we do not have (403),
-                # so LinkedIn stays clean with no link (the card shows lubot.ai). Non-fatal.
+                # LinkedIn = long body + cards (unchanged). X = the native thread, text-only, with
+                # the tracked link in a final reply (LinkedIn body stays clean — its comment API is
+                # partner-gated, and the card shows lubot.ai anyway).
                 if platform == "x":
-                    cta = _tracked_cta(session, post, platform)
-                    if cta:
-                        try:
-                            await publisher.reply(post_urn, cta)
-                        except Exception:
-                            logger.warning("X self-reply failed for post #%d (main post is up)", post.id)
+                    post_urn = await _publish_x_thread(publisher, post, session)
+                else:
+                    post_urn = await _publish_to_platform(publisher, post)
 
                 session.add(
                     PublisherDestination(
