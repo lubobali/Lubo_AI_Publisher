@@ -427,3 +427,28 @@ class TestXThreadExposed:
         r = client.get("/api/posts")
         assert r.status_code == 200
         assert r.json()[0]["x_thread"] == ["tweet one", "tweet two"]
+
+
+class TestEditXThread:
+    """PATCH /api/posts/{id} can edit the X thread (Phase 2.27), pending-only."""
+
+    def test_edit_x_thread_on_pending(self, client, db_session):
+        p = _create_post(db_session, status="pending")
+        r = client.patch(f"/api/posts/{p.id}", json={"x_thread": ["hook tweet", "   ", "second tweet"]})
+        assert r.status_code == 200
+        db_session.refresh(p)
+        assert p.x_thread == ["hook tweet", "second tweet"]  # blank tweet dropped, trimmed
+
+    def test_edit_empty_x_thread_clears_to_none(self, client, db_session):
+        p = _create_post(db_session, status="pending", x_thread=["a"])
+        r = client.patch(f"/api/posts/{p.id}", json={"x_thread": []})
+        assert r.status_code == 200
+        db_session.refresh(p)
+        assert p.x_thread is None  # empty -> None (X falls back to the post text)
+
+    def test_edit_x_thread_rejected_when_not_pending(self, client, db_session):
+        p = _create_post(db_session, status="published", x_thread=["live"])
+        r = client.patch(f"/api/posts/{p.id}", json={"x_thread": ["nope"]})
+        assert r.status_code == 409
+        db_session.refresh(p)
+        assert p.x_thread == ["live"]  # unchanged

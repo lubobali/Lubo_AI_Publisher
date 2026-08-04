@@ -200,6 +200,7 @@ def _score_human_approval(trace_id: str | None, value: float, comment: str) -> N
 class EditPostRequest(BaseModel):
     post_text: str | None = None
     hashtags: list[str] | None = None
+    x_thread: list[str] | None = None  # native X version — list of tweet strings (Phase 2.27)
 
 
 def _require_pending(post: PublisherPost | None) -> PublisherPost:
@@ -224,7 +225,7 @@ def _set_images(post: PublisherPost, images: list[str]) -> None:
 
 @app.patch("/api/posts/{post_id}", response_model=PostOut)
 def edit_post(post_id: int, body: EditPostRequest, session: Session = Depends(get_db_session)):
-    """Edit a PENDING post's text and/or hashtags before approving. Pending-only."""
+    """Edit a PENDING post's text, hashtags, and/or X thread before approving. Pending-only."""
     post = _require_pending(session.query(PublisherPost).filter_by(id=post_id).first())
     if body.post_text is not None:
         text = body.post_text.strip()
@@ -233,6 +234,10 @@ def edit_post(post_id: int, body: EditPostRequest, session: Session = Depends(ge
         post.post_text = text
     if body.hashtags is not None:
         post.hashtags = body.hashtags
+    if body.x_thread is not None:
+        # keep only non-empty tweets; empty list -> None (X falls back to a single post of post_text)
+        tweets = [t.strip() for t in body.x_thread if t and t.strip()]
+        post.x_thread = tweets or None
     session.commit()
     session.refresh(post)
     return post
