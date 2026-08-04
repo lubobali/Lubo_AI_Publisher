@@ -1,6 +1,53 @@
 ==============================================================================
 LUBOT VIDEO ADS — MASTER PLAN
 "Slow. Luxury. Best quality possible." (Lubo, Jul 2026)
+Ethos update 2026-07-28: HOLLYWOOD QUALITY. No compromises on the look.
+==============================================================================
+
+==============================================================================
+STACK LOCKED — 2026-07-28 (deep-research verified, 105 agents, adversarial)
+==============================================================================
+  Voice           : ElevenLabs Professional Voice Clone (Creator ~$22, 1 mo)
+                    Still 2026 leader for founder-voice fidelity — Cartesia,
+                    OpenAI gpt-4o-tts, Play.ht do not match on breath/prosody/
+                    emotion. KEEP.
+  Music           : Epidemic Sound (~$15, 1 mo) — KEEP.
+  Screen capture  : Screen Charm ($79 one-time, Mac) OR Screen Studio ($89).
+                    Charm = equivalent auto-zoom / cursor-track, saves $10.
+                    Either works; pick whichever UI feels cleaner in demo.
+  Video editor    : DaVinci Resolve (FREE). DR20 now ships a native
+                    animated-subtitle engine (karaoke, pop-on, brand colors)
+                    — this replaces the need for a separate caption tool for
+                    the baseline. Submagic layers ON TOP for extra polish.
+  Captions POLISH : Submagic Starter (~$12, 1 mo) — added 2026-07-28 for
+                    hollywood-grade LinkedIn punch (Magic Clips, 99% accuracy,
+                    animated preset library, AI B-roll suggestions).
+  AI b-roll       : Runway Gen-4 (pay-per-use, ~$0.10-0.50/clip). Wins on
+                    temporal consistency + complex backgrounds vs Kling.
+                    Use SPARINGLY — 1-2 cinematic transition shots per video
+                    for cinematic flavor (abstract data viz, close-ups,
+                    timelapse). NEVER as the main content.
+  Assets/backup   : local /video-batch/ + cloud drive. Download EVERY voice
+                    file + music track before cancelling subs.
+
+  ONE-TIME COST   : ~$128-138 total for the whole batch, then cancel monthly
+                    subs. ElevenLabs $22 + Epidemic $15 + Screen Charm $79 +
+                    Submagic $12 + DaVinci FREE + Runway usage ~$5-10.
+
+  REJECTED (2026-07-28 research):
+  - Synthesia / Argil / Colossyan (avatar-first) — kills "real product film"
+    feel. Would put a fake AI person on screen. Skip.
+  - Cartesia / OpenAI Voice / Play.ht — do not match ElevenLabs for
+    founder-voice fidelity in 2026.
+  - Kling 2 for b-roll — competitive on human motion but Runway Gen-4 wins
+    on the cinematic single-take shots we need.
+
+  ALL-IN-ONE VERDICT: no 2026 tool credibly replaces this multi-tool workflow
+  for founder-voice + real SaaS screen-capture + cinematic b-roll. Skip.
+
+  RESEARCH RECORD: /root/.claude/projects/-srv-lubot-staging/f2dd4e4f-.../
+  tasks/wa0ghdd0o.output (full 105-agent report, adversarially verified).
+
 ==============================================================================
 
 GOAL
@@ -91,6 +138,21 @@ PHASE 0 — FOUNDATIONS (one-time setup; do NOT skip, this is the luxury)
        front (or record LuBot in a tall/narrow window so it is vertical-friendly).
   0.7  Set up the FOLDER STRUCTURE (one folder per video: /script /screen /voice
        /music /exports) + a cloud backup. Download-everything discipline.
+
+  0.8  DEMO-STOCK NLU CHECK (added 2026-07-28) — VERIFY LuBot answers when the
+       demo query uses COLLOQUIAL names, not just tickers. Real viewers will
+       ask "how is Google doing?" NOT "how is GOOGL doing?". If LuBot stumbles
+       on the alias in the video, the demo is dead.
+       Seed portfolio (locked 2026-07-28): NVDA, GOOGL, META, AMZN, VOO.
+       Test EACH ticker with 2-3 colloquial variants BEFORE recording:
+         NVDA  = "Nvidia", "the AI chip stock", "chips"
+         GOOGL = "Google", "Alphabet"
+         META  = "Meta", "Facebook", "Zuck's company"
+         AMZN  = "Amazon"
+         VOO   = "S&P 500", "the S&P", "Vanguard S&P", "the index"
+       Also test sector aliases: "big tech", "MAG7", "FAANG", "index funds".
+       Fix any misses BEFORE recording. Lu believes it's already trained —
+       this is verification, not development.
 
 ==============================================================================
 PHASE 1 — SCRIPTS (write all before shooting; cheapest thing to change)

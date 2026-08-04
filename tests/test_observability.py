@@ -98,6 +98,16 @@ def _default_topic():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _x_thread_off():
+    """generate_post calls _x_thread_for (an LLM call for the X version); default it to None so
+    these tracing tests never hit the network."""
+    from unittest.mock import AsyncMock
+
+    with patch("src.scheduler._x_thread_for", new_callable=AsyncMock, return_value=None):
+        yield
+
+
 def _make_articles():
     return [
         ScrapedArticle(

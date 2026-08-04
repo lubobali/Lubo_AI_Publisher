@@ -56,6 +56,14 @@ def _devtrack_off_by_default():
         yield m
 
 
+@pytest.fixture(autouse=True)
+def _x_thread_off():
+    """generate_post calls _x_thread_for (an LLM call for the X version). Default it to None in
+    tests so pipeline-flow tests never hit the network; X-specific tests override within their own `with`."""
+    with patch("src.scheduler._x_thread_for", new_callable=AsyncMock, return_value=None) as m:
+        yield m
+
+
 def _make_articles():
     return [
         ScrapedArticle(
@@ -1066,6 +1074,7 @@ class TestPublishApproved:
 
         mock_publisher = AsyncMock()
         mock_publisher.publish_images = AsyncMock(return_value="urn:li:share:pub123")
+        mock_publisher.publish_text = AsyncMock(return_value="urn:x:txt")  # X thread path (text-only)
         mock_publisher.platform_name = "linkedin"
 
         with (
@@ -1081,8 +1090,8 @@ class TestPublishApproved:
         mock_publisher.publish_images.assert_awaited()  # card (+ any extra images) sent as a carousel
 
     @pytest.mark.asyncio
-    async def test_publish_body_clean_and_tracked_link_in_comment(self, db_session):
-        """Body is sent UNCHANGED (clean); the tiny tracked link goes in the LinkedIn comment."""
+    async def test_linkedin_body_clean_and_no_comment(self, db_session):
+        """LinkedIn: body sent UNCHANGED (clean), and NO comment (its API is partner-gated)."""
         post = PublisherPost(
             posted_at=datetime(2026, 8, 4, tzinfo=UTC),
             topic_category="my_agent",
@@ -1102,12 +1111,66 @@ class TestPublishApproved:
         with patch("src.scheduler.get_publisher", return_value=mock_pub):
             await publish_approved_posts(db_session, "tok", "urn", platforms=[("linkedin", {})])
 
-        # body untouched — no utm, no /go link in the post body
-        assert mock_pub.publish_text.call_args.args[0] == post.post_text
+        assert mock_pub.publish_text.call_args.args[0] == post.post_text  # body untouched
         assert "/go/" not in mock_pub.publish_text.call_args.args[0]
-        # the tracked short link is posted as a first comment
-        mock_pub.comment.assert_awaited_once()
-        assert "https://lubot.ai/go/" in mock_pub.comment.call_args.args[1]
+        mock_pub.comment.assert_not_awaited()  # LinkedIn comment is not attempted (403 partner API)
+
+    @pytest.mark.asyncio
+    async def test_x_reply_carries_tracked_short_link(self, db_session):
+        """X: the tiny tracked link is posted as a self-reply (X has no partner wall)."""
+        post = PublisherPost(
+            posted_at=datetime(2026, 8, 4, tzinfo=UTC),
+            topic_category="my_agent",
+            topic_title="Test",
+            post_text="i built this. runs live at lubot.ai and it is great",
+            image_path=None,
+            status="approved",
+        )
+        db_session.add(post)
+        db_session.flush()
+
+        mock_pub = AsyncMock()
+        mock_pub.platform_name = "x"
+        mock_pub.publish_text = AsyncMock(return_value="tweet1")
+        mock_pub.reply = AsyncMock(return_value="tweet2")
+
+        with patch("src.scheduler.get_publisher", return_value=mock_pub):
+            await publish_approved_posts(db_session, "tok", "urn", platforms=[("x", {})])
+
+        mock_pub.reply.assert_awaited_once()
+        assert "https://lubot.ai/go/" in mock_pub.reply.call_args.args[1]
+
+    @pytest.mark.asyncio
+    async def test_x_publishes_thread_as_chain_text_only(self, db_session):
+        """X posts x_thread as a reply-CHAIN, TEXT-ONLY (never images), link in the final reply."""
+        post = PublisherPost(
+            posted_at=datetime(2026, 8, 4, tzinfo=UTC),
+            topic_category="my_agent",
+            topic_title="Test",
+            post_text="the long linkedin version",
+            image_path="/tmp/card.png",  # LinkedIn would use this; X must NOT
+            x_thread=["hook tweet", "second tweet", "third tweet"],
+            status="approved",
+        )
+        db_session.add(post)
+        db_session.flush()
+
+        mock_pub = AsyncMock()
+        mock_pub.platform_name = "x"
+        mock_pub.publish_text = AsyncMock(return_value="t1")
+        mock_pub.reply = AsyncMock(side_effect=["t2", "t3", "tlink"])
+        mock_pub.publish_images = AsyncMock()
+
+        with patch("src.scheduler.get_publisher", return_value=mock_pub):
+            await publish_approved_posts(db_session, "tok", "urn", platforms=[("x", {})])
+
+        mock_pub.publish_text.assert_awaited_once_with("hook tweet")  # first tweet = the hook
+        mock_pub.publish_images.assert_not_awaited()  # X is TEXT-ONLY, never cards
+        calls = mock_pub.reply.await_args_list
+        assert calls[0].args == ("t1", "second tweet")  # chain: t2 off t1
+        assert calls[1].args == ("t2", "third tweet")  # t3 off t2
+        assert calls[2].args[0] == "t3"  # link off the LAST tweet
+        assert "https://lubot.ai/go/" in calls[2].args[1]  # final reply = the tracked link
 
     @pytest.mark.asyncio
     async def test_publishes_card_plus_extra_photo_as_carousel(self, db_session):
@@ -1693,3 +1756,257 @@ class TestTrackedCta:
         db_session.flush()
         cta = _tracked_cta(db_session, post, "linkedin")
         assert cta == "https://techcrunch.com/x"  # external source link, no /go tracking
+
+
+class TestXThreadOnGenerate:
+    """generate_post stores the native X thread on the post (Phase 2.27)."""
+
+    @pytest.mark.asyncio
+    async def test_generated_post_carries_x_thread(self, db_session):
+        articles = _make_articles()
+        with (
+            patch("src.scheduler.scrape_topic", new_callable=AsyncMock, return_value=articles),
+            patch("src.scheduler.DuplicateChecker") as mock_dedup_cls,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()),
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/s.png")),
+            patch("src.scheduler._x_thread_for", new_callable=AsyncMock, return_value=["hook tweet", "second tweet"]),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_dedup = MagicMock()
+            mock_dedup.check_article = AsyncMock(return_value=MagicMock(is_duplicate=False))
+            mock_dedup.record_url = MagicMock()
+            mock_dedup_cls.return_value = mock_dedup
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
+
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 8, 4))
+
+        post = db_session.query(PublisherPost).filter_by(id=result.post_id).first()
+        assert post.x_thread == ["hook tweet", "second tweet"]
+
+
+class TestXReplyLinkPodcast:
+    """_x_reply_link must NOT use a podcast mp3 as the CTA link (Phase 2.27 fix)."""
+
+    def test_podcast_mp3_source_falls_back_to_lubot(self):
+        from src.scheduler import _x_reply_link
+
+        post = MagicMock(topic_category="ai_news", source_url="https://traffic.megaphone.fm/DVVTS123.mp3")
+        assert _x_reply_link(post) == "More on what I am building: lubot.ai"
+
+    def test_real_article_source_is_used(self):
+        from src.scheduler import _x_reply_link
+
+        post = MagicMock(topic_category="ai_news", source_url="https://techcrunch.com/some-article")
+        assert _x_reply_link(post) == "https://techcrunch.com/some-article"
+
+    def test_no_source_uses_lubot(self):
+        from src.scheduler import _x_reply_link
+
+        post = MagicMock(topic_category="tech_talk", source_url=None)
+        assert _x_reply_link(post) == "More on what I am building: lubot.ai"
+
+
+class TestPerPlatformPublish:
+    """publish_post_platform: post ONE platform at a time (dashboard buttons). The post stays
+    visible until every enabled platform is posted, then moves to Recent. Idempotent."""
+
+    @pytest.mark.asyncio
+    async def test_posts_only_the_named_platform(self, db_session):
+        from src.scheduler import publish_post_platform
+
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category="ai_news",
+            topic_title="T",
+            post_text="hello",
+            x_thread=["hook tweet"],
+            status="pending",
+        )
+        db_session.add(post)
+        db_session.flush()
+
+        mock_pub = AsyncMock()
+        mock_pub.publish_text = AsyncMock(return_value="tweet1")
+        mock_pub.reply = AsyncMock(return_value="tweet2")
+        mock_pub.platform_name = "x"
+
+        with (
+            patch("src.scheduler._enabled_platforms", return_value=[("linkedin", {}), ("x", {})]),
+            patch("src.scheduler.get_publisher", return_value=mock_pub),
+        ):
+            ok = await publish_post_platform(db_session, post.id, "x", "tok", "urn")
+
+        assert ok is True
+        db_session.refresh(post)
+        assert post.status == "pending"  # LinkedIn still pending -> post stays visible
+        dests = db_session.query(PublisherDestination).filter_by(post_id=post.id).all()
+        assert {d.platform for d in dests} == {"x"}
+
+    @pytest.mark.asyncio
+    async def test_moves_to_published_when_both_done(self, db_session):
+        from src.scheduler import publish_post_platform
+
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category="ai_news",
+            topic_title="T",
+            post_text="hello",
+            x_thread=["hook"],
+            image_path=None,
+            status="pending",
+        )
+        db_session.add(post)
+        db_session.flush()
+
+        mock_pub = AsyncMock()
+        mock_pub.publish_text = AsyncMock(return_value="u")
+        mock_pub.reply = AsyncMock(return_value="u2")
+        mock_pub.platform_name = "x"
+
+        with (
+            patch("src.scheduler._enabled_platforms", return_value=[("linkedin", {}), ("x", {})]),
+            patch("src.scheduler.get_publisher", return_value=mock_pub),
+        ):
+            await publish_post_platform(db_session, post.id, "x", "t", "u")
+            db_session.refresh(post)
+            assert post.status == "pending"
+            await publish_post_platform(db_session, post.id, "linkedin", "t", "u")
+
+        db_session.refresh(post)
+        assert post.status == "published"  # both platforms done -> Recent
+
+    @pytest.mark.asyncio
+    async def test_idempotent_no_double_post(self, db_session):
+        from src.scheduler import publish_post_platform
+
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category="ai_news",
+            topic_title="T",
+            post_text="hello",
+            x_thread=["hook"],
+            status="pending",
+        )
+        db_session.add(post)
+        db_session.flush()
+
+        mock_pub = AsyncMock()
+        mock_pub.publish_text = AsyncMock(return_value="t1")
+        mock_pub.reply = AsyncMock(return_value="t2")
+        mock_pub.platform_name = "x"
+
+        with (
+            patch("src.scheduler._enabled_platforms", return_value=[("linkedin", {}), ("x", {})]),
+            patch("src.scheduler.get_publisher", return_value=mock_pub),
+        ):
+            await publish_post_platform(db_session, post.id, "x", "t", "u")
+            await publish_post_platform(db_session, post.id, "x", "t", "u")  # user clicks again
+
+        dests = db_session.query(PublisherDestination).filter_by(post_id=post.id, platform="x").all()
+        assert len(dests) == 1  # never double-posted
+        assert mock_pub.publish_text.await_count == 1
+
+
+class TestPerPlatformReject:
+    """reject_post_platform declines ONE platform; the post leaves the pending queue only once
+    every platform is decided (published or rejected)."""
+
+    def test_reject_one_keeps_post_pending(self, db_session):
+        from src.scheduler import reject_post_platform
+
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category="ai_news",
+            topic_title="T",
+            post_text="hi",
+            x_thread=["h"],
+            status="pending",
+        )
+        db_session.add(post)
+        db_session.flush()
+
+        with patch("src.scheduler._enabled_platforms", return_value=[("linkedin", {}), ("x", {})]):
+            ok = reject_post_platform(db_session, post.id, "x", "t", "u")
+
+        assert ok is True
+        db_session.refresh(post)
+        assert post.status == "pending"  # LinkedIn still undecided
+        d = db_session.query(PublisherDestination).filter_by(post_id=post.id, platform="x").first()
+        assert d.status == "rejected"
+
+    @pytest.mark.asyncio
+    async def test_publish_one_reject_other_marks_published(self, db_session):
+        from src.scheduler import publish_post_platform, reject_post_platform
+
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category="ai_news",
+            topic_title="T",
+            post_text="hi",
+            x_thread=["hook"],
+            status="pending",
+        )
+        db_session.add(post)
+        db_session.flush()
+
+        mock_pub = AsyncMock()
+        mock_pub.publish_text = AsyncMock(return_value="t1")
+        mock_pub.reply = AsyncMock(return_value="t2")
+        mock_pub.platform_name = "x"
+
+        with (
+            patch("src.scheduler._enabled_platforms", return_value=[("linkedin", {}), ("x", {})]),
+            patch("src.scheduler.get_publisher", return_value=mock_pub),
+        ):
+            await publish_post_platform(db_session, post.id, "x", "t", "u")
+            reject_post_platform(db_session, post.id, "linkedin", "t", "u")
+
+        db_session.refresh(post)
+        assert post.status == "published"  # X went out, LinkedIn declined -> resolved as published
+
+    def test_reject_both_marks_rejected(self, db_session):
+        from src.scheduler import reject_post_platform
+
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category="ai_news",
+            topic_title="T",
+            post_text="hi",
+            x_thread=["h"],
+            status="pending",
+        )
+        db_session.add(post)
+        db_session.flush()
+
+        with patch("src.scheduler._enabled_platforms", return_value=[("linkedin", {}), ("x", {})]):
+            reject_post_platform(db_session, post.id, "x", "t", "u")
+            reject_post_platform(db_session, post.id, "linkedin", "t", "u")
+
+        db_session.refresh(post)
+        assert post.status == "rejected"  # nothing went out
+
+    def test_reject_ignored_if_already_published(self, db_session):
+        from src.scheduler import reject_post_platform
+
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category="ai_news",
+            topic_title="T",
+            post_text="hi",
+            x_thread=["h"],
+            status="pending",
+        )
+        db_session.add(post)
+        db_session.flush()
+        db_session.add(
+            PublisherDestination(post_id=post.id, platform="linkedin", status="published", platform_post_urn="urn:li:1")
+        )
+        db_session.flush()
+
+        with patch("src.scheduler._enabled_platforms", return_value=[("linkedin", {}), ("x", {})]):
+            reject_post_platform(db_session, post.id, "linkedin", "t", "u")
+
+        d = db_session.query(PublisherDestination).filter_by(post_id=post.id, platform="linkedin").first()
+        assert d.status == "published"  # an already-live platform is never flipped to rejected

@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.db import SessionLocal
-from src.models import PublisherPost, PublisherTopicPerformance
+from src.models import PublisherDestination, PublisherPost, PublisherTopicPerformance
 from src.observability import get_client
 from src.screenshotter import SCREENSHOT_DIR
 
@@ -49,10 +49,13 @@ class PostOut(BaseModel):
     image_path: str | None = None
     extra_image_count: int = 0
     hashtags: list[str] | None = None
+    x_thread: list[str] | None = None
     linkedin_post_urn: str | None = None
     status: str
     day_of_week: str | None = None
     posting_time_ct: str | None = None
+    published_platforms: list[str] = []  # platforms already posted (drives per-platform buttons)
+    platform_status: dict[str, str] = {}  # platform -> "published" | "rejected" (per-version buttons)
 
     model_config = {"from_attributes": True}
 
@@ -137,6 +140,23 @@ def go_redirect(code: str, session: Session = Depends(get_db_session)):
     return RedirectResponse(dest, status_code=302, headers=_NO_CACHE)
 
 
+def _serialize(session: Session, post) -> PostOut:
+    """Build a PostOut, filling platform_status (platform -> published/rejected) from
+    PublisherDestination so the dashboard can drive each version's Post/Reject buttons."""
+    out = PostOut.model_validate(post)
+    decided = (
+        session.query(PublisherDestination)
+        .filter(
+            PublisherDestination.post_id == post.id,
+            PublisherDestination.status.in_(("published", "rejected")),
+        )
+        .all()
+    )
+    out.platform_status = {d.platform: d.status for d in decided}
+    out.published_platforms = sorted(p for p, st in out.platform_status.items() if st == "published")
+    return out
+
+
 @app.get("/api/posts", response_model=list[PostOut])
 def list_posts(
     status: str | None = None,
@@ -149,7 +169,7 @@ def list_posts(
         query = query.filter(PublisherPost.status == status)
     if category:
         query = query.filter(PublisherPost.topic_category == category)
-    return query.all()
+    return [_serialize(session, p) for p in query.all()]
 
 
 @app.get("/api/posts/{post_id}", response_model=PostOut)
@@ -158,7 +178,7 @@ def get_post(post_id: int, session: Session = Depends(get_db_session)):
     post = session.query(PublisherPost).filter_by(id=post_id).first()
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
-    return post
+    return _serialize(session, post)
 
 
 @app.post("/api/posts", response_model=PostOut, status_code=201)
@@ -199,6 +219,7 @@ def _score_human_approval(trace_id: str | None, value: float, comment: str) -> N
 class EditPostRequest(BaseModel):
     post_text: str | None = None
     hashtags: list[str] | None = None
+    x_thread: list[str] | None = None  # native X version — list of tweet strings (Phase 2.27)
 
 
 def _require_pending(post: PublisherPost | None) -> PublisherPost:
@@ -223,7 +244,7 @@ def _set_images(post: PublisherPost, images: list[str]) -> None:
 
 @app.patch("/api/posts/{post_id}", response_model=PostOut)
 def edit_post(post_id: int, body: EditPostRequest, session: Session = Depends(get_db_session)):
-    """Edit a PENDING post's text and/or hashtags before approving. Pending-only."""
+    """Edit a PENDING post's text, hashtags, and/or X thread before approving. Pending-only."""
     post = _require_pending(session.query(PublisherPost).filter_by(id=post_id).first())
     if body.post_text is not None:
         text = body.post_text.strip()
@@ -232,6 +253,10 @@ def edit_post(post_id: int, body: EditPostRequest, session: Session = Depends(ge
         post.post_text = text
     if body.hashtags is not None:
         post.hashtags = body.hashtags
+    if body.x_thread is not None:
+        # keep only non-empty tweets; empty list -> None (X falls back to a single post of post_text)
+        tweets = [t.strip() for t in body.x_thread if t and t.strip()]
+        post.x_thread = tweets or None
     session.commit()
     session.refresh(post)
     return post
@@ -297,6 +322,50 @@ def approve_post(post_id: int, session: Session = Depends(get_db_session)):
     session.refresh(post)
     _score_human_approval(post.langfuse_trace_id, 1.0, "approved")
     return post
+
+
+@app.post("/api/posts/{post_id}/publish/{platform}", response_model=PostOut)
+def publish_post_to_platform(post_id: int, platform: str, session: Session = Depends(get_db_session)):
+    """Publish a pending post to a SINGLE platform (dashboard "Post to LinkedIn" / "Post to X").
+    Independent per platform: posting one leaves the other still available. The post moves to
+    Recent only once every enabled platform has been posted. Idempotent — a platform already
+    posted is a no-op."""
+    if platform not in ("linkedin", "x"):
+        raise HTTPException(status_code=400, detail="platform must be 'linkedin' or 'x'")
+    post = session.query(PublisherPost).filter_by(id=post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if post.status not in ("pending", "published"):
+        raise HTTPException(status_code=400, detail=f"Cannot publish post with status '{post.status}'")
+
+    from src.cron import publish_post_platform_now
+
+    ok = publish_post_platform_now(post_id, platform)
+    if not ok:
+        raise HTTPException(status_code=502, detail=f"Publish to {platform} failed")
+    session.expire_all()  # cron committed in its own session — re-read status + destinations
+    post = session.query(PublisherPost).filter_by(id=post_id).first()
+    _score_human_approval(post.langfuse_trace_id, 1.0, f"approved:{platform}")
+    return _serialize(session, post)
+
+
+@app.post("/api/posts/{post_id}/reject/{platform}", response_model=PostOut)
+def reject_post_for_platform(post_id: int, platform: str, session: Session = Depends(get_db_session)):
+    """Reject a SINGLE platform version (per-version "Reject" button). Declines just that platform;
+    the other stays available. Once every platform is decided the post moves to Recent."""
+    if platform not in ("linkedin", "x"):
+        raise HTTPException(status_code=400, detail="platform must be 'linkedin' or 'x'")
+    post = session.query(PublisherPost).filter_by(id=post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    from src.cron import reject_post_platform_now
+
+    if not reject_post_platform_now(post_id, platform):
+        raise HTTPException(status_code=500, detail=f"Reject of {platform} failed")
+    session.expire_all()  # cron committed in its own session
+    post = session.query(PublisherPost).filter_by(id=post_id).first()
+    return _serialize(session, post)
 
 
 @app.post("/api/posts/{post_id}/reject", response_model=PostOut)

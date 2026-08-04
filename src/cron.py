@@ -22,7 +22,12 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 from src.backup import run_backup
 from src.db import SessionLocal
-from src.scheduler import Pipeline, publish_approved_posts
+from src.scheduler import (
+    Pipeline,
+    publish_approved_posts,
+    publish_post_platform,
+    reject_post_platform,
+)
 from src.topic_rotator import (
     get_random_post_time,
     get_todays_posts,
@@ -164,6 +169,48 @@ def convert_post_to_carousel(post_id: int) -> bool:
             session.close()
 
     return asyncio.run(_go())
+
+
+def publish_post_platform_now(post_id: int, platform: str) -> bool:
+    """Publish ONE post to ONE platform right now (the dashboard 'Post to LinkedIn'/'Post to X'
+    buttons). Returns True on success, False if the LinkedIn token is missing or publishing failed."""
+    token = os.getenv("LINKEDIN_ACCESS_TOKEN")
+    person_urn = os.getenv("LINKEDIN_PERSON_URN")
+    if not (token and person_urn):
+        logger.warning("LINKEDIN_ACCESS_TOKEN/PERSON_URN not set — cannot publish")
+        return False
+
+    async def _go():
+        session = SessionLocal()
+        try:
+            ok = await publish_post_platform(session, post_id, platform, token, person_urn)
+            session.commit()
+            return ok
+        except Exception:
+            session.rollback()
+            logger.exception("Per-platform publish failed for post #%s -> %s", post_id, platform)
+            return False
+        finally:
+            session.close()
+
+    return asyncio.run(_go())
+
+
+def reject_post_platform_now(post_id: int, platform: str) -> bool:
+    """Reject ONE platform of a post (the per-version 'Reject' button). Pure DB — no publishing."""
+    token = os.getenv("LINKEDIN_ACCESS_TOKEN") or ""
+    person_urn = os.getenv("LINKEDIN_PERSON_URN") or ""
+    session = SessionLocal()
+    try:
+        ok = reject_post_platform(session, post_id, platform, token, person_urn)
+        session.commit()
+        return ok
+    except Exception:
+        session.rollback()
+        logger.exception("Per-platform reject failed for post #%s -> %s", post_id, platform)
+        return False
+    finally:
+        session.close()
 
 
 def _run_publish() -> None:

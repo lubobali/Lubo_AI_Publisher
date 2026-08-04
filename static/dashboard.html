@@ -87,6 +87,7 @@
 
       document.getElementById("pending").innerHTML = pending.map(p => {
         const imgCount = (p.image_path ? 1 : 0) + (p.extra_image_count||0);
+        window._x = window._x || {}; window._x[p.id] = p.x_thread || [];  // for the Edit X editor
         // Horizontal SWIPE strip (snap) so a carousel previews left-to-right, exactly how
         // LinkedIn shows it — not stacked vertically. Single-image posts just show one frame.
         const imgs = imgCount ? `<div class="flex overflow-x-auto snap-x snap-mandatory scroll-smooth">` +
@@ -114,10 +115,17 @@
             ${imgCount<=1?`<button onclick="convertCarousel(${p.id},this)" class="text-xs text-fuchsia-400/90 active:opacity-70">✦ Convert to carousel</button>`:''}
           </div>
           ${(p.hashtags&&p.hashtags.length)?`<div class="px-4 pt-1 pb-1 text-emerald-400/80 text-sm">${esc(p.hashtags.join(" "))}</div>`:""}
-          <div class="p-3 grid grid-cols-2 gap-2">
-            <button onclick="act(${p.id},'approve',this)" class="py-3 rounded-xl bg-emerald-500 text-slate-900 font-semibold active:scale-95 transition">✓ Approve &amp; Post</button>
-            <button onclick="act(${p.id},'reject',this)" class="py-3 rounded-xl bg-slate-800 text-slate-300 font-semibold active:scale-95 transition">✕ Reject</button>
+          ${platBtns(p,'linkedin','LinkedIn')}
+          <div id="xthread-${p.id}" class="mx-4 my-2 rounded-xl border border-sky-900/60 bg-sky-950/20 p-3">
+            <div class="text-[11px] uppercase tracking-widest text-sky-400/70 mb-2 flex items-center justify-between">
+              <span>𝕏 version${(p.x_thread&&p.x_thread.length>1)?` · thread (${p.x_thread.length})`:''}</span>
+              <button onclick="editX(${p.id})" class="text-sky-400/80 normal-case">✏️ Edit X</button>
+            </div>
+            ${(p.x_thread&&p.x_thread.length)
+              ? p.x_thread.map((t,i)=>`<div class="pre text-[13px] leading-snug text-slate-300 ${i>0?'mt-2 pt-2 border-t border-slate-800':''}">${esc(t)}</div>`).join("")
+              : `<div class="text-[12px] text-slate-500">No X version — will post the LinkedIn text. Tap Edit X to write one.</div>`}
           </div>
+          ${platBtns(p,'x','X')}
         </div>`;
       }).join("");
 
@@ -135,6 +143,41 @@
         if (!r.ok) throw new Error(await r.text());
         await load();
       } catch (e) { alert("Failed: " + e.message); btn.disabled = false; }
+    }
+
+    // Each platform VERSION owns its own two buttons: [Post to <name>] [Reject]. Reject drops only
+    // that platform. A decided platform shows its outcome (posted / rejected) instead of buttons.
+    function platBtns(p, platform, name) {
+      const st = (p.platform_status || {})[platform];
+      if (st === 'published') {
+        return `<div class="px-3 pb-3"><div class="py-2 rounded-xl bg-emerald-600/20 text-emerald-400 text-center text-sm font-semibold border border-emerald-700/40">✓ Posted to ${name}</div></div>`;
+      }
+      if (st === 'rejected') {
+        return `<div class="px-3 pb-3"><div class="py-2 rounded-xl bg-slate-800/60 text-slate-500 text-center text-sm">✕ ${name} rejected</div></div>`;
+      }
+      const style = platform === 'x' ? 'bg-slate-100 text-slate-900' : 'bg-sky-600 text-white';
+      return `<div class="px-3 pb-3 grid grid-cols-2 gap-2">
+        <button onclick="pub(${p.id},'${platform}',this)" class="py-3 rounded-xl ${style} font-semibold active:scale-95 transition">Post to ${name}</button>
+        <button onclick="rej(${p.id},'${platform}',this)" class="py-3 rounded-xl bg-slate-800 text-slate-300 font-semibold active:scale-95 transition">Reject</button>
+      </div>`;
+    }
+
+    async function pub(id, platform, btn) {
+      btn.disabled = true; btn.textContent = "Posting…";
+      try {
+        const r = await fetch(`/api/posts/${id}/publish/${platform}`, { method: "POST" });
+        if (!r.ok) throw new Error(await r.text());
+        await load();
+      } catch (e) { alert("Publish failed: " + e.message); btn.disabled = false; btn.textContent = "Retry"; }
+    }
+
+    async function rej(id, platform, btn) {
+      btn.disabled = true; btn.textContent = "…";
+      try {
+        const r = await fetch(`/api/posts/${id}/reject/${platform}`, { method: "POST" });
+        if (!r.ok) throw new Error(await r.text());
+        await load();
+      } catch (e) { alert("Failed: " + e.message); btn.disabled = false; btn.textContent = "Reject"; }
     }
 
     // --- edit-before-approve ---
@@ -157,6 +200,29 @@
         if (!r.ok) throw new Error(await r.text());
         await load();
       } catch (e) { alert("Save failed: " + e.message); btn.disabled = false; btn.textContent = "Save"; }
+    }
+
+    // --- edit the X version (one tweet per blank line) ---
+    function editX(id) {
+      const box = document.getElementById("xthread-" + id);
+      const cur = ((window._x || {})[id] || []).join("\n\n");
+      box.innerHTML =
+        `<div class="text-[11px] uppercase tracking-widest text-sky-400/70 mb-1">𝕏 version — one tweet per blank line</div>
+         <textarea id="xta-${id}" rows="8" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-[13px] leading-snug focus:outline-none focus:border-sky-500">${esc(cur)}</textarea>
+         <div class="flex gap-2 mt-2">
+           <button onclick="saveX(${id},this)" class="px-3 py-1 rounded bg-sky-500 text-slate-900 text-sm font-semibold">Save</button>
+           <button onclick="load()" class="px-3 py-1 rounded bg-slate-800 text-slate-300 text-sm">Cancel</button>
+         </div>`;
+      document.getElementById("xta-" + id).focus();
+    }
+    async function saveX(id, btn) {
+      const tweets = document.getElementById("xta-" + id).value.split(/\n\s*\n/).map(t => t.trim()).filter(Boolean);
+      btn.disabled = true; btn.textContent = "…";
+      try {
+        const r = await fetch(`/api/posts/${id}`, { method: "PATCH", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ x_thread: tweets }) });
+        if (!r.ok) throw new Error(await r.text());
+        await load();
+      } catch (e) { alert("Save X failed: " + e.message); btn.disabled = false; btn.textContent = "Save"; }
     }
     async function addImg(id, input) {
       if (!input.files || !input.files[0]) return;

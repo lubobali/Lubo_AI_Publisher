@@ -35,7 +35,7 @@ from src.shortlinks import get_or_create_code
 from src.stock_insights import StockInsights, build_stock_screenshot_fields, select_chart_symbols
 from src.topic_rotator import get_todays_topic, get_week_number
 from src.wakatime_insights import WakaTimeInsights, build_screenshot_fields
-from src.writer import WriterResult, derive_card_headline, write_carousel, write_post
+from src.writer import WriterResult, derive_card_headline, write_carousel, write_post, write_x_thread
 
 logger = logging.getLogger(__name__)
 
@@ -252,6 +252,9 @@ class Pipeline:
         except Exception:
             logger.debug("Post embedding for dedup failed", exc_info=True)
 
+        # 6.7. X-native version — a short thread rewrite of the LinkedIn post (Phase 2.27). Non-fatal.
+        x_thread = await _x_thread_for(topic["name"], writer_result.post_text)
+
         # 7. Save as PENDING
         post = PublisherPost(
             posted_at=datetime.now(UTC),
@@ -261,6 +264,7 @@ class Pipeline:
             post_text=writer_result.post_text,
             image_path=image_path,
             hashtags=writer_result.hashtags,
+            x_thread=x_thread,
             status="pending",
             day_of_week=target_date.strftime("%A").lower(),
             post_embedding=post_embedding,
@@ -437,6 +441,11 @@ class Pipeline:
         except Exception:
             logger.debug("Carousel embedding for dedup failed", exc_info=True)
 
+        # X-native version — rewrite the carousel's SUBSTANCE (hook + points), not just the teaser
+        # caption, into a short X thread (Phase 2.27). Non-fatal.
+        x_source = carousel.hook + "\n\n" + "\n".join(carousel.points)
+        x_thread = await _x_thread_for(topic["name"], x_source)
+
         post = PublisherPost(
             posted_at=datetime.now(UTC),
             topic_category=category,
@@ -446,6 +455,7 @@ class Pipeline:
             image_path=slide_paths[0],
             extra_image_paths=slide_paths[1:] or None,
             hashtags=hashtags,
+            x_thread=x_thread,
             status="pending",
             day_of_week=target_date.strftime("%A").lower(),
             post_embedding=post_embedding,
@@ -606,13 +616,29 @@ def reject_post(session: Session, post_id: int) -> bool:
     return True
 
 
+# Podcast/audio source URLs (mp3 etc.) are NOT a nice reader link — never use them as the CTA.
+_AUDIO_HOSTS = ("megaphone", "libsyn", "art19", "anchor", "spreaker", "simplecast", "pdst", "acast", "buzzsprout")
+
+
+def _is_article_link(url: str | None) -> bool:
+    """True only for a real web ARTICLE page — not a podcast mp3/audio file (which now backs
+    ai_news/tech_talk since they went podcast-primary)."""
+    if not url:
+        return False
+    u = url.lower()
+    if u.endswith((".mp3", ".m4a", ".wav", ".ogg")):
+        return False
+    return not any(h in u for h in _AUDIO_HOSTS)
+
+
 def _x_reply_link(post) -> str | None:
     """Category-aware self-reply link for X (the conversion hook; links go in a reply, not the
-    post). Stock -> LuBot stock CTA; ai_news/tech_talk -> the source article (value); else lubot.ai."""
+    post). Stock -> LuBot stock CTA; ai_news/tech_talk -> the source ARTICLE if it is a real web
+    page (NOT a podcast mp3); else the tracked lubot.ai CTA."""
     cat = post.topic_category
     if cat in ("market_pulse", "stock_talk"):
         return "Built with my own stock AI: lubot.ai"
-    if cat in ("ai_news", "tech_talk") and post.source_url:
+    if cat in ("ai_news", "tech_talk") and _is_article_link(post.source_url):
         return post.source_url
     return "More on what I am building: lubot.ai"
 
@@ -628,6 +654,16 @@ def _enabled_platforms(access_token: str, person_urn: str) -> list[tuple[str, di
 def _campaign_for(post) -> str:
     """utm_campaign for a post: '<topic>-<yyyy-mm-dd>' (or 'organic-<date>'). Publish-day dated."""
     return build_campaign(post.topic_category, (post.posted_at or datetime.now(UTC)).date())
+
+
+async def _x_thread_for(topic_name: str, linkedin_text: str) -> list[str] | None:
+    """Non-fatal X-native rewrite of the LinkedIn text into a short thread (Phase 2.27). None on
+    failure -> X falls back to a single post of post_text at publish time."""
+    try:
+        return await write_x_thread(topic_name, linkedin_text)
+    except Exception:
+        logger.debug("X thread generation failed", exc_info=True)
+        return None
 
 
 # A bare lubot.ai root url in a CTA string (to swap for the tracked short link).
@@ -663,6 +699,154 @@ async def _publish_to_platform(publisher, post) -> str:
     return await publisher.publish_text(text)
 
 
+async def _publish_x_thread(publisher, post, session) -> str:
+    """Publish the X-NATIVE version (Phase 2.27): the x_thread as a reply-CHAIN, TEXT-ONLY (no
+    cards — cards flop on X), then the tracked short link in a FINAL reply. Returns the FIRST tweet
+    id (the 'main post'). Fallback: a single tweet of post_text when x_thread is empty. Each
+    continuation is non-fatal — the first tweet always stands."""
+    tweets = [t for t in (post.x_thread or []) if t and t.strip()] or [post.post_text]
+    first_id = await publisher.publish_text(tweets[0])
+
+    prev_id = first_id
+    for tweet in tweets[1:]:
+        try:
+            prev_id = await publisher.reply(prev_id, tweet)
+        except Exception:
+            logger.warning("X thread continuation failed for post #%d (thread partially up)", post.id)
+            break
+
+    # The tracked link goes in the FINAL reply, after the whole thread.
+    cta = _tracked_cta(session, post, "x")
+    if cta:
+        try:
+            await publisher.reply(prev_id, cta)
+        except Exception:
+            logger.warning("X link reply failed for post #%d (thread is up)", post.id)
+
+    return first_id
+
+
+async def _publish_one(session: Session, post, platform: str, kwargs: dict) -> bool:
+    """Publish ONE post to ONE platform. IDEMPOTENT (a platform already published for this post is
+    skipped) and NON-FATAL (a failure is logged, never raised). Returns True if that platform is
+    published (whether just now or already). This is the single publish primitive shared by the
+    5-min worker loop and the user-triggered per-platform dashboard buttons."""
+    already = (
+        session.query(PublisherDestination).filter_by(post_id=post.id, platform=platform, status="published").first()
+    )
+    if already:
+        return True
+
+    publisher = get_publisher(platform, **kwargs)
+    if publisher is None:
+        return False
+
+    try:
+        # LinkedIn = long body + cards (unchanged). X = the native thread, text-only, with the
+        # tracked link in a final reply (LinkedIn body stays clean — its comment API is partner-
+        # gated, and the card shows lubot.ai anyway).
+        if platform == "x":
+            post_urn = await _publish_x_thread(publisher, post, session)
+        else:
+            post_urn = await _publish_to_platform(publisher, post)
+
+        session.add(
+            PublisherDestination(
+                post_id=post.id,
+                platform=platform,
+                platform_post_urn=post_urn,
+                status="published",
+                published_at=datetime.now(UTC),
+            )
+        )
+        if platform == "linkedin":
+            post.linkedin_post_urn = post_urn
+        session.flush()
+        logger.info("Published post #%d to %s: %s", post.id, platform, post_urn)
+        return True
+    except Exception as e:
+        logger.error("Failed to publish post #%d to %s: %s", post.id, platform, e)
+        return False
+
+
+def _published_platforms(session: Session, post_id: int) -> set[str]:
+    """The set of platforms already published for a post (from PublisherDestination)."""
+    return {
+        d.platform for d in session.query(PublisherDestination).filter_by(post_id=post_id, status="published").all()
+    }
+
+
+def _resolve_post_status(session: Session, post, enabled) -> None:
+    """Move a post out of the pending queue once EVERY enabled platform is decided — each platform
+    is either published (posted) or rejected (declined) via its own dashboard buttons. Overall
+    status is "published" if any platform went out, else "rejected". Until every platform is
+    decided the post stays visible so the other one can still be posted or rejected."""
+    decided = {
+        d.platform: d.status
+        for d in session.query(PublisherDestination)
+        .filter(
+            PublisherDestination.post_id == post.id,
+            PublisherDestination.status.in_(("published", "rejected")),
+        )
+        .all()
+    }
+    if all(p in decided for p in enabled):
+        post.status = "published" if "published" in decided.values() else "rejected"
+    session.flush()
+
+
+async def publish_post_platform(
+    session: Session,
+    post_id: int,
+    platform: str,
+    access_token: str,
+    person_urn: str,
+) -> bool:
+    """User-triggered single-platform publish (the dashboard "Post to LinkedIn"/"Post to X"
+    buttons). Publishes a PENDING post to just `platform` now, then moves the post to Recent once
+    EVERY enabled platform is decided (posted or rejected); until then it stays visible so the
+    other platform can still be posted or rejected. Returns True on success."""
+    post = session.query(PublisherPost).filter_by(id=post_id).first()
+    if post is None:
+        return False
+
+    enabled = dict(_enabled_platforms(access_token, person_urn))
+    if platform not in enabled:
+        return False
+
+    ok = await _publish_one(session, post, platform, enabled[platform])
+    if ok:
+        _resolve_post_status(session, post, enabled)
+    return ok
+
+
+def reject_post_platform(
+    session: Session,
+    post_id: int,
+    platform: str,
+    access_token: str,
+    person_urn: str,
+) -> bool:
+    """User-triggered single-platform REJECT (the per-version "Reject" button). Declines just this
+    platform (records a rejected PublisherDestination), never touches the other. Once every enabled
+    platform is decided the post leaves the pending queue. A platform already PUBLISHED cannot be
+    un-posted, so its rejection is ignored. Returns True on success."""
+    post = session.query(PublisherPost).filter_by(id=post_id).first()
+    if post is None:
+        return False
+
+    existing = session.query(PublisherDestination).filter_by(post_id=post_id, platform=platform).first()
+    if existing is None:
+        session.add(PublisherDestination(post_id=post_id, platform=platform, status="rejected"))
+    elif existing.status != "published":
+        existing.status = "rejected"
+    session.flush()
+
+    enabled = dict(_enabled_platforms(access_token, person_urn))
+    _resolve_post_status(session, post, enabled)
+    return True
+
+
 async def publish_approved_posts(
     session: Session,
     access_token: str,
@@ -684,53 +868,7 @@ async def publish_approved_posts(
     newly_published = 0
 
     for post in approved:
-        done = 0
-        for platform, kwargs in platforms:
-            already = (
-                session.query(PublisherDestination)
-                .filter_by(post_id=post.id, platform=platform, status="published")
-                .first()
-            )
-            if already:
-                done += 1
-                continue
-
-            publisher = get_publisher(platform, **kwargs)
-            if publisher is None:
-                continue
-
-            try:
-                post_urn = await _publish_to_platform(publisher, post)
-
-                # The CTA + tiny tracked link goes in a COMMENT / SELF-REPLY, never the body.
-                # Non-fatal: a failed comment never blocks the (already published) main post.
-                cta = _tracked_cta(session, post, platform)
-                if cta:
-                    try:
-                        if platform == "x":
-                            await publisher.reply(post_urn, cta)
-                        elif platform == "linkedin":
-                            await publisher.comment(post_urn, cta)
-                    except Exception:
-                        logger.warning("%s comment/reply failed for post #%d (main post is up)", platform, post.id)
-
-                session.add(
-                    PublisherDestination(
-                        post_id=post.id,
-                        platform=platform,
-                        platform_post_urn=post_urn,
-                        status="published",
-                        published_at=datetime.now(UTC),
-                    )
-                )
-                if platform == "linkedin":
-                    post.linkedin_post_urn = post_urn
-                session.flush()
-                done += 1
-                logger.info("Published post #%d to %s: %s", post.id, platform, post_urn)
-            except Exception as e:
-                logger.error("Failed to publish post #%d to %s: %s", post.id, platform, e)
-
+        done = sum([await _publish_one(session, post, platform, kwargs) for platform, kwargs in platforms])
         if done == len(platforms) and post.status != "published":
             post.status = "published"
             session.flush()

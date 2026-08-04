@@ -184,6 +184,52 @@ def build_carousel_system_prompt() -> str:
     return build_system_prompt() + "\n\n" + CAROUSEL_FORMAT
 
 
+# X override — appended after the full voice/truth base. Rewrites the LinkedIn post as a NATIVE
+# X post or short thread (Phase 2.27). Research + Groq: LinkedIn-style long posts + cards DIE on X;
+# X rewards a strong first line, short punchy tweets, and short threads (each tweet gets its own reach).
+X_FORMAT = """============================================================
+X MODE — this OVERRIDES the LinkedIn STRUCTURE and RESPONSE FORMAT above.
+============================================================
+You are NOT writing a LinkedIn post. You are rewriting it as a NATIVE X (Twitter) post or short
+thread. Same voice, same ESL grammar (no apostrophes), same TRUTH rules. X is a different platform:
+long LinkedIn stories and polished cards get zero reach on X. X rewards a strong first line and
+short, punchy, human posts.
+
+RULES:
+- FIRST LINE is a scroll-stopping HOOK. Weak hook = nobody reads. This is the whole game.
+- BREVITY IS EVERYTHING. Each tweet is 1 to 2 SHORT lines, MAX. Ruthlessly cut every word that is
+  not needed. If a tweet is 3+ lines or reads like a paragraph, it is TOO LONG — trim it hard or
+  split it. Think a punchy text message, NOT a LinkedIn paragraph. One idea per tweet.
+- Direct. Human. A real person talking. Sentence fragments are good. NO LinkedIn storytelling, NO
+  "swipe to see", NO polished-card language, NO soft/slow openings, NO long explanations, NO
+  multi-clause run-on sentences, NO markdown, NO hashtags.
+- 1 to 4 tweets. ONE tweet when the idea is a single sharp beat. A short THREAD (2-4 tweets) ONLY
+  when the content genuinely has 2-4 distinct beats, each a tight standalone line that pulls to the
+  next. Do NOT pad one idea into a thread. Fewer, sharper tweets beat more, longer ones.
+- Use ONLY facts already in the LinkedIn post. Invent nothing new (same TRUTH rules).
+- Do NOT put any link or lubot.ai in the tweets (the link goes in a reply later).
+
+PER TOPIC:
+- Building in Public: one clear update or number, honest ("shipped X", "fought a bug all day").
+- AI News: one sharp take + what it means. Not a recap.
+- Tech Talk: one useful idea, said simply.
+- Biohacker: what you stopped/started + the result.
+
+EXAMPLES (match this energy):
+[Building in Public] "Coded 6 hours today. Most of it fighting one stupid bug. Still shipped."
+[AI News] "OpenAI dropped another update. Most people will ignore it. The ones who dont pull ahead."
+[Tech Talk] "Complexity is easy. Simplicity takes real work. Most people learn this the hard way."
+[Biohacker] "Stopped high dose vitamin C. My first biohack, one of the first i dropped. It was hurting more than helping."
+
+RESPONSE FORMAT (valid JSON ONLY, nothing before or after):
+{"tweets": ["the hook tweet", "next tweet", "..."]}"""
+
+
+def build_x_system_prompt() -> str:
+    """The full voice/truth system prompt + the X_FORMAT override (Phase 2.27)."""
+    return build_system_prompt() + "\n\n" + X_FORMAT
+
+
 def build_user_prompt(
     topic_name: str,
     topic_description: str,
@@ -876,3 +922,63 @@ async def carousel_from_text(
         user_prompt += f"\nReuse these hashtags: {tags}\n"
     user_prompt += "\nRespond in the CAROUSEL JSON format only."
     return await _carousel_completion(system_prompt, user_prompt, topic_name)
+
+
+def _clean_x_tweet(text: str) -> str:
+    """Light ESL/plain cleanup for one tweet: no apostrophes/dashes/markdown/'swipe', no links."""
+    from src.post_processor import strip_apostrophes, strip_dashes, strip_markdown, strip_special_chars
+
+    t = strip_markdown(strip_special_chars(strip_dashes(strip_apostrophes(text))))
+    t = re.sub(r"(?i)\bswipe[^\n.]*", "", t)  # drop LinkedIn 'swipe to see' leftovers
+    t = re.sub(r"(?i)https?://\S*lubot\.ai\S*|(?<![\w./])lubot\.ai(?![\w./])", "", t)  # no links in tweets
+    t = re.sub(r"[ \t]{2,}", " ", t).strip()
+    return t
+
+
+def parse_x_thread(raw_text: str) -> list[str] | None:
+    """Parse an X-thread response into a list of 1-4 cleaned tweets, or None if unparseable."""
+    text = raw_text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text).strip()
+    data = _extract_json_block(text, "tweets")
+    if data is None:
+        return None
+    tweets = [_clean_x_tweet(str(t)) for t in (data.get("tweets") or [])]
+    tweets = [t for t in tweets if t]
+    return tweets[:4] or None
+
+
+@observe(as_type="generation")
+async def write_x_thread(topic_name: str, linkedin_text: str) -> list[str] | None:
+    """Rewrite a LinkedIn post as a NATIVE X post / short thread of 1-4 tweets (Phase 2.27).
+
+    Grounded in the already-written LinkedIn text (no new facts). Returns the tweet list, or None
+    on failure — the caller then falls back to a single X post of the LinkedIn text."""
+    system_prompt = build_x_system_prompt()
+    user_prompt = (
+        f"Here is my LinkedIn post about '{topic_name}'. Rewrite it as a NATIVE X post or short "
+        "thread (1 to 4 tweets), following the X rules. Strong hook first. Use ONLY facts already "
+        f"in it. No link in the tweets.\n\nLINKEDIN POST:\n{linkedin_text.strip()}\n\n"
+        "Respond in the X JSON format only."
+    )
+    providers: list[tuple[str, AsyncOpenAI, str]] = [("NIM", get_llm_client(), NVIDIA_MODEL)]
+    fallback = get_fallback_client()
+    if fallback is not None:
+        providers.append(("OpenRouter", fallback, OPENROUTER_MODEL))
+
+    for name, client, model in providers:
+        try:
+            raw = await _generate_once(client, model, system_prompt, user_prompt, topic_name)
+        except Exception as e:
+            logger.warning("X thread via %s (%s) failed: %s", name, model, e)
+            continue
+        if raw:
+            result = parse_x_thread(raw)
+            if result:
+                logger.info("X thread via %s (%s): %d tweet(s)", name, model, len(result))
+                return result
+            logger.warning("X thread via %s (%s) returned an unparseable/empty thread", name, model)
+
+    logger.warning("All LLM providers failed to produce an X thread")
+    return None
