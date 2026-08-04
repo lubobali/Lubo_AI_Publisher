@@ -726,6 +726,84 @@ async def _publish_x_thread(publisher, post, session) -> str:
     return first_id
 
 
+async def _publish_one(session: Session, post, platform: str, kwargs: dict) -> bool:
+    """Publish ONE post to ONE platform. IDEMPOTENT (a platform already published for this post is
+    skipped) and NON-FATAL (a failure is logged, never raised). Returns True if that platform is
+    published (whether just now or already). This is the single publish primitive shared by the
+    5-min worker loop and the user-triggered per-platform dashboard buttons."""
+    already = (
+        session.query(PublisherDestination).filter_by(post_id=post.id, platform=platform, status="published").first()
+    )
+    if already:
+        return True
+
+    publisher = get_publisher(platform, **kwargs)
+    if publisher is None:
+        return False
+
+    try:
+        # LinkedIn = long body + cards (unchanged). X = the native thread, text-only, with the
+        # tracked link in a final reply (LinkedIn body stays clean — its comment API is partner-
+        # gated, and the card shows lubot.ai anyway).
+        if platform == "x":
+            post_urn = await _publish_x_thread(publisher, post, session)
+        else:
+            post_urn = await _publish_to_platform(publisher, post)
+
+        session.add(
+            PublisherDestination(
+                post_id=post.id,
+                platform=platform,
+                platform_post_urn=post_urn,
+                status="published",
+                published_at=datetime.now(UTC),
+            )
+        )
+        if platform == "linkedin":
+            post.linkedin_post_urn = post_urn
+        session.flush()
+        logger.info("Published post #%d to %s: %s", post.id, platform, post_urn)
+        return True
+    except Exception as e:
+        logger.error("Failed to publish post #%d to %s: %s", post.id, platform, e)
+        return False
+
+
+def _published_platforms(session: Session, post_id: int) -> set[str]:
+    """The set of platforms already published for a post (from PublisherDestination)."""
+    return {
+        d.platform for d in session.query(PublisherDestination).filter_by(post_id=post_id, status="published").all()
+    }
+
+
+async def publish_post_platform(
+    session: Session,
+    post_id: int,
+    platform: str,
+    access_token: str,
+    person_urn: str,
+) -> bool:
+    """User-triggered single-platform publish (the dashboard "Post to LinkedIn"/"Post to X"
+    buttons). Publishes a PENDING post to just `platform` now, then flips the post to "published"
+    once EVERY enabled platform has been posted (so it moves to Recent); until then it stays visible
+    so the other platform can still be posted. Returns True on success."""
+    post = session.query(PublisherPost).filter_by(id=post_id).first()
+    if post is None:
+        return False
+
+    enabled = dict(_enabled_platforms(access_token, person_urn))
+    if platform not in enabled:
+        return False
+
+    ok = await _publish_one(session, post, platform, enabled[platform])
+
+    published = _published_platforms(session, post.id)
+    if all(p in published for p in enabled) and post.status != "published":
+        post.status = "published"
+    session.flush()
+    return ok
+
+
 async def publish_approved_posts(
     session: Session,
     access_token: str,
@@ -747,47 +825,7 @@ async def publish_approved_posts(
     newly_published = 0
 
     for post in approved:
-        done = 0
-        for platform, kwargs in platforms:
-            already = (
-                session.query(PublisherDestination)
-                .filter_by(post_id=post.id, platform=platform, status="published")
-                .first()
-            )
-            if already:
-                done += 1
-                continue
-
-            publisher = get_publisher(platform, **kwargs)
-            if publisher is None:
-                continue
-
-            try:
-                # LinkedIn = long body + cards (unchanged). X = the native thread, text-only, with
-                # the tracked link in a final reply (LinkedIn body stays clean — its comment API is
-                # partner-gated, and the card shows lubot.ai anyway).
-                if platform == "x":
-                    post_urn = await _publish_x_thread(publisher, post, session)
-                else:
-                    post_urn = await _publish_to_platform(publisher, post)
-
-                session.add(
-                    PublisherDestination(
-                        post_id=post.id,
-                        platform=platform,
-                        platform_post_urn=post_urn,
-                        status="published",
-                        published_at=datetime.now(UTC),
-                    )
-                )
-                if platform == "linkedin":
-                    post.linkedin_post_urn = post_urn
-                session.flush()
-                done += 1
-                logger.info("Published post #%d to %s: %s", post.id, platform, post_urn)
-            except Exception as e:
-                logger.error("Failed to publish post #%d to %s: %s", post.id, platform, e)
-
+        done = sum([await _publish_one(session, post, platform, kwargs) for platform, kwargs in platforms])
         if done == len(platforms) and post.status != "published":
             post.status = "published"
             session.flush()

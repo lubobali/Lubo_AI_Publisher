@@ -1786,7 +1786,7 @@ class TestXThreadOnGenerate:
         assert post.x_thread == ["hook tweet", "second tweet"]
 
 
-class TestXReplyLink:
+class TestXReplyLinkPodcast:
     """_x_reply_link must NOT use a podcast mp3 as the CTA link (Phase 2.27 fix)."""
 
     def test_podcast_mp3_source_falls_back_to_lubot(self):
@@ -1806,3 +1806,104 @@ class TestXReplyLink:
 
         post = MagicMock(topic_category="tech_talk", source_url=None)
         assert _x_reply_link(post) == "More on what I am building: lubot.ai"
+
+
+class TestPerPlatformPublish:
+    """publish_post_platform: post ONE platform at a time (dashboard buttons). The post stays
+    visible until every enabled platform is posted, then moves to Recent. Idempotent."""
+
+    @pytest.mark.asyncio
+    async def test_posts_only_the_named_platform(self, db_session):
+        from src.scheduler import publish_post_platform
+
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category="ai_news",
+            topic_title="T",
+            post_text="hello",
+            x_thread=["hook tweet"],
+            status="pending",
+        )
+        db_session.add(post)
+        db_session.flush()
+
+        mock_pub = AsyncMock()
+        mock_pub.publish_text = AsyncMock(return_value="tweet1")
+        mock_pub.reply = AsyncMock(return_value="tweet2")
+        mock_pub.platform_name = "x"
+
+        with (
+            patch("src.scheduler._enabled_platforms", return_value=[("linkedin", {}), ("x", {})]),
+            patch("src.scheduler.get_publisher", return_value=mock_pub),
+        ):
+            ok = await publish_post_platform(db_session, post.id, "x", "tok", "urn")
+
+        assert ok is True
+        db_session.refresh(post)
+        assert post.status == "pending"  # LinkedIn still pending -> post stays visible
+        dests = db_session.query(PublisherDestination).filter_by(post_id=post.id).all()
+        assert {d.platform for d in dests} == {"x"}
+
+    @pytest.mark.asyncio
+    async def test_moves_to_published_when_both_done(self, db_session):
+        from src.scheduler import publish_post_platform
+
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category="ai_news",
+            topic_title="T",
+            post_text="hello",
+            x_thread=["hook"],
+            image_path=None,
+            status="pending",
+        )
+        db_session.add(post)
+        db_session.flush()
+
+        mock_pub = AsyncMock()
+        mock_pub.publish_text = AsyncMock(return_value="u")
+        mock_pub.reply = AsyncMock(return_value="u2")
+        mock_pub.platform_name = "x"
+
+        with (
+            patch("src.scheduler._enabled_platforms", return_value=[("linkedin", {}), ("x", {})]),
+            patch("src.scheduler.get_publisher", return_value=mock_pub),
+        ):
+            await publish_post_platform(db_session, post.id, "x", "t", "u")
+            db_session.refresh(post)
+            assert post.status == "pending"
+            await publish_post_platform(db_session, post.id, "linkedin", "t", "u")
+
+        db_session.refresh(post)
+        assert post.status == "published"  # both platforms done -> Recent
+
+    @pytest.mark.asyncio
+    async def test_idempotent_no_double_post(self, db_session):
+        from src.scheduler import publish_post_platform
+
+        post = PublisherPost(
+            posted_at=datetime.now(UTC),
+            topic_category="ai_news",
+            topic_title="T",
+            post_text="hello",
+            x_thread=["hook"],
+            status="pending",
+        )
+        db_session.add(post)
+        db_session.flush()
+
+        mock_pub = AsyncMock()
+        mock_pub.publish_text = AsyncMock(return_value="t1")
+        mock_pub.reply = AsyncMock(return_value="t2")
+        mock_pub.platform_name = "x"
+
+        with (
+            patch("src.scheduler._enabled_platforms", return_value=[("linkedin", {}), ("x", {})]),
+            patch("src.scheduler.get_publisher", return_value=mock_pub),
+        ):
+            await publish_post_platform(db_session, post.id, "x", "t", "u")
+            await publish_post_platform(db_session, post.id, "x", "t", "u")  # user clicks again
+
+        dests = db_session.query(PublisherDestination).filter_by(post_id=post.id, platform="x").all()
+        assert len(dests) == 1  # never double-posted
+        assert mock_pub.publish_text.await_count == 1

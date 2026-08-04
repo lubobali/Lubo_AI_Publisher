@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.db import SessionLocal
-from src.models import PublisherPost, PublisherTopicPerformance
+from src.models import PublisherDestination, PublisherPost, PublisherTopicPerformance
 from src.observability import get_client
 from src.screenshotter import SCREENSHOT_DIR
 
@@ -54,6 +54,7 @@ class PostOut(BaseModel):
     status: str
     day_of_week: str | None = None
     posting_time_ct: str | None = None
+    published_platforms: list[str] = []  # platforms already posted (drives per-platform buttons)
 
     model_config = {"from_attributes": True}
 
@@ -138,6 +139,16 @@ def go_redirect(code: str, session: Session = Depends(get_db_session)):
     return RedirectResponse(dest, status_code=302, headers=_NO_CACHE)
 
 
+def _serialize(session: Session, post) -> PostOut:
+    """Build a PostOut, filling published_platforms from PublisherDestination so the dashboard can
+    show which platform each post has already been posted to."""
+    out = PostOut.model_validate(post)
+    out.published_platforms = sorted(
+        d.platform for d in session.query(PublisherDestination).filter_by(post_id=post.id, status="published").all()
+    )
+    return out
+
+
 @app.get("/api/posts", response_model=list[PostOut])
 def list_posts(
     status: str | None = None,
@@ -150,7 +161,7 @@ def list_posts(
         query = query.filter(PublisherPost.status == status)
     if category:
         query = query.filter(PublisherPost.topic_category == category)
-    return query.all()
+    return [_serialize(session, p) for p in query.all()]
 
 
 @app.get("/api/posts/{post_id}", response_model=PostOut)
@@ -159,7 +170,7 @@ def get_post(post_id: int, session: Session = Depends(get_db_session)):
     post = session.query(PublisherPost).filter_by(id=post_id).first()
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
-    return post
+    return _serialize(session, post)
 
 
 @app.post("/api/posts", response_model=PostOut, status_code=201)
@@ -303,6 +314,31 @@ def approve_post(post_id: int, session: Session = Depends(get_db_session)):
     session.refresh(post)
     _score_human_approval(post.langfuse_trace_id, 1.0, "approved")
     return post
+
+
+@app.post("/api/posts/{post_id}/publish/{platform}", response_model=PostOut)
+def publish_post_to_platform(post_id: int, platform: str, session: Session = Depends(get_db_session)):
+    """Publish a pending post to a SINGLE platform (dashboard "Post to LinkedIn" / "Post to X").
+    Independent per platform: posting one leaves the other still available. The post moves to
+    Recent only once every enabled platform has been posted. Idempotent — a platform already
+    posted is a no-op."""
+    if platform not in ("linkedin", "x"):
+        raise HTTPException(status_code=400, detail="platform must be 'linkedin' or 'x'")
+    post = session.query(PublisherPost).filter_by(id=post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if post.status not in ("pending", "published"):
+        raise HTTPException(status_code=400, detail=f"Cannot publish post with status '{post.status}'")
+
+    from src.cron import publish_post_platform_now
+
+    ok = publish_post_platform_now(post_id, platform)
+    if not ok:
+        raise HTTPException(status_code=502, detail=f"Publish to {platform} failed")
+    session.expire_all()  # cron committed in its own session — re-read status + destinations
+    post = session.query(PublisherPost).filter_by(id=post_id).first()
+    _score_human_approval(post.langfuse_trace_id, 1.0, f"approved:{platform}")
+    return _serialize(session, post)
 
 
 @app.post("/api/posts/{post_id}/reject", response_model=PostOut)

@@ -124,9 +124,12 @@
               ? p.x_thread.map((t,i)=>`<div class="pre text-[13px] leading-snug text-slate-300 ${i>0?'mt-2 pt-2 border-t border-slate-800':''}">${esc(t)}</div>`).join("")
               : `<div class="text-[12px] text-slate-500">No X version — will post the LinkedIn text. Tap Edit X to write one.</div>`}
           </div>
-          <div class="p-3 grid grid-cols-2 gap-2">
-            <button onclick="act(${p.id},'approve',this)" class="py-3 rounded-xl bg-emerald-500 text-slate-900 font-semibold active:scale-95 transition">✓ Approve &amp; Post</button>
-            <button onclick="act(${p.id},'reject',this)" class="py-3 rounded-xl bg-slate-800 text-slate-300 font-semibold active:scale-95 transition">✕ Reject</button>
+          <div class="p-3 space-y-2">
+            <div class="grid grid-cols-2 gap-2">
+              ${pubBtn(p,'linkedin','in&nbsp;&nbsp;Post to LinkedIn')}
+              ${pubBtn(p,'x','𝕏&nbsp;&nbsp;Post to X')}
+            </div>
+            <button onclick="act(${p.id},'reject',this)" class="w-full py-2 rounded-xl bg-slate-800 text-slate-400 text-sm font-medium active:scale-95 transition">✕ Reject</button>
           </div>
         </div>`;
       }).join("");
@@ -145,6 +148,27 @@
         if (!r.ok) throw new Error(await r.text());
         await load();
       } catch (e) { alert("Failed: " + e.message); btn.disabled = false; }
+    }
+
+    // Per-platform publish button. Already-posted platform -> disabled green ✓; otherwise a live
+    // button that posts ONLY that platform (independent of the other).
+    function pubBtn(p, platform, label) {
+      const done = (p.published_platforms || []).includes(platform);
+      const name = platform === 'x' ? 'X' : 'LinkedIn';
+      if (done) {
+        return `<button disabled class="py-3 rounded-xl bg-emerald-600/20 text-emerald-400 font-semibold border border-emerald-700/40">✓ ${name} posted</button>`;
+      }
+      const style = platform === 'x' ? 'bg-slate-100 text-slate-900' : 'bg-sky-600 text-white';
+      return `<button onclick="pub(${p.id},'${platform}',this)" class="py-3 rounded-xl ${style} font-semibold active:scale-95 transition">${label}</button>`;
+    }
+
+    async function pub(id, platform, btn) {
+      btn.disabled = true; btn.textContent = "Posting…";
+      try {
+        const r = await fetch(`/api/posts/${id}/publish/${platform}`, { method: "POST" });
+        if (!r.ok) throw new Error(await r.text());
+        await load();
+      } catch (e) { alert("Publish failed: " + e.message); btn.disabled = false; btn.textContent = "Retry"; }
     }
 
     // --- edit-before-approve ---
