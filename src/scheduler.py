@@ -35,7 +35,7 @@ from src.shortlinks import get_or_create_code
 from src.stock_insights import StockInsights, build_stock_screenshot_fields, select_chart_symbols
 from src.topic_rotator import get_todays_topic, get_week_number
 from src.wakatime_insights import WakaTimeInsights, build_screenshot_fields
-from src.writer import WriterResult, derive_card_headline, write_carousel, write_post
+from src.writer import WriterResult, derive_card_headline, write_carousel, write_post, write_x_thread
 
 logger = logging.getLogger(__name__)
 
@@ -252,6 +252,9 @@ class Pipeline:
         except Exception:
             logger.debug("Post embedding for dedup failed", exc_info=True)
 
+        # 6.7. X-native version — a short thread rewrite of the LinkedIn post (Phase 2.27). Non-fatal.
+        x_thread = await _x_thread_for(topic["name"], writer_result.post_text)
+
         # 7. Save as PENDING
         post = PublisherPost(
             posted_at=datetime.now(UTC),
@@ -261,6 +264,7 @@ class Pipeline:
             post_text=writer_result.post_text,
             image_path=image_path,
             hashtags=writer_result.hashtags,
+            x_thread=x_thread,
             status="pending",
             day_of_week=target_date.strftime("%A").lower(),
             post_embedding=post_embedding,
@@ -437,6 +441,11 @@ class Pipeline:
         except Exception:
             logger.debug("Carousel embedding for dedup failed", exc_info=True)
 
+        # X-native version — rewrite the carousel's SUBSTANCE (hook + points), not just the teaser
+        # caption, into a short X thread (Phase 2.27). Non-fatal.
+        x_source = carousel.hook + "\n\n" + "\n".join(carousel.points)
+        x_thread = await _x_thread_for(topic["name"], x_source)
+
         post = PublisherPost(
             posted_at=datetime.now(UTC),
             topic_category=category,
@@ -446,6 +455,7 @@ class Pipeline:
             image_path=slide_paths[0],
             extra_image_paths=slide_paths[1:] or None,
             hashtags=hashtags,
+            x_thread=x_thread,
             status="pending",
             day_of_week=target_date.strftime("%A").lower(),
             post_embedding=post_embedding,
@@ -628,6 +638,16 @@ def _enabled_platforms(access_token: str, person_urn: str) -> list[tuple[str, di
 def _campaign_for(post) -> str:
     """utm_campaign for a post: '<topic>-<yyyy-mm-dd>' (or 'organic-<date>'). Publish-day dated."""
     return build_campaign(post.topic_category, (post.posted_at or datetime.now(UTC)).date())
+
+
+async def _x_thread_for(topic_name: str, linkedin_text: str) -> list[str] | None:
+    """Non-fatal X-native rewrite of the LinkedIn text into a short thread (Phase 2.27). None on
+    failure -> X falls back to a single post of post_text at publish time."""
+    try:
+        return await write_x_thread(topic_name, linkedin_text)
+    except Exception:
+        logger.debug("X thread generation failed", exc_info=True)
+        return None
 
 
 # A bare lubot.ai root url in a CTA string (to swap for the tracked short link).

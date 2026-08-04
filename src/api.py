@@ -49,6 +49,7 @@ class PostOut(BaseModel):
     image_path: str | None = None
     extra_image_count: int = 0
     hashtags: list[str] | None = None
+    x_thread: list[str] | None = None
     linkedin_post_urn: str | None = None
     status: str
     day_of_week: str | None = None

@@ -56,6 +56,14 @@ def _devtrack_off_by_default():
         yield m
 
 
+@pytest.fixture(autouse=True)
+def _x_thread_off():
+    """generate_post calls _x_thread_for (an LLM call for the X version). Default it to None in
+    tests so pipeline-flow tests never hit the network; X-specific tests override within their own `with`."""
+    with patch("src.scheduler._x_thread_for", new_callable=AsyncMock, return_value=None) as m:
+        yield m
+
+
 def _make_articles():
     return [
         ScrapedArticle(
@@ -1715,3 +1723,31 @@ class TestTrackedCta:
         db_session.flush()
         cta = _tracked_cta(db_session, post, "linkedin")
         assert cta == "https://techcrunch.com/x"  # external source link, no /go tracking
+
+
+class TestXThreadOnGenerate:
+    """generate_post stores the native X thread on the post (Phase 2.27)."""
+
+    @pytest.mark.asyncio
+    async def test_generated_post_carries_x_thread(self, db_session):
+        articles = _make_articles()
+        with (
+            patch("src.scheduler.scrape_topic", new_callable=AsyncMock, return_value=articles),
+            patch("src.scheduler.DuplicateChecker") as mock_dedup_cls,
+            patch("src.scheduler.write_post", new_callable=AsyncMock, return_value=_make_writer_result()),
+            patch("src.scheduler.take_screenshot", new_callable=AsyncMock, return_value=MagicMock(path="/tmp/s.png")),
+            patch("src.scheduler._x_thread_for", new_callable=AsyncMock, return_value=["hook tweet", "second tweet"]),
+            patch("src.scheduler.SelfLearner") as mock_learner_cls,
+        ):
+            mock_dedup = MagicMock()
+            mock_dedup.check_article = AsyncMock(return_value=MagicMock(is_duplicate=False))
+            mock_dedup.record_url = MagicMock()
+            mock_dedup_cls.return_value = mock_dedup
+            mock_report = MagicMock()
+            mock_report.format_for_writer.return_value = ""
+            mock_learner_cls.return_value.generate_performance_report.return_value = mock_report
+
+            result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 8, 4))
+
+        post = db_session.query(PublisherPost).filter_by(id=result.post_id).first()
+        assert post.x_thread == ["hook tweet", "second tweet"]

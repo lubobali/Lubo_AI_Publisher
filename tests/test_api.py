@@ -419,3 +419,11 @@ class TestGoRedirect:
         r = client.get("/go/zzzzz", follow_redirects=False)
         assert r.status_code == 302
         assert r.headers["location"] == "https://lubot.ai/"
+
+
+class TestXThreadExposed:
+    def test_x_thread_in_post_out(self, client, db_session):
+        _create_post(db_session, x_thread=["tweet one", "tweet two"])
+        r = client.get("/api/posts")
+        assert r.status_code == 200
+        assert r.json()[0]["x_thread"] == ["tweet one", "tweet two"]
