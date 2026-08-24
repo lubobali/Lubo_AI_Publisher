@@ -711,15 +711,56 @@ def derive_card_headline(post_text: str, max_words: int = 12) -> str:
     return " ".join(words[:max_words]).rstrip(".,;:—- ")
 
 
+# A post is 400-1500 chars by spec; this ceiling leaves headroom while still
+# catching raw chain-of-thought dumps (Aug 24: a fallback model emitted 27k chars).
+MAX_PLAIN_TEXT_CHARS = 3000
+
+# Phrases that only ever appear when the model narrates its own instructions
+# rather than writing the post. Kept deliberately specific to avoid rejecting
+# legitimate posts that happen to contain a common word.
+_REASONING_MARKERS = (
+    "we need to generate",
+    "we need to ensure",
+    "we need to avoid",
+    "we need to produce",
+    "post_text",
+    "screenshot_url",
+    "card_headline",
+    "now check for",
+    "the rule says",
+    "lets craft",
+    "must not use apostrophe",
+)
+
+
 def _parse_plain_text(text: str) -> WriterResult | None:
     """Extract post from plain text when model ignores JSON format.
 
     Treats the entire text as post_text. Extracts hashtags if present.
-    Rejects text shorter than 50 chars (likely garbage).
+    Rejects text that is too short, too long, or is the model thinking out
+    loud instead of writing (see MAX_PLAIN_TEXT_CHARS / _REASONING_MARKERS).
     """
-    if len(text.strip()) < 50:
+    stripped = text.strip()
+
+    if len(stripped) < 50:
         logger.warning("Plain text too short to be a post: %s", text[:100])
         return None
+
+    # A real post is 400-1500 chars. Anything near an order of magnitude past
+    # that is a reasoning dump, not a post — better no post than a broken one.
+    if len(stripped) > MAX_PLAIN_TEXT_CHARS:
+        logger.warning(
+            "Plain text too long to be a post (%d chars, max %d) — likely a reasoning dump",
+            len(stripped),
+            MAX_PLAIN_TEXT_CHARS,
+        )
+        return None
+
+    lowered = stripped.lower()
+    for marker in _REASONING_MARKERS:
+        if marker in lowered:
+            logger.warning("Plain text looks like model reasoning (matched %r) — rejecting", marker)
+            return None
 
     # Extract hashtags from the text (deduplicated, order-preserving)
     hashtags = list(dict.fromkeys(re.findall(r"#\w+", text)))
