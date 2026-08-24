@@ -6,6 +6,7 @@ import pytest
 
 from src.scraper import ScrapedArticle
 from src.writer import (
+    MAX_PLAIN_TEXT_CHARS,
     CarouselResult,
     WriterResult,
     build_carousel_system_prompt,
@@ -693,6 +694,42 @@ class TestDeriveCardHeadline:
         result = parse_response(raw)
         assert result is not None
         assert result.hashtags.count("#AI") == 1
+
+    # -- plain-text fallback guards (Aug 24 incident: 27k chars of raw
+    #    chain-of-thought was accepted as a post body and shown on the dashboard) --
+
+    def test_parse_plain_text_rejects_oversized_blob(self):
+        """A blob far longer than any real post is model reasoning, not a post."""
+        raw = "Long term investing is not about picking winners.\n" * 800
+        assert len(raw) > MAX_PLAIN_TEXT_CHARS
+        assert parse_response(raw) is None
+
+    def test_parse_plain_text_accepts_normal_length_post(self):
+        """Regression guard: a realistic long-but-valid post still parses."""
+        raw = "Building things teaches you patience.\n" * 20
+        assert 50 < len(raw) < MAX_PLAIN_TEXT_CHARS
+        result = parse_response(raw)
+        assert result is not None
+        assert "patience" in result.post_text
+
+    @pytest.mark.parametrize(
+        "leak",
+        [
+            "We need to generate a LinkedIn post in Lubo's voice, adhering to strict rules.",
+            "Provide JSON with post_text, screenshot_url, hashtags, card_headline.",
+            "Now check for any apostrophe: we didnt use one. Good.",
+            "The rule says no numbers at all, not even illustrative ones.",
+            "Lets craft post_text. We need hook: first 2 lines must be catchy.",
+        ],
+    )
+    def test_parse_plain_text_rejects_reasoning_leak(self, leak):
+        """Model meta-commentary about its own instructions is never a post."""
+        raw = leak + "\n\n" + ("Some filler body text to clear the length floor. " * 5)
+        assert parse_response(raw) is None
+
+    def test_parse_plain_text_reasoning_check_is_case_insensitive(self):
+        raw = "NOW CHECK FOR ANY APOSTROPHE in the draft.\n\n" + ("filler text here. " * 10)
+        assert parse_response(raw) is None
 
 
 # ---------------------------------------------------------------------------

@@ -29,3 +29,6 @@ books/
 *.epub
 # Allow generated report PDFs that some tooling expects under docs/
 !docs/**/*.pdf
+
+# Local .env backups (contain live secrets — never commit)
+.env.bak*
