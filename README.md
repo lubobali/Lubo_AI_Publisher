@@ -16,7 +16,16 @@
 
 Live in production on a Hetzner box since June 2026. 800+ tests, Postgres in CI, lint clean.
 
-![Week Preview](docs/screenshots/05-week-preview-top.png)
+<table>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/06-dashboard-overview.png" alt="Approval dashboard: a Building in Public draft with its stat card and separate LinkedIn / X versions"></td>
+    <td width="50%" valign="top"><img src="docs/screenshots/07-post-draft.png" alt="A Biohacker carousel draft with the X thread version below it"></td>
+  </tr>
+  <tr>
+    <td align="center"><i>Approval dashboard: each draft has its own LinkedIn and X version</i></td>
+    <td align="center"><i>A Biohacker carousel draft, 8 slides, with a 4-tweet X thread</i></td>
+  </tr>
+</table>
 
 ---
 
