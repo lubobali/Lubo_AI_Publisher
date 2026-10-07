@@ -10,7 +10,8 @@ build/
 .venv/
 venv/
 env/
-screenshots/
+# runtime output only (repo root); docs/screenshots/ is committed
+/screenshots/
 *.png
 *.jpg
 # Allow docs screenshots for README
@@ -32,3 +33,6 @@ books/
 
 # Local .env backups (contain live secrets — never commit)
 .env.bak*
+
+# macOS
+.DS_Store
