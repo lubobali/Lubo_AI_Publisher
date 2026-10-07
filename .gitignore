@@ -36,3 +36,8 @@ books/
 
 # macOS
 .DS_Store
+
+# Private notes, kept on the server only (not part of the public repo)
+/CLAUDE.md
+/preview.html
+/docs/*.txt

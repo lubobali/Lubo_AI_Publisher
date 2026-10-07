@@ -27,7 +27,8 @@ def test_project_structure():
         "pyproject.toml",
         "Dockerfile",
         "docker-compose.yml",
-        "CLAUDE.md",
+        "README.md",
+        "LICENSE",
         "src/__init__.py",
         "src/db.py",
     ]
