@@ -26,7 +26,7 @@ import yaml
 from bs4 import BeautifulSoup
 from sqlalchemy.orm import Session
 
-from src.models import PublisherPodcastTranscript
+from src.models import PublisherPodcastTranscript, PublisherPost
 from src.scraper import ScrapedArticle
 from src.transcription import transcribe_audio
 
@@ -112,18 +112,41 @@ def load_podcast_feeds(topic: str = "market_pulse") -> list[dict]:
     return [{"name": s["name"], "url": s["url"]} for s in feeds]
 
 
-def select_episode(episodes: list["PodcastEpisode"], max_scan: int = 10) -> "PodcastEpisode | None":
+def select_episode(
+    episodes: list["PodcastEpisode"], max_scan: int = 10, used: set[str] | None = None
+) -> "PodcastEpisode | None":
     """Pick the freshest market-relevant episode (feeds are newest-first).
 
     Skips obvious non-pulse episodes by title (sponsored "Talk Your Book", mailbag,
-    Q&A, AMA, best-of/reruns). Only the newest `max_scan` are considered so we stay
-    timely. Returns None if none qualify — the orchestrator then advances to the next
-    show in the rotation.
+    Q&A, AMA, best-of/reruns), and any episode whose title or URL is in `used` (already
+    posted for this topic, see used_episode_keys). Only the newest `max_scan` are
+    considered so we stay timely. Returns None if none qualify — the orchestrator then
+    advances to the next show in the rotation.
     """
+    used = used or set()
     for ep in episodes[:max_scan]:
-        if not _SKIP_TITLE.search(ep.title or ""):
-            return ep
+        if _SKIP_TITLE.search(ep.title or ""):
+            continue
+        if {ep.title, ep.page_url, ep.audio_url} & used:
+            logger.info("Skipping already-used episode: %s", ep.title)
+            continue
+        return ep
     return None
+
+
+def used_episode_keys(session: Session, topic: str) -> set[str]:
+    """Titles + source URLs of every earlier post for `topic`, any status.
+
+    A podcast post stores the episode title as topic_title and its page/audio URL as
+    source_url, so these keys identify episodes already used for this topic. Rejected
+    drafts count too: the episode was seen once, picking it again is still a repeat.
+    """
+    rows = (
+        session.query(PublisherPost.topic_title, PublisherPost.source_url)
+        .filter(PublisherPost.topic_category == topic)
+        .all()
+    )
+    return {key for row in rows for key in row if key}
 
 
 @dataclass
@@ -362,13 +385,14 @@ class PodcastInsights:
         """
         feeds = feeds if feeds is not None else load_podcast_feeds(topic)
         system = _DISTILL_BY_TOPIC.get(topic, _DISTILL_SYSTEM)
+        used = used_episode_keys(session, topic)
         for feed in rotation_order(week + show_offset, feeds):
             try:
                 xml = self._fetch_feed(feed["url"])
             except Exception:
                 logger.warning("Failed to fetch podcast feed %s", feed.get("name"), exc_info=True)
                 continue
-            ep = select_episode(parse_podcast_feed(xml, podcast_name=feed["name"]))
+            ep = select_episode(parse_podcast_feed(xml, podcast_name=feed["name"]), used=used)
             if ep is None:
                 continue
             bullets = self._bullets_for(session, ep, system=system)

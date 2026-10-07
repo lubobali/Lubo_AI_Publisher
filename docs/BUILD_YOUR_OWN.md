@@ -124,7 +124,8 @@ training:
 - **Order matters.** Articles are ranked by source position first, then by how recent they are. Put your most trusted sources at the top.
 - Supported types: `rss` (RSS/Atom) and `hackernews` (Algolia search).
 - **Test every feed** before adding it. Plenty of sites have dead or blocked feeds. Reddit blocks headless fetching, so I don't use it.
-- **Dedup is automatic.** The same URL, a very similar title, or an embedding over 0.85 cosine similarity to an earlier article is skipped (`src/duplicate_checker.py`).
+- **Dedup is automatic.** A URL already seen, a title 80%+ similar to a recent post, or news older than 7 days is skipped (`src/duplicate_checker.py`). Podcast episodes already used for a topic are skipped too (`used_episode_keys()` in `src/podcast_insights.py`).
+- **Why no embedding dedup?** I tried it. Measured on my real posts, two posts about the *same* episode scored lower than two *different* weekly posts with the same format. Embeddings measure "looks alike", not "same idea", so I removed it. Check this on your own data before you trust a similarity threshold.
 
 ### Podcasts as a source
 
@@ -390,7 +391,8 @@ An AI ghostwriter's worst failure isn't bad grammar. It's **confident lies under
 | "I just listened to this episode" (I hadn't) | Never claim you consumed the source. Cite it instead |
 | Fake market percentages | `numbers_grounded()` checks every number against the data |
 | The model's chain-of-thought got published | Plain-text fallback rejects reasoning dumps and fails closed |
-| Same idea posted twice | Post embeddings + the last 3 posts per topic go to the writer |
+| Same podcast episode published 3 times (the show had nothing new) | Episodes already used for a topic are skipped. Then it tries the next show, then RSS |
+| Same angle twice in a row | The last 3 posts of the topic go to the writer with "take a different angle" |
 
 Write your own rules into the `do_not` list in `voice_rules.yaml`. And **read every draft before you approve it**. That's what the dashboard is for.
 

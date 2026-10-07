@@ -137,8 +137,9 @@ class TestPipelineGenerate:
         assert post.post_text == writer_result.post_text
 
     @pytest.mark.asyncio
-    async def test_stores_post_embedding_for_dedup(self, db_session):
-        """The saved post must carry an embedding so future runs can skip same-idea posts."""
+    async def test_saves_post_without_embedding_call(self, db_session):
+        """No embedding is computed for a saved post (retired model, check removed Oct 2026).
+        Anti-repeat comes from the recent-posts memory + URL/title/episode dedup instead."""
         articles = _make_articles()
         with (
             patch("src.scheduler.scrape_topic", new_callable=AsyncMock, return_value=articles),
@@ -159,8 +160,9 @@ class TestPipelineGenerate:
             result = await Pipeline(session=db_session).generate_post(target_date=date(2026, 6, 16))
 
         assert result.success is True
+        mock_dedup.get_embedding.assert_not_called()
         post = db_session.query(PublisherPost).filter_by(id=result.post_id).first()
-        assert post.post_embedding == [0.1, 0.2, 0.3]
+        assert post.post_embedding is None
 
     @pytest.mark.asyncio
     async def test_pipeline_skips_duplicate_articles(self, db_session):

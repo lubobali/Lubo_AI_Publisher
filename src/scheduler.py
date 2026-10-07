@@ -245,13 +245,6 @@ class Pipeline:
                 image_path = generated.path
                 logger.info("Generated image: %s", image_path)
 
-        # 6.5. Embed the final post so future runs can skip same-idea posts (semantic dedup)
-        post_embedding = None
-        try:
-            post_embedding = await DuplicateChecker(self.session).get_embedding(writer_result.post_text)
-        except Exception:
-            logger.debug("Post embedding for dedup failed", exc_info=True)
-
         # 6.7. X-native version — a short thread rewrite of the LinkedIn post (Phase 2.27). Non-fatal.
         x_thread = await _x_thread_for(topic["name"], writer_result.post_text)
 
@@ -267,7 +260,6 @@ class Pipeline:
             x_thread=x_thread,
             status="pending",
             day_of_week=target_date.strftime("%A").lower(),
-            post_embedding=post_embedding,
         )
         self.session.add(post)
         self.session.flush()
@@ -435,12 +427,6 @@ class Pipeline:
         if card_path:
             slide_paths.insert(1, card_path)
 
-        post_embedding = None
-        try:
-            post_embedding = await DuplicateChecker(self.session).get_embedding(caption)
-        except Exception:
-            logger.debug("Carousel embedding for dedup failed", exc_info=True)
-
         # X-native version — rewrite the carousel's SUBSTANCE (hook + points), not just the teaser
         # caption, into a short X thread (Phase 2.27). Non-fatal.
         x_source = carousel.hook + "\n\n" + "\n".join(carousel.points)
@@ -458,7 +444,6 @@ class Pipeline:
             x_thread=x_thread,
             status="pending",
             day_of_week=target_date.strftime("%A").lower(),
-            post_embedding=post_embedding,
         )
         self.session.add(post)
         self.session.flush()

@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.models import Base, PublisherPodcastTranscript
+from src.models import Base, PublisherPodcastTranscript, PublisherPost
 from src.podcast_insights import (
     _DISTILL_AINEWS,
     _DISTILL_BY_TOPIC,
@@ -20,6 +20,7 @@ from src.podcast_insights import (
     PodcastInsights,
     get_cached_transcript,
     store_transcript,
+    used_episode_keys,
 )
 
 
@@ -221,3 +222,60 @@ class TestPodcastInsightsOrchestration:
         assert art is not None and art.summary == "- stop seed oils"
         # the biohacker lens was passed through, not the market default
         assert mock_distill.call_args.kwargs["system"] is _DISTILL_BIOHACKER
+
+
+class TestNoEpisodeRepeats:
+    """An episode already used for a topic is never picked again for that topic.
+
+    Real bug (Oct 2026): a show with no new episodes kept returning its newest one, so
+    the same episode was published 3 times. "Used" = any earlier post of this topic with
+    the episode's title or URL, whatever its status.
+    """
+
+    FEEDS = [{"name": "Animal Spirits", "url": "u1"}]
+
+    def _post(self, session, topic, title, url, status="published"):
+        from datetime import UTC, datetime
+
+        session.add(
+            PublisherPost(
+                posted_at=datetime.now(UTC),
+                topic_category=topic,
+                topic_title=title,
+                source_url=url,
+                post_text="x",
+                status=status,
+            )
+        )
+        session.flush()
+
+    def test_used_keys_are_titles_and_urls_for_that_topic_only(self, db_session):
+        self._post(db_session, "biohacker", "Ep-norepeat-1", "https://cdn/norepeat-1.mp3")
+        self._post(db_session, "ai_news", "Ep-norepeat-2", "https://cdn/norepeat-2.mp3")
+        keys = used_episode_keys(db_session, "biohacker")
+        assert {"Ep-norepeat-1", "https://cdn/norepeat-1.mp3"} <= keys
+        assert "Ep-norepeat-2" not in keys
+
+    def test_rejected_drafts_count_as_used(self, db_session):
+        self._post(db_session, "biohacker", "Ep-norepeat-3", "u3", status="rejected")
+        assert "Ep-norepeat-3" in used_episode_keys(db_session, "biohacker")
+
+    def test_used_episode_is_skipped_and_caller_can_fall_back(self, db_session):
+        self._post(db_session, "market_pulse", "Markets this week", "https://cdn.x/ep.mp3")
+        with (
+            patch.object(PodcastInsights, "_fetch_feed", return_value=FEED_XML),
+            patch("src.podcast_insights.transcribe_audio", side_effect=AssertionError("must not transcribe")),
+        ):
+            art = PodcastInsights().get_episode_article(db_session, week=0, topic="market_pulse", feeds=self.FEEDS)
+        assert art is None  # only episode was used -> None -> scheduler falls back to RSS
+
+    def test_same_episode_still_allowed_for_another_topic(self, db_session):
+        # ai_news and tech_talk share one show on purpose: one episode, two angles
+        self._post(db_session, "ai_news", "Markets this week", "https://cdn.x/ep.mp3")
+        with (
+            patch.object(PodcastInsights, "_fetch_feed", return_value=FEED_XML),
+            patch("src.podcast_insights.transcribe_audio", return_value="t"),
+            patch("src.podcast_insights.distill_transcript", return_value="- b"),
+        ):
+            art = PodcastInsights().get_episode_article(db_session, week=0, topic="tech_talk", feeds=self.FEEDS)
+        assert art is not None and art.title == "Markets this week"

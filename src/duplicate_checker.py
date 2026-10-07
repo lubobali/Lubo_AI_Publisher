@@ -1,12 +1,14 @@
-"""Duplicate checker — URL dedup, title similarity, embedding similarity, category balance."""
+"""Duplicate checker — URL dedup, recency, title similarity, category balance.
+
+There is no embedding check on purpose (removed Oct 2026): the NIM model it used was
+retired (410), and measured on real posts no similarity threshold separated a repeated
+idea from a new one. Podcast episodes are de-duplicated in podcast_insights instead.
+"""
 
 import logging
-import math
-import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from openai import AsyncOpenAI
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -18,13 +20,8 @@ logger = logging.getLogger(__name__)
 # News categories enforce a 7-day recency limit
 NEWS_CATEGORIES = frozenset({"ai_news", "ai_gadgets", "big_tech"})
 
-# NVIDIA NIM embedding model
-NVIDIA_EMBED_MODEL = "nvidia/nv-embedqa-e5-v5"
-NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
-
 # Thresholds
 TITLE_SIMILARITY_THRESHOLD = 0.80
-EMBEDDING_SIMILARITY_THRESHOLD = 0.85
 CATEGORY_OVERREPRESENTATION_FACTOR = 2.0
 
 
@@ -64,21 +61,6 @@ def levenshtein_ratio(a: str, b: str) -> float:
     return 1.0 - (distance / max_len)
 
 
-def cosine_similarity(a: list[float], b: list[float]) -> float:
-    """Cosine similarity between two vectors (-1.0 to 1.0).
-
-    Returns 0.0 if either vector is zero.
-    """
-    dot = sum(x * y for x, y in zip(a, b, strict=False))
-    mag_a = math.sqrt(sum(x * x for x in a))
-    mag_b = math.sqrt(sum(x * x for x in b))
-
-    if mag_a == 0 or mag_b == 0:
-        return 0.0
-
-    return dot / (mag_a * mag_b)
-
-
 def is_too_old(
     published_at: datetime | None,
     category: str,
@@ -100,7 +82,7 @@ def is_too_old(
 
 
 class DuplicateChecker:
-    """Checks articles for duplicates using URL, title, embedding, and category balance."""
+    """Checks articles for duplicates using URL, recency, title, and category balance."""
 
     def __init__(self, session: Session):
         self.session = session
@@ -171,71 +153,6 @@ class DuplicateChecker:
 
         return category_count > avg * factor
 
-    # --- Embedding similarity ---
-
-    @observe(as_type="generation")
-    async def get_embedding(self, text: str) -> list[float] | None:
-        """Get embedding vector from NVIDIA NIM API.
-
-        Returns list of floats on success, None on failure.
-        """
-        try:
-            client = AsyncOpenAI(
-                api_key=os.getenv("NVIDIA_API_KEY", ""),
-                base_url=NVIDIA_BASE_URL,
-            )
-            response = await client.embeddings.create(
-                model=NVIDIA_EMBED_MODEL,
-                input=text,
-                extra_body={"input_type": "query"},
-            )
-            embedding = response.data[0].embedding
-
-            # Report embedding generation metadata to Langfuse
-            try:
-                get_client().update_current_generation(
-                    model=NVIDIA_EMBED_MODEL,
-                    metadata={
-                        "input_length": len(text),
-                        "embedding_dimensions": len(embedding),
-                    },
-                )
-            except Exception:
-                logger.debug("Langfuse embedding update failed", exc_info=True)
-
-            return embedding
-        except Exception as e:
-            logger.warning("Failed to get embedding: %s", e)
-            return None
-
-    def check_embedding_against_recent(
-        self,
-        embedding: list[float],
-        days: int = 90,
-        threshold: float = EMBEDDING_SIMILARITY_THRESHOLD,
-    ) -> DuplicateResult:
-        """Check embedding similarity against recent posts with stored embeddings."""
-        cutoff = datetime.now(UTC) - timedelta(days=days)
-        recent_posts = (
-            self.session.query(PublisherPost)
-            .filter(
-                PublisherPost.posted_at >= cutoff,
-                PublisherPost.post_embedding.isnot(None),
-            )
-            .all()
-        )
-
-        for post in recent_posts:
-            sim = cosine_similarity(embedding, post.post_embedding)
-            if sim >= threshold:
-                return DuplicateResult(
-                    is_duplicate=True,
-                    reason=f"Embedding too similar to post #{post.id} "
-                    f"({sim:.2f} cosine similarity): {post.topic_title!r}",
-                )
-
-        return DuplicateResult(is_duplicate=False)
-
     # --- Langfuse metadata reporting ---
 
     def _report_check_metadata(
@@ -245,7 +162,6 @@ class DuplicateChecker:
         category: str,
         is_duplicate: bool,
         caught_by: str | None,
-        embedding_available: bool,
     ) -> None:
         """Report duplicate check results to Langfuse."""
         try:
@@ -256,7 +172,6 @@ class DuplicateChecker:
                     "category": category,
                     "is_duplicate": is_duplicate,
                     "caught_by": caught_by,
-                    "embedding_available": embedding_available,
                 }
             )
         except Exception:
@@ -278,15 +193,12 @@ class DuplicateChecker:
         1. URL dedup (DB lookup)
         2. Recency (pure date check)
         3. Title similarity (DB + Levenshtein)
-        4. Category balance (DB aggregate)
-        5. Embedding similarity (API call + DB)
+        4. Category balance (DB aggregate, logged only)
         """
-        embedding_available = False
-
         # 1. URL dedup
         if self.is_url_seen(url):
             result = DuplicateResult(is_duplicate=True, reason=f"URL already seen: {url}")
-            self._report_check_metadata(url, title, category, True, "url_dedup", embedding_available)
+            self._report_check_metadata(url, title, category, True, "url_dedup")
             return result
 
         # 2. Recency
@@ -295,27 +207,18 @@ class DuplicateChecker:
                 is_duplicate=True,
                 reason=f"Article too old for {category} (published {published_at})",
             )
-            self._report_check_metadata(url, title, category, True, "recency", embedding_available)
+            self._report_check_metadata(url, title, category, True, "recency")
             return result
 
         # 3. Title similarity
         title_result = self.check_title_against_recent(title)
         if title_result.is_duplicate:
-            self._report_check_metadata(url, title, category, True, "title_similarity", embedding_available)
+            self._report_check_metadata(url, title, category, True, "title_similarity")
             return title_result
 
         # 4. Category balance (warning, not blocking — logged for pipeline to decide)
         if self.is_category_overrepresented(category):
             logger.info("Category %s is overrepresented but not blocking", category)
 
-        # 5. Embedding similarity
-        embedding = await self.get_embedding(title)
-        if embedding is not None:
-            embedding_available = True
-            embed_result = self.check_embedding_against_recent(embedding)
-            if embed_result.is_duplicate:
-                self._report_check_metadata(url, title, category, True, "embedding_similarity", embedding_available)
-                return embed_result
-
-        self._report_check_metadata(url, title, category, False, None, embedding_available)
+        self._report_check_metadata(url, title, category, False, None)
         return DuplicateResult(is_duplicate=False)

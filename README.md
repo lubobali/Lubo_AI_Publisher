@@ -40,7 +40,7 @@ I built this for myself. Every week it reads podcasts, blogs, market data, my ow
 |---|---|---|---|
 | **Topic** | picks which topic owns today's slot | `topic_rotator.py` | `config/topics.yaml`, `config/schedule.yaml` |
 | **Material** | RSS, podcasts (transcribed), APIs, **your own data** | `scraper.py`, `podcast_insights.py`, `*_insights.py` | `config/scraper_sources.yaml` + a small module for your own data |
-| **Dedup** | skips URLs, titles and ideas already used | `duplicate_checker.py` | automatic |
+| **Dedup** | skips URLs, similar titles, stale news and podcast episodes already used | `duplicate_checker.py`, `podcast_insights.py` | automatic |
 | **Ground** | 2–3 passages from your books/notes as background | `knowledge_base.py` | `books/*.pdf` + `scripts/ingest_books.py` |
 | **Write** | LLM writes in your voice from the material only | `writer.py` | `config/voice_rules.yaml`, `templates/voice_samples.txt` |
 | **Clean + check** | strips model junk, enforces style, rejects made-up numbers | `post_processor.py` | toggle fixes in `process_post()` |
@@ -133,7 +133,7 @@ Docker Compose on a Hetzner box, Forgejo CI with a real Postgres service, mirror
 | Layer | Tech |
 |---|---|
 | Writer LLM | NVIDIA Nemotron 3 Ultra 550B (NIM). OpenRouter is the fallback. Any OpenAI-compatible model works |
-| Embeddings | `llama-nemotron-embed-vl-1b-v2` (knowledge base), `nv-embedqa-e5-v5` (dedup) |
+| Embeddings | `llama-nemotron-embed-vl-1b-v2` (knowledge base) |
 | Podcasts | Deepgram nova-3 transcription, cached in Postgres |
 | Data | RSS/Atom, HackerNews search, yfinance, git, WakaTime |
 | Images | Playwright renders HTML/CSS cards, ECharts for charts. AI image fallback |
@@ -160,7 +160,7 @@ src/
   wakatime_insights.py     example: your coding stats as a source
   devtrack_insights.py     example: a weekly report file as a source
   stock_insights.py        example: market data as a source
-  duplicate_checker.py     URL / title / embedding dedup
+  duplicate_checker.py     URL / recency / title dedup
   knowledge_base.py        PDF → chunks → embeddings → search
   self_learner.py          past performance → hints for the writer
   writer.py                prompts + LLM calls + X thread version

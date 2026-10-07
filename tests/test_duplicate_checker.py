@@ -1,17 +1,15 @@
-"""Tests for duplicate checker — URL dedup, title similarity, embeddings, category balance."""
+"""Tests for duplicate checker — URL dedup, recency, title similarity, category balance."""
 
 import os
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.duplicate_checker import (
-    NVIDIA_EMBED_MODEL,
     DuplicateChecker,
-    cosine_similarity,
     is_too_old,
     levenshtein_ratio,
 )
@@ -71,40 +69,6 @@ class TestLevenshteinRatio:
         """Similarity should be case-insensitive."""
         ratio = levenshtein_ratio("Hello World", "hello world")
         assert ratio == 1.0
-
-
-# ---------------------------------------------------------------------------
-# Pure functions: cosine_similarity
-# ---------------------------------------------------------------------------
-
-
-class TestCosineSimilarity:
-    """Cosine similarity between embedding vectors."""
-
-    def test_identical_vectors(self):
-        v = [1.0, 2.0, 3.0]
-        assert cosine_similarity(v, v) == pytest.approx(1.0)
-
-    def test_orthogonal_vectors(self):
-        a = [1.0, 0.0, 0.0]
-        b = [0.0, 1.0, 0.0]
-        assert cosine_similarity(a, b) == pytest.approx(0.0)
-
-    def test_opposite_vectors(self):
-        a = [1.0, 2.0, 3.0]
-        b = [-1.0, -2.0, -3.0]
-        assert cosine_similarity(a, b) == pytest.approx(-1.0)
-
-    def test_similar_vectors(self):
-        a = [1.0, 2.0, 3.0]
-        b = [1.1, 2.1, 2.9]
-        sim = cosine_similarity(a, b)
-        assert sim > 0.99
-
-    def test_zero_vector_returns_zero(self):
-        a = [0.0, 0.0, 0.0]
-        b = [1.0, 2.0, 3.0]
-        assert cosine_similarity(a, b) == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -324,144 +288,23 @@ class TestCategoryBalance:
 
 
 # ---------------------------------------------------------------------------
-# NVIDIA embedding API (mocked)
-# ---------------------------------------------------------------------------
-
-
-class TestGetEmbedding:
-    """Get embedding vector from NVIDIA NIM API — always mocked."""
-
-    @pytest.mark.asyncio
-    async def test_get_embedding_returns_vector(self):
-        """Successful API call returns list of floats."""
-        mock_embedding = [0.1, 0.2, 0.3, 0.4, 0.5]
-        mock_response = MagicMock()
-        mock_response.data = [MagicMock(embedding=mock_embedding)]
-
-        mock_client = AsyncMock()
-        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-
-        with patch("src.duplicate_checker.AsyncOpenAI", return_value=mock_client):
-            checker = DuplicateChecker(session=None)
-            result = await checker.get_embedding("Test text about AI")
-
-        assert result == mock_embedding
-        mock_client.embeddings.create.assert_called_once_with(
-            model=NVIDIA_EMBED_MODEL,
-            input="Test text about AI",
-            extra_body={"input_type": "query"},
-        )
-
-    @pytest.mark.asyncio
-    async def test_get_embedding_api_error_returns_none(self):
-        """API failure returns None gracefully."""
-        mock_client = AsyncMock()
-        mock_client.embeddings.create = AsyncMock(side_effect=Exception("API down"))
-
-        with patch("src.duplicate_checker.AsyncOpenAI", return_value=mock_client):
-            checker = DuplicateChecker(session=None)
-            result = await checker.get_embedding("Some text")
-
-        assert result is None
-
-
-# ---------------------------------------------------------------------------
-# Embedding similarity against recent posts
-# ---------------------------------------------------------------------------
-
-
-class TestEmbeddingSimilarity:
-    """Check embedding similarity against recent posts with stored embeddings."""
-
-    def test_no_recent_embeddings_not_duplicate(self, db_session):
-        """No posts with embeddings — not a duplicate."""
-        checker = DuplicateChecker(db_session)
-        result = checker.check_embedding_against_recent([0.1, 0.2, 0.3])
-        assert result.is_duplicate is False
-
-    def test_similar_embedding_flagged(self, db_session):
-        """Post with very similar embedding should be flagged."""
-        db_session.add(
-            PublisherPost(
-                posted_at=datetime.now(UTC) - timedelta(days=5),
-                topic_category="ai_news",
-                topic_title="Some AI post",
-                post_text="text",
-                status="published",
-                post_embedding=[1.0, 0.0, 0.0],
-            )
-        )
-        db_session.flush()
-
-        checker = DuplicateChecker(db_session)
-        # Very similar vector (cosine > 0.85)
-        result = checker.check_embedding_against_recent([0.99, 0.01, 0.0])
-        assert result.is_duplicate is True
-        assert "embedding" in result.reason.lower()
-
-    def test_different_embedding_passes(self, db_session):
-        """Post with different embedding should pass."""
-        db_session.add(
-            PublisherPost(
-                posted_at=datetime.now(UTC) - timedelta(days=5),
-                topic_category="ai_news",
-                topic_title="Some AI post",
-                post_text="text",
-                status="published",
-                post_embedding=[1.0, 0.0, 0.0],
-            )
-        )
-        db_session.flush()
-
-        checker = DuplicateChecker(db_session)
-        # Orthogonal vector (cosine = 0)
-        result = checker.check_embedding_against_recent([0.0, 1.0, 0.0])
-        assert result.is_duplicate is False
-
-    def test_old_embedding_outside_window_ignored(self, db_session):
-        """Posts older than 90 days should not trigger embedding match."""
-        db_session.add(
-            PublisherPost(
-                posted_at=datetime.now(UTC) - timedelta(days=100),
-                topic_category="ai_news",
-                topic_title="Old post",
-                post_text="text",
-                status="published",
-                post_embedding=[1.0, 0.0, 0.0],
-            )
-        )
-        db_session.flush()
-
-        checker = DuplicateChecker(db_session)
-        result = checker.check_embedding_against_recent([1.0, 0.0, 0.0])
-        assert result.is_duplicate is False
-
-
-# ---------------------------------------------------------------------------
 # Full check_article orchestration
 # ---------------------------------------------------------------------------
 
 
 class TestCheckArticle:
-    """Full duplicate check pipeline — wires URL, title, embedding, recency, category."""
+    """Full duplicate check pipeline — wires URL, recency, title, category."""
 
     @pytest.mark.asyncio
     async def test_new_article_passes_all_checks(self, db_session):
         """A genuinely new article passes all duplicate checks."""
-        mock_embedding = [0.1, 0.2, 0.3]
-        mock_response = MagicMock()
-        mock_response.data = [MagicMock(embedding=mock_embedding)]
-        mock_client = AsyncMock()
-        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-
-        with patch("src.duplicate_checker.AsyncOpenAI", return_value=mock_client):
-            checker = DuplicateChecker(db_session)
-            result = await checker.check_article(
-                url="https://example.com/brand-new",
-                title="Completely unique article about quantum computing",
-                category="ai_news",
-                published_at=datetime.now(UTC) - timedelta(days=1),
-            )
+        checker = DuplicateChecker(db_session)
+        result = await checker.check_article(
+            url="https://example.com/brand-new",
+            title="Completely unique article about quantum computing",
+            category="ai_news",
+            published_at=datetime.now(UTC) - timedelta(days=1),
+        )
 
         assert result.is_duplicate is False
 
@@ -509,32 +352,25 @@ class TestCheckArticle:
         )
         db_session.flush()
 
-        # Mock embedding to return something dissimilar
-        mock_embedding = [0.1, 0.9, 0.1]
-        mock_response = MagicMock()
-        mock_response.data = [MagicMock(embedding=mock_embedding)]
-        mock_client = AsyncMock()
-        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-
-        with patch("src.duplicate_checker.AsyncOpenAI", return_value=mock_client):
-            checker = DuplicateChecker(db_session)
-            result = await checker.check_article(
-                url="https://example.com/new-url",
-                title="NVIDIA announces breakthrough in AI chip designs",
-                category="ai_news",
-                published_at=datetime.now(UTC) - timedelta(hours=2),
-            )
+        checker = DuplicateChecker(db_session)
+        result = await checker.check_article(
+            url="https://example.com/new-url",
+            title="NVIDIA announces breakthrough in AI chip designs",
+            category="ai_news",
+            published_at=datetime.now(UTC) - timedelta(hours=2),
+        )
 
         assert result.is_duplicate is True
         assert "title" in result.reason.lower()
 
     @pytest.mark.asyncio
-    async def test_embedding_api_failure_still_checks_other_signals(self, db_session):
-        """If embedding API fails, other checks still run and article can pass."""
-        mock_client = AsyncMock()
-        mock_client.embeddings.create = AsyncMock(side_effect=Exception("API down"))
+    async def test_dedup_never_calls_an_embedding_api(self, db_session):
+        """Dedup is URL + title + recency only. The embedding check was removed (Oct 2026):
+        its model was retired (410) and, measured on real posts, no threshold separated
+        repeats from new posts. No embedding call may happen."""
+        from openai.resources.embeddings import AsyncEmbeddings
 
-        with patch("src.duplicate_checker.AsyncOpenAI", return_value=mock_client):
+        with patch.object(AsyncEmbeddings, "create", new_callable=AsyncMock) as create:
             checker = DuplicateChecker(db_session)
             result = await checker.check_article(
                 url="https://example.com/unique-url",
@@ -544,3 +380,4 @@ class TestCheckArticle:
             )
 
         assert result.is_duplicate is False
+        create.assert_not_called()

@@ -416,62 +416,8 @@ class TestProcessPostComplianceScoring:
 
 
 # ---------------------------------------------------------------------------
-# Step 4: Embedding + Dedup tracing
+# Step 4: Dedup tracing
 # ---------------------------------------------------------------------------
-
-
-class TestEmbeddingGenerationTracing:
-    """get_embedding() must report model and dimensions to Langfuse as a generation."""
-
-    @pytest.mark.asyncio
-    async def test_get_embedding_reports_generation_metadata(self):
-        """After embedding API call, Langfuse should get model name + dimensions."""
-        from src.duplicate_checker import DuplicateChecker
-
-        mock_embedding = [0.1, 0.2, 0.3, 0.4, 0.5]
-        mock_response = MagicMock()
-        mock_response.data = [MagicMock(embedding=mock_embedding)]
-
-        mock_client = AsyncMock()
-        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-
-        mock_langfuse = MagicMock()
-
-        with (
-            patch("src.duplicate_checker.AsyncOpenAI", return_value=mock_client),
-            patch("src.duplicate_checker.get_client", return_value=mock_langfuse),
-        ):
-            checker = DuplicateChecker(session=None)
-            await checker.get_embedding("Test text about AI")
-
-        mock_langfuse.update_current_generation.assert_called_once()
-        call_kwargs = mock_langfuse.update_current_generation.call_args[1]
-        assert call_kwargs["model"] == "nvidia/nv-embedqa-e5-v5"
-        assert call_kwargs["metadata"]["input_length"] == len("Test text about AI")
-        assert call_kwargs["metadata"]["embedding_dimensions"] == 5
-
-    @pytest.mark.asyncio
-    async def test_get_embedding_returns_vector_unchanged(self):
-        """@observe decorator must not alter the return value."""
-        from src.duplicate_checker import DuplicateChecker
-
-        mock_embedding = [0.1, 0.2, 0.3, 0.4, 0.5]
-        mock_response = MagicMock()
-        mock_response.data = [MagicMock(embedding=mock_embedding)]
-
-        mock_client = AsyncMock()
-        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-
-        mock_langfuse = MagicMock()
-
-        with (
-            patch("src.duplicate_checker.AsyncOpenAI", return_value=mock_client),
-            patch("src.duplicate_checker.get_client", return_value=mock_langfuse),
-        ):
-            checker = DuplicateChecker(session=None)
-            result = await checker.get_embedding("Test text")
-
-        assert result == mock_embedding
 
 
 class TestCheckArticleSpanTracing:
@@ -482,18 +428,9 @@ class TestCheckArticleSpanTracing:
         """Non-duplicate article should report is_duplicate=False, caught_by=None."""
         from src.duplicate_checker import DuplicateChecker
 
-        mock_embedding = [0.1, 0.2, 0.3]
-        mock_response = MagicMock()
-        mock_response.data = [MagicMock(embedding=mock_embedding)]
-        mock_api_client = AsyncMock()
-        mock_api_client.embeddings.create = AsyncMock(return_value=mock_response)
-
         mock_langfuse = MagicMock()
 
-        with (
-            patch("src.duplicate_checker.AsyncOpenAI", return_value=mock_api_client),
-            patch("src.duplicate_checker.get_client", return_value=mock_langfuse),
-        ):
+        with patch("src.duplicate_checker.get_client", return_value=mock_langfuse):
             checker = DuplicateChecker(db_session)
             result = await checker.check_article(
                 url="https://example.com/unique-article-999",
@@ -508,7 +445,6 @@ class TestCheckArticleSpanTracing:
         assert metadata["is_duplicate"] is False
         assert metadata["caught_by"] is None
         assert metadata["category"] == "tech_talk"
-        assert metadata["embedding_available"] is True
 
     @pytest.mark.asyncio
     async def test_check_article_reports_metadata_on_url_duplicate(self, db_session):
@@ -678,48 +614,14 @@ class TestDedupLangfuseResilience:
     """Dedup functions must still work correctly when Langfuse is unavailable."""
 
     @pytest.mark.asyncio
-    async def test_get_embedding_works_when_langfuse_fails(self):
-        """get_embedding returns valid vector even if Langfuse raises."""
-        from src.duplicate_checker import DuplicateChecker
-
-        mock_embedding = [0.1, 0.2, 0.3]
-        mock_response = MagicMock()
-        mock_response.data = [MagicMock(embedding=mock_embedding)]
-
-        mock_client = AsyncMock()
-        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-
-        mock_langfuse = MagicMock()
-        mock_langfuse.update_current_generation.side_effect = Exception("Langfuse down")
-
-        with (
-            patch("src.duplicate_checker.AsyncOpenAI", return_value=mock_client),
-            patch("src.duplicate_checker.get_client", return_value=mock_langfuse),
-        ):
-            checker = DuplicateChecker(session=None)
-            result = await checker.get_embedding("Test text")
-
-        assert result == mock_embedding
-
-    @pytest.mark.asyncio
     async def test_check_article_works_when_langfuse_fails(self, db_session):
         """check_article returns correct DuplicateResult even if Langfuse raises."""
         from src.duplicate_checker import DuplicateChecker
 
-        mock_embedding = [0.1, 0.2, 0.3]
-        mock_response = MagicMock()
-        mock_response.data = [MagicMock(embedding=mock_embedding)]
-        mock_api_client = AsyncMock()
-        mock_api_client.embeddings.create = AsyncMock(return_value=mock_response)
-
         mock_langfuse = MagicMock()
         mock_langfuse.update_current_span.side_effect = Exception("Langfuse down")
-        mock_langfuse.update_current_generation.side_effect = Exception("Langfuse down")
 
-        with (
-            patch("src.duplicate_checker.AsyncOpenAI", return_value=mock_api_client),
-            patch("src.duplicate_checker.get_client", return_value=mock_langfuse),
-        ):
+        with patch("src.duplicate_checker.get_client", return_value=mock_langfuse):
             checker = DuplicateChecker(db_session)
             result = await checker.check_article(
                 url="https://example.com/resilience-test-unique",

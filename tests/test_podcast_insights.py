@@ -232,6 +232,20 @@ class TestSelectEpisode:
     def test_empty_returns_none(self):
         assert select_episode([]) is None
 
+    # --- no repeats: skip episodes already used for this topic ---
+
+    def test_skips_episode_already_used_by_title(self):
+        eps = [self._ep("264. Same old episode", 17), self._ep("265. Fresh one", 10)]
+        assert select_episode(eps, used={"264. Same old episode"}).title == "265. Fresh one"
+
+    def test_skips_episode_already_used_by_url(self):
+        eps = [self._ep("Renamed later", 17), self._ep("Fresh", 10)]
+        assert select_episode(eps, used={"https://x/17.mp3"}).title == "Fresh"
+
+    def test_returns_none_when_every_recent_episode_was_used(self):
+        eps = [self._ep("A", 17), self._ep("B", 10)]
+        assert select_episode(eps, used={"A", "B"}) is None
+
 
 class TestDistillTranscript:
     """P5.5: transcript -> 3-5 market-theme bullets via OpenRouter (boundary mocked)."""
