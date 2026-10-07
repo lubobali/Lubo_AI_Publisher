@@ -160,6 +160,94 @@ class TestWeeklyPlan:
 
 
 # ---------------------------------------------------------------------------
+# Pinned topic — set in schedule.yaml `pinned_topic`, not hardcoded
+# ---------------------------------------------------------------------------
+
+
+class TestPinnedTopic:
+    """The pinned topic (fixed slots, every week) comes from schedule.yaml.
+
+    Missing or unknown values fall back to biohacker so a config typo can never
+    stop the planner.
+    """
+
+    def _schedule_with(self, monkeypatch, **overrides):
+        """Real schedule.yaml with some keys overridden (or removed when None)."""
+        cfg = load_schedule_config()
+        for key, value in overrides.items():
+            if value is None:
+                cfg.pop(key, None)
+            else:
+                cfg[key] = value
+        monkeypatch.setattr("src.topic_rotator.load_schedule_config", lambda: cfg)
+        return cfg
+
+    def _week_keys(self, week=12):
+        return [p["topic"]["sources_key"] for posts in get_week_plan(week).values() for p in posts]
+
+    def test_schedule_yaml_declares_pinned_topic(self):
+        assert load_schedule_config()["pinned_topic"] == "biohacker"
+
+    def test_pinned_topic_is_a_real_topic(self):
+        keys = {c["sources_key"] for c in load_topic_categories()}
+        assert load_schedule_config()["pinned_topic"] in keys
+
+    def test_custom_pinned_topic_takes_the_fixed_slots(self, monkeypatch):
+        cfg = self._schedule_with(monkeypatch, pinned_topic="ai_news")
+        for slots in cfg["weekly_plan"].values():
+            for slot in slots:
+                if slot["topic"] == "biohacker":
+                    slot["topic"] = "ai_news"
+        keys = self._week_keys()
+        assert keys.count("ai_news") == 3
+        assert keys.count("biohacker") == 1  # now rotates like any other topic
+        assert len(keys) == 9
+
+    def test_custom_pinned_topic_gets_distinct_show_offsets(self, monkeypatch):
+        cfg = self._schedule_with(monkeypatch, pinned_topic="ai_news")
+        for slots in cfg["weekly_plan"].values():
+            for slot in slots:
+                if slot["topic"] == "biohacker":
+                    slot["topic"] = "ai_news"
+        offsets = sorted(
+            p["show_offset"]
+            for posts in get_week_plan(12).values()
+            for p in posts
+            if p["topic"]["sources_key"] == "ai_news"
+        )
+        assert offsets == [0, 1, 2]
+
+    def test_missing_pinned_topic_falls_back_to_biohacker(self, monkeypatch):
+        expected = get_week_plan(12)
+        self._schedule_with(monkeypatch, pinned_topic=None)
+        assert get_week_plan(12) == expected
+
+    def test_unknown_pinned_topic_falls_back_and_logs_error(self, monkeypatch, caplog):
+        expected = get_week_plan(12)
+        self._schedule_with(monkeypatch, pinned_topic="biohacer")  # typo
+        with caplog.at_level("ERROR", logger="src.topic_rotator"):
+            plan = get_week_plan(12)
+        assert plan == expected
+        assert "biohacer" in caplog.text
+
+    def test_pinned_topic_with_no_slots_logs_warning(self, monkeypatch, caplog):
+        # pinned_topic changed, but weekly_plan slots still say "biohacker"
+        self._schedule_with(monkeypatch, pinned_topic="ai_news")
+        with caplog.at_level("WARNING", logger="src.topic_rotator"):
+            get_week_plan(12)
+        assert "ai_news" in caplog.text
+        assert "weekly_plan" in caplog.text
+
+    def test_no_usable_pinned_topic_raises_clear_error(self, monkeypatch):
+        # a fork with no biohacker topic AND a typo in pinned_topic
+        self._schedule_with(monkeypatch, pinned_topic="nope")
+        cats = [c for c in load_topic_categories() if c["sources_key"] != "biohacker"]
+        monkeypatch.setattr("src.topic_rotator.load_topic_categories", lambda: cats)
+        with pytest.raises(ValueError, match="pinned_topic"):
+            get_week_plan(12)
+
+
+# ---------------------------------------------------------------------------
 # Schedule config loading
 # ---------------------------------------------------------------------------
 

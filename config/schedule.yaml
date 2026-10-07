@@ -26,8 +26,12 @@ posting_windows:
     start_hour: 19  # Sunday 2nd post (8h+ after the morning biohacker)
     end_hour: 21    # through 8:59 PM CT
 
+# The pinned topic owns fixed slots every week; every other topic rotates.
+# Must be a sources_key from topics.yaml. Missing/unknown -> falls back to biohacker.
+pinned_topic: biohacker
+
 # Weekly plan, days run Sunday -> Saturday. Each day lists its posts in time order.
-#   topic: biohacker = pinned to this slot
+#   topic: biohacker = pinned to this slot (must match pinned_topic above)
 #   topic: rotate    = next of the 6 non-biohacker topics (rotates weekly)
 #   window           = which posting_windows entry to randomize the time within
 weekly_plan:

@@ -21,7 +21,7 @@ This guide walks through every part, says which file controls it, and gives exam
 1. [Run it locally](#1-run-it-locally)
 2. [Define your topics](#2-define-your-topics-no-code)
 3. [Add your sources](#3-add-your-sources-no-code)
-4. [Set your schedule](#4-set-your-schedule-no-code--one-line)
+4. [Set your schedule](#4-set-your-schedule-no-code)
 5. [Teach it your voice](#5-teach-it-your-voice)
 6. [Give it a knowledge base (optional)](#6-give-it-a-knowledge-base-optional)
 7. [Plug in your own data (the real superpower)](#7-plug-in-your-own-data-small-code)
@@ -141,7 +141,7 @@ podcasts:
 
 ---
 
-## 4. Set your schedule (no code + one line)
+## 4. Set your schedule (no code)
 
 📄 **`config/schedule.yaml`**
 
@@ -152,13 +152,15 @@ posting_windows:
   weekday: {start_hour: 7,  end_hour: 9}     # random minute inside the window
   weekend: {start_hour: 10, end_hour: 12}
 
+pinned_topic: training  # this topic owns the fixed slots below; a sources_key from topics.yaml
+
 weekly_plan:            # Sunday → Saturday, each day lists its posts in time order
   sun: []
-  mon: [{topic: rotate, window: weekday}]
-  tue: [{topic: rotate, window: weekday}]
-  wed: [{topic: rotate, window: weekday}]
-  thu: [{topic: rotate, window: weekday}]
-  fri: [{topic: rotate, window: weekday}]
+  mon: [{topic: training, window: weekday}]   # pinned: always training
+  tue: [{topic: rotate,   window: weekday}]   # next topic in the rotation
+  wed: [{topic: training, window: weekday}]
+  thu: [{topic: rotate,   window: weekday}]
+  fri: [{topic: training, window: weekday}]
   sat: []
 
 rules:
@@ -166,7 +168,8 @@ rules:
 ```
 
 - `rotate` = the next topic in the weekly rotation. The order shifts by one slot every week, so Monday isn't always the same topic.
-- A **pinned** topic always goes in the same slot. Mine is `biohacker` (3x a week). The pinned key is hardcoded as `BIOHACKER_KEY` in `src/topic_rotator.py`. **Change that one line to your own pinned topic's `sources_key`.** The rotator expects one topic with that key to exist, so even if you don't pin anything, keep one topic with that key in `topics.yaml`.
+- `pinned_topic` = the topic that **always** gets the slots that name it. Mine is `biohacker` (3x a week). The other topics share the `rotate` slots, so make the number of `rotate` slots match the number of non-pinned topics if you want each one exactly once a week.
+- **Typos are safe.** If `pinned_topic` is missing or isn't a real `sources_key`, the planner logs an error and falls back to `biohacker`, so a mistake can't stop your posts. If your fork has no `biohacker` topic either, it stops with a clear message telling you the valid keys. If no slot in `weekly_plan` names the pinned topic, you get a warning.
 - Times are when **drafts** get made. Nothing is posted until you approve it.
 
 ---
@@ -399,12 +402,11 @@ Change or delete these when you make it yours:
 
 - [ ] `config/topics.yaml`: my 7 topics
 - [ ] `config/scraper_sources.yaml`: my feeds and podcasts
-- [ ] `config/schedule.yaml`: my Chicago-time plan
+- [ ] `config/schedule.yaml`: my Chicago-time plan and `pinned_topic`
 - [ ] `config/voice_rules.yaml`: my ESL voice, `topic_specific`, `my_agent_features` (facts about my product LuBot)
 - [ ] `templates/voice_samples.txt`: my real posts
 - [ ] `src/writer.py`: persona text + topic blocks that name me
 - [ ] `src/post_processor.py`: `strip_apostrophes`, `normalize_brand`
-- [ ] `src/topic_rotator.py`: `BIOHACKER_KEY` (pinned topic)
 - [ ] `src/scheduler.py`: special branches (`my_agent_git`, `wakatime`, `market_pulse`…), `GROUNDED_CATEGORIES`, `INSIGHT_CARDS`
 - [ ] Links + CTAs that point to lubot.ai: `src/shortlinks.py`, `src/scheduler.py`, carousel CTA in `src/screenshotter.py`
 - [ ] `static/assets/lubot-logo.png` and the "LUBO BALI · lubot.ai" signature on cards (`src/cards.py`, `src/screenshotter.py`)

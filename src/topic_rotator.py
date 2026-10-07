@@ -1,10 +1,13 @@
 """Topic rotator — 7-category weekly rotation with shift, and schedule randomizer."""
 
+import logging
 import random
 from datetime import date, time, timedelta
 from pathlib import Path
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 CONFIG_DIR = Path(__file__).parent.parent / "config"
 
@@ -52,7 +55,40 @@ def get_todays_topic(d: date) -> dict:
 
 # Days run Sunday -> Saturday (matches get_week_number's Sunday-start weeks).
 WEEKDAY_NAMES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
-BIOHACKER_KEY = "biohacker"
+# Fallback when schedule.yaml has no `pinned_topic` (or names a topic that does not exist).
+DEFAULT_PINNED_TOPIC = "biohacker"
+
+
+def _resolve_pinned_topic(plan_cfg_root: dict, categories: list[dict]) -> str:
+    """The topic that owns the fixed slots, from schedule.yaml `pinned_topic`.
+
+    A missing key or an unknown topic falls back to DEFAULT_PINNED_TOPIC (logged),
+    so a YAML typo cannot stop the daily planner. Raises ValueError only when there
+    is no usable topic at all (a fork without biohacker plus a bad pinned_topic).
+    """
+    keys = {c["sources_key"] for c in categories}
+    pinned = plan_cfg_root.get("pinned_topic", DEFAULT_PINNED_TOPIC)
+    if pinned not in keys:
+        if DEFAULT_PINNED_TOPIC not in keys:
+            raise ValueError(
+                f"schedule.yaml pinned_topic {pinned!r} is not a sources_key in topics.yaml " f"(valid: {sorted(keys)})"
+            )
+        logger.error(
+            "schedule.yaml pinned_topic %r is not a sources_key in topics.yaml — using %r",
+            pinned,
+            DEFAULT_PINNED_TOPIC,
+        )
+        pinned = DEFAULT_PINNED_TOPIC
+
+    slot_topics = {slot["topic"] for slots in plan_cfg_root["weekly_plan"].values() for slot in slots or []}
+    if pinned not in slot_topics:
+        logger.warning(
+            "pinned_topic %r has no slots in schedule.yaml weekly_plan — it will only rotate. "
+            "Set the fixed slots to `topic: %s`.",
+            pinned,
+            pinned,
+        )
+    return pinned
 
 
 def get_week_plan(week: int) -> dict[str, list[dict]]:
@@ -64,10 +100,12 @@ def get_week_plan(week: int) -> dict[str, list[dict]]:
     topics fill the `rotate` slots in week-order and shift by week for variety,
     so each appears exactly once and Monday is not always the same topic.
     """
-    plan_cfg = load_schedule_config()["weekly_plan"]
+    schedule = load_schedule_config()
+    plan_cfg = schedule["weekly_plan"]
     categories = load_topic_categories()
-    bio = next(c for c in categories if c["sources_key"] == BIOHACKER_KEY)
-    others = [c for c in categories if c["sources_key"] != BIOHACKER_KEY]
+    pinned_key = _resolve_pinned_topic(schedule, categories)
+    bio = next(c for c in categories if c["sources_key"] == pinned_key)
+    others = [c for c in categories if c["sources_key"] != pinned_key]
 
     n = len(others)  # 6
     shift = week % n if n else 0
@@ -80,7 +118,7 @@ def get_week_plan(week: int) -> dict[str, list[dict]]:
         day_posts: list[dict] = []
         for slot in plan_cfg.get(day, []):
             window = slot["window"]
-            if slot["topic"] == BIOHACKER_KEY:
+            if slot["topic"] == pinned_key:
                 day_posts.append({"topic": bio, "window": window, "show_offset": show_offset})
                 show_offset += 1
             else:  # rotate
