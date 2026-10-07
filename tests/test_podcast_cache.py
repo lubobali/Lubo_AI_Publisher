@@ -18,6 +18,7 @@ from src.podcast_insights import (
     _DISTILL_BY_TOPIC,
     _DISTILL_TECHTALK,
     PodcastInsights,
+    cached_bullets,
     get_cached_transcript,
     store_transcript,
     used_episode_keys,
@@ -136,7 +137,7 @@ class TestPodcastInsightsOrchestration:
         # transcript + bullets were cached by guid
         row = get_cached_transcript(db_session, "ep-guid-1")
         assert row.transcript == "raw transcript"
-        assert row.distilled == "- bullet one\n- bullet two"
+        assert cached_bullets(row, "market_pulse") == "- bullet one\n- bullet two"
         mock_tx.assert_called_once()
 
     def test_cache_hit_skips_transcription_and_distill(self, db_session):
@@ -145,6 +146,7 @@ class TestPodcastInsightsOrchestration:
             guid="ep-guid-1",
             transcript="t",
             distilled="- cached bullet",
+            topic="market_pulse",
             podcast_name="Animal Spirits",
             episode_title="Markets this week",
             audio_url="https://cdn.x/ep.mp3",
@@ -279,3 +281,51 @@ class TestNoEpisodeRepeats:
         ):
             art = PodcastInsights().get_episode_article(db_session, week=0, topic="tech_talk", feeds=self.FEEDS)
         assert art is not None and art.title == "Markets this week"
+
+
+class TestDistillPerTopic:
+    """One episode can feed two topics (ai_news + tech_talk share Moonshots), each with its
+    own distill lens. Bullets are cached PER TOPIC: the second topic must never get the
+    first topic's bullets. The raw transcript is shared (transcribed once)."""
+
+    FEEDS = [{"name": "Moonshots", "url": "u1"}]
+
+    def _article(self, db_session, topic, distill_mock):
+        with (
+            patch.object(PodcastInsights, "_fetch_feed", return_value=FEED_XML),
+            patch("src.podcast_insights.transcribe_audio", return_value="raw transcript") as tx,
+            patch("src.podcast_insights.distill_transcript", distill_mock),
+        ):
+            art = PodcastInsights().get_episode_article(db_session, week=0, topic=topic, feeds=self.FEEDS)
+        return art, tx
+
+    def test_each_topic_gets_its_own_lens(self, db_session):
+        def distill(transcript, system=None, **kw):
+            return {_DISTILL_AINEWS: "- news bullets", _DISTILL_TECHTALK: "- opinion bullets"}[system]
+
+        news, tx1 = self._article(db_session, "ai_news", distill)
+        opinion, tx2 = self._article(db_session, "tech_talk", distill)
+        assert news.summary == "- news bullets"
+        assert opinion.summary == "- opinion bullets"  # not the ai_news bullets
+        assert tx1.call_count + tx2.call_count == 1  # transcribed once, shared
+
+    def test_cache_hit_is_per_topic(self, db_session):
+        self._article(db_session, "ai_news", lambda t, system=None, **kw: "- news bullets")
+        again, _ = self._article(
+            db_session, "ai_news", lambda *a, **kw: (_ for _ in ()).throw(AssertionError("cached!"))
+        )
+        assert again.summary == "- news bullets"
+
+    def test_both_topics_survive_in_the_cache(self, db_session):
+        self._article(db_session, "ai_news", lambda t, system=None, **kw: "- news bullets")
+        self._article(db_session, "tech_talk", lambda t, system=None, **kw: "- opinion bullets")
+        row = get_cached_transcript(db_session, "ep-guid-1")
+        assert cached_bullets(row, "ai_news") == "- news bullets"
+        assert cached_bullets(row, "tech_talk") == "- opinion bullets"
+
+    def test_legacy_plain_bullets_are_redistilled_not_reused(self, db_session):
+        # rows cached before this fix hold plain text from an UNKNOWN lens
+        store_transcript(db_session, guid="ep-guid-1", transcript="raw transcript", distilled="- old unknown lens")
+        art, tx = self._article(db_session, "tech_talk", lambda t, system=None, **kw: "- fresh opinion")
+        assert art.summary == "- fresh opinion"
+        tx.assert_not_called()  # transcript reused from cache, no new Deepgram spend

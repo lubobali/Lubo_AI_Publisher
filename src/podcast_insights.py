@@ -13,6 +13,7 @@ land in later steps (P2/P3/P5/P5.5); this file just yields clean episodes, newes
 """
 
 import contextlib
+import json
 import logging
 import os
 import re
@@ -234,6 +235,35 @@ def get_cached_transcript(session: Session, guid: str) -> PublisherPodcastTransc
     return session.query(PublisherPodcastTranscript).filter_by(guid=guid).first()
 
 
+def cached_bullets(row: PublisherPodcastTranscript | None, topic: str) -> str | None:
+    """This topic's cached distilled bullets, or None.
+
+    `distilled` holds JSON {topic: bullets} because one episode can feed several topics,
+    each with its own distill lens (ai_news + tech_talk share Moonshots). Rows cached
+    before that hold plain text from an unknown lens -> None, so they get re-distilled
+    (the transcript itself is still reused).
+    """
+    if row is None or not row.distilled:
+        return None
+    try:
+        by_topic = json.loads(row.distilled)
+    except ValueError:
+        return None  # legacy plain-text bullets
+    return by_topic.get(topic) if isinstance(by_topic, dict) else None
+
+
+def _merge_bullets(existing: str | None, topic: str, bullets: str) -> str:
+    """JSON {topic: bullets} with this topic set, keeping other topics (drops legacy text)."""
+    try:
+        by_topic = json.loads(existing) if existing else {}
+    except ValueError:
+        by_topic = {}
+    if not isinstance(by_topic, dict):
+        by_topic = {}
+    by_topic[topic] = bullets
+    return json.dumps(by_topic, ensure_ascii=False)
+
+
 def store_transcript(
     session: Session,
     *,
@@ -243,12 +273,14 @@ def store_transcript(
     episode_title: str = "",
     audio_url: str = "",
     distilled: str | None = None,
+    topic: str | None = None,
 ) -> PublisherPodcastTranscript:
     """Idempotent upsert of a transcript by guid. Caller commits.
 
     Re-storing the same guid updates the existing row (never a duplicate). `distilled`
     is only written when provided, so adding the P5.5 bullets later — or re-storing the
-    transcript — never wipes existing bullets.
+    transcript — never wipes existing bullets. With `topic`, the bullets are stored for
+    that topic only (see cached_bullets); other topics' bullets are kept.
     """
     row = session.query(PublisherPodcastTranscript).filter_by(guid=guid).first()
     if row is None:
@@ -259,7 +291,7 @@ def store_transcript(
     row.episode_title = episode_title
     row.audio_url = audio_url
     if distilled is not None:
-        row.distilled = distilled
+        row.distilled = _merge_bullets(row.distilled, topic, distilled) if topic else distilled
     session.flush()
     return row
 
@@ -342,15 +374,18 @@ class PodcastInsights:
         resp.raise_for_status()
         return resp.text
 
-    def _bullets_for(self, session: Session, ep: PodcastEpisode, system: str | None = None) -> str | None:
+    def _bullets_for(
+        self, session: Session, ep: PodcastEpisode, topic: str = "market_pulse", system: str | None = None
+    ) -> str | None:
         """Distilled bullets for an episode — from cache if present, else transcribe+distill.
 
         `system` selects the per-topic distill lens; the raw transcript stays shared across
         topics (cached by guid), only the distillation differs.
         """
         cached = get_cached_transcript(session, ep.guid)
-        if cached and cached.distilled:
-            return cached.distilled  # full cache hit — zero API spend
+        hit = cached_bullets(cached, topic)
+        if hit:
+            return hit  # full cache hit for this topic — zero API spend
 
         transcript = cached.transcript if cached else transcribe_audio(ep.audio_url)
         if not transcript:
@@ -366,6 +401,7 @@ class PodcastInsights:
             episode_title=ep.title,
             audio_url=ep.audio_url,
             distilled=bullets,
+            topic=topic,
         )
         return bullets
 
@@ -395,7 +431,7 @@ class PodcastInsights:
             ep = select_episode(parse_podcast_feed(xml, podcast_name=feed["name"]), used=used)
             if ep is None:
                 continue
-            bullets = self._bullets_for(session, ep, system=system)
+            bullets = self._bullets_for(session, ep, topic=topic, system=system)
             if not bullets:
                 continue
             self.episode = ep

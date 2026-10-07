@@ -114,7 +114,8 @@ class PublisherPodcastTranscript(Base):
     """Cached podcast episode transcript + distilled bullets (Phase 2.10b).
 
     Keyed by episode guid so a given episode is transcribed (paid for) only once;
-    `distilled` holds the P5.5 market-theme bullets, filled in after transcription.
+    `distilled` holds JSON {topic: bullets} (one episode can feed several topics, each
+    with its own distill lens); older rows hold plain text from an unknown lens.
     """
 
     __tablename__ = "publisher_podcast_transcripts"
@@ -125,7 +126,7 @@ class PublisherPodcastTranscript(Base):
     episode_title = Column(Text, nullable=False, default="")
     audio_url = Column(Text, nullable=False, default="")
     transcript = Column(Text, nullable=False)
-    distilled = Column(Text, nullable=True)  # P5.5 market-theme bullets
+    distilled = Column(Text, nullable=True)  # JSON {topic: bullets}, see podcast_insights.cached_bullets
     created_at = Column(DateTime, server_default=func.now())
 
 
