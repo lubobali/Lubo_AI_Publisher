@@ -313,7 +313,8 @@ def main() -> None:
     sched = build_scheduler()
     _schedule_todays_posts(sched)  # don't wait for the first midnight — schedule today now
     logger.info(
-        "Publisher scheduler up — 9 posts/week (biohacker 3x Sun/Wed/Fri), randomized times %s, publish every %d min",
+        "Publisher scheduler up — cadence from schedule.yaml (post_every_n_days), randomized times %s, "
+        "publish every %d min",
         TIMEZONE,
         PUBLISH_INTERVAL_MIN,
     )

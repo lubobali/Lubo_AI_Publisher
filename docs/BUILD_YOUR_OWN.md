@@ -39,7 +39,7 @@ Answer these on paper first. They drive every config file.
 
 | Question | My answers | Example: fitness coach |
 |---|---|---|
-| **What topics, how often?** | 7 topics, 9 posts a week, biohacking 3x | 4 topics: training, nutrition, client wins, myth-busting. 5 posts a week |
+| **What topics, how often?** | 7 topics, one post every other day, biohacking 3 of every 9 | 4 topics: training, nutrition, client wins, myth-busting. 5 posts a week |
 | **Where does REAL material come from?** | podcasts, RSS, market data, my git log, my coding stats | RSS from sports-science journals, a podcast, their own client check-in spreadsheet |
 | **What does my voice sound like?** | ESL, casual, short lines, no apostrophes | high energy, second person ("you"), one emoji max |
 
@@ -171,6 +171,7 @@ rules:
 - `rotate` = the next topic in the weekly rotation. The order shifts by one slot every week, so Monday isn't always the same topic.
 - `pinned_topic` = the topic that **always** gets the slots that name it. Mine is `biohacker` (3x a week). The other topics share the `rotate` slots, so make the number of `rotate` slots match the number of non-pinned topics if you want each one exactly once a week.
 - **Typos are safe.** If `pinned_topic` is missing or isn't a real `sources_key`, the planner logs an error and falls back to `biohacker`, so a mistake can't stop your posts. If your fork has no `biohacker` topic either, it stops with a clear message telling you the valid keys. If no slot in `weekly_plan` names the pinned topic, you get a warning.
+- **Fewer posts, same order:** `post_every_n_days: 2` makes ONE post every other day, walking the same sequence the weekly plan produces (same topics, same order), at that day's normal weekday or weekend window. `1` (or leaving it out) = the weekly plan day by day. A bad value is logged and treated as `1`.
 - Times are when **drafts** get made. Nothing is posted until you approve it.
 
 ---

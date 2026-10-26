@@ -11,7 +11,7 @@
 
 ---
 
-I built this for myself. Every week it reads podcasts, blogs, market data, my own git log and my coding stats, writes **9 posts in my voice**, designs the image, and waits for one tap on my phone. Then it publishes to **LinkedIn and X**. It has been live since June 2026.
+I built this for myself. Every week it reads podcasts, blogs, market data, my own git log and my coding stats, writes **a post every other day in my voice**, designs the image, and waits for one tap on my phone. Then it publishes to **LinkedIn and X**. It has been live since June 2026.
 
 **This repo is a working example, not a template to copy.** My topics, sources and writing style are mine. What's reusable is the **pattern**, and the guide shows how to rebuild it around your own topics, your own data and your own voice:
 
@@ -88,11 +88,11 @@ Then follow **[BUILD_YOUR_OWN.md](docs/BUILD_YOUR_OWN.md)** to swap in your topi
 This is how I configured it. Use it as a reference for what a finished setup looks like.
 
 <details>
-<summary><b>7 topics, 9 posts a week, and where each one gets its material</b></summary>
+<summary><b>7 topics, one post every other day, and where each one gets its material</b></summary>
 
 | Topic | Primary source | Fallback | Image |
 |---|---|---|---|
-| **Biohacker** (3x/week) | Podcast episodes, transcribed and distilled: *The Human Upgrade* (Dave Asprey), *Paul Saladino MD*, *The Ultimate Human* (Gary Brecka) | 18 RSS feeds | Insight card |
+| **Biohacker** (3 of every 9 posts) | Podcast episodes, transcribed and distilled: *The Human Upgrade* (Dave Asprey), *Paul Saladino MD*, *The Ultimate Human* (Gary Brecka) | 18 RSS feeds | Insight card |
 | **AI News** | Weekly *Moonshots with Peter Diamandis* episode, read for news | 27 RSS feeds (OpenAI, DeepMind, NVIDIA, Hugging Face…) | Headline card |
 | **Tech Talk** | Same episode, read for ideas worth a senior opinion | 23 RSS feeds (Pragmatic Engineer, Latent Space, Martin Fowler…) | Insight card |
 | **Market Pulse** | Real index data from yfinance. The chart symbols are picked from the week's market podcasts | — | ECharts market card |
@@ -100,7 +100,7 @@ This is how I configured it. Use it as a reference for what a finished setup loo
 | **My Agent Build** | My real git log: commits grouped by feature, real +/- lines | — | Git card |
 | **Building in Public** | My real coding week from DevTrack-AI / WakaTime: hours, languages, AI usage, momentum | — | Stat card |
 
-**Schedule (Chicago time):** Biohacker is pinned to Sun 10am, Wed 7am and Fri 3pm. The other 6 topics rotate through Sun evening, Mon–Thu afternoons and Sat midday, and shift by one slot each week. The exact minute is random inside each window.
+**Schedule (Chicago time):** one post every other day (`post_every_n_days: 2`), 3–5pm on weekdays and 11am–1pm on weekends, at a random minute. The order comes from a 9-slot weekly plan where Biohacker owns 3 slots and the other 6 topics rotate and shift by one slot each week. Set `post_every_n_days: 1` and that same plan runs day by day, 9 posts a week.
 
 </details>
 

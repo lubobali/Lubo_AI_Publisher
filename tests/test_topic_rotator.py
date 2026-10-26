@@ -14,6 +14,24 @@ from src.topic_rotator import (
     load_topic_categories,
 )
 
+
+def _with_cadence(monkeypatch, every_n_days):
+    """Real schedule.yaml, with post_every_n_days set (or removed when None)."""
+    cfg = load_schedule_config()
+    if every_n_days is None:
+        cfg.pop("post_every_n_days", None)
+    else:
+        cfg["post_every_n_days"] = every_n_days
+    monkeypatch.setattr("src.topic_rotator.load_schedule_config", lambda: cfg)
+    return cfg
+
+
+@pytest.fixture
+def daily(monkeypatch):
+    """Pin the daily cadence: these tests check the 9-slot weekly plan, day by day."""
+    _with_cadence(monkeypatch, 1)
+
+
 # ---------------------------------------------------------------------------
 # Topic loading
 # ---------------------------------------------------------------------------
@@ -65,6 +83,7 @@ class TestWeekNumber:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("daily")
 class TestGetTodaysTopic:
     """get_todays_topic = the day's PRIMARY (first) topic (thin accessor over the plan)."""
 
@@ -99,6 +118,7 @@ class TestGetTodaysTopic:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("daily")
 class TestWeeklyPlan:
     SUNDAY = date(2026, 3, 22)
 
@@ -345,3 +365,89 @@ class TestGetRandomPostTime:
         # A weekday date but an explicit window -> uses that window, not weekday 15-17
         t = get_random_post_time(date(2026, 3, 23), window=window)
         assert lo <= t.hour < hi
+
+
+# ---------------------------------------------------------------------------
+# Cadence — post_every_n_days (Oct 2026: one post every other day)
+# ---------------------------------------------------------------------------
+
+
+def _flat(week):
+    """The week's posts in posting order (Sun -> Sat, slot order), as comparable tuples."""
+    return [
+        (p["topic"]["sources_key"], p["window"], p["show_offset"])
+        for posts in get_week_plan(week).values()
+        for p in posts
+    ]
+
+
+def _as_tuples(posts):
+    return [(p["topic"]["sources_key"], p["window"], p["show_offset"]) for p in posts]
+
+
+def _no_window(items):
+    return [(key, offset) for key, _window, offset in items]
+
+
+class TestEveryOtherDay:
+    """Same topics, same order as the 9-slot weekly plan, but ONE post every N days."""
+
+    START = date(2026, 10, 25)  # any date; tests walk forward from it
+
+    def _posting_days(self, days):
+        return [self.START + timedelta(days=i) for i in range(days) if get_todays_posts(self.START + timedelta(days=i))]
+
+    def test_schedule_yaml_is_every_other_day(self):
+        assert load_schedule_config()["post_every_n_days"] == 2
+
+    def test_alternates_post_day_and_off_day(self, monkeypatch):
+        _with_cadence(monkeypatch, 2)
+        counts = [len(get_todays_posts(self.START + timedelta(days=i))) for i in range(28)]
+        assert sorted(set(counts)) == [0, 1]
+        assert all(counts[i] != counts[i + 1] for i in range(27))  # strictly alternating
+        assert sum(counts) == 14
+
+    def test_posts_walk_the_weekly_sequence_in_order(self, monkeypatch):
+        _with_cadence(monkeypatch, 2)
+        posts = []
+        for d in (self.START + timedelta(days=i) for i in range(80)):
+            posts += _no_window(_as_tuples(get_todays_posts(d)))
+        seq = [item for w in range(0, 200) for item in _no_window(_flat(w))]
+        # the 40 posts are 40 CONSECUTIVE items of the daily sequence
+        start = next(i for i in range(len(seq) - 40) if seq[i : i + 40] == posts)
+        assert seq[start : start + 40] == posts
+
+    def test_window_follows_the_posting_day(self, monkeypatch):
+        """Each post has its own day, so it uses that day's normal window (not the old slot's
+        6am / evening / weekend window carried over from the daily plan)."""
+        _with_cadence(monkeypatch, 2)
+        for d in (self.START + timedelta(days=i) for i in range(28)):
+            for p in get_todays_posts(d):
+                assert p["window"] == ("weekend" if d.weekday() >= 5 else "weekday")
+
+    def test_biohacker_still_three_of_every_nine(self, monkeypatch):
+        _with_cadence(monkeypatch, 2)
+        keys = [p["topic"]["sources_key"] for i in range(180) for p in get_todays_posts(self.START + timedelta(days=i))]
+        assert len(keys) == 90
+        assert keys.count("biohacker") == 30
+
+    def test_every_topic_still_posts(self, monkeypatch):
+        _with_cadence(monkeypatch, 2)
+        keys = {p["topic"]["sources_key"] for i in range(36) for p in get_todays_posts(self.START + timedelta(days=i))}
+        assert keys == {c["sources_key"] for c in load_topic_categories()}
+
+    def test_missing_setting_means_daily(self, monkeypatch):
+        _with_cadence(monkeypatch, 1)
+        daily_posts = [get_todays_posts(self.START + timedelta(days=i)) for i in range(14)]
+        _with_cadence(monkeypatch, None)
+        assert [get_todays_posts(self.START + timedelta(days=i)) for i in range(14)] == daily_posts
+
+    @pytest.mark.parametrize("bad", [0, -2, "two"])
+    def test_invalid_setting_falls_back_to_daily(self, monkeypatch, caplog, bad):
+        _with_cadence(monkeypatch, 1)
+        daily_posts = [get_todays_posts(self.START + timedelta(days=i)) for i in range(7)]
+        _with_cadence(monkeypatch, bad)
+        with caplog.at_level("ERROR", logger="src.topic_rotator"):
+            got = [get_todays_posts(self.START + timedelta(days=i)) for i in range(7)]
+        assert got == daily_posts
+        assert "post_every_n_days" in caplog.text

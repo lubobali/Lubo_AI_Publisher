@@ -128,11 +128,47 @@ def get_week_plan(week: int) -> dict[str, list[dict]]:
     return plan
 
 
+def _post_every_n_days(schedule: dict) -> int:
+    """schedule.yaml `post_every_n_days` (default 1 = the daily weekly plan).
+
+    Anything that is not a positive int is logged and treated as 1, so a YAML typo
+    can never stop the planner.
+    """
+    n = schedule.get("post_every_n_days", 1)
+    if isinstance(n, bool) or not isinstance(n, int) or n < 1:
+        logger.error("schedule.yaml post_every_n_days %r is not a positive whole number — posting daily", n)
+        return 1
+    return n
+
+
+def _flat_week(week: int) -> list[dict]:
+    """The week's posts in posting order (Sun -> Sat, then slot order)."""
+    return [post for posts in get_week_plan(week).values() for post in posts]
+
+
 def get_todays_posts(d: date) -> list[dict]:
-    """Today's scheduled posts: a list of {topic, window, show_offset} (1 or 2 entries)."""
-    week = get_week_number(d)
-    weekday = (d.weekday() + 1) % 7  # Sun=0, Mon=1, ..., Sat=6
-    return get_week_plan(week)[WEEKDAY_NAMES[weekday]]
+    """Today's scheduled posts: a list of {topic, window, show_offset}.
+
+    Daily (post_every_n_days: 1): the day's slots from the weekly plan (1 or 2 entries).
+    Every N days: ONE post on every Nth day (counted from the epoch), walking the SAME
+    sequence the daily plan produces — same topics, same order — just spread out. Each
+    post uses its own day's normal window (weekday / weekend), not the slot's old one.
+    Off days return [].
+    """
+    n = _post_every_n_days(load_schedule_config())
+    if n == 1:
+        week = get_week_number(d)
+        weekday = (d.weekday() + 1) % 7  # Sun=0, Mon=1, ..., Sat=6
+        return get_week_plan(week)[WEEKDAY_NAMES[weekday]]
+
+    days = (d - _EPOCH).days
+    if days % n:
+        return []
+    k = days // n  # k-th post of the sequence
+    per_week = len(_flat_week(0))
+    post = dict(_flat_week(k // per_week)[k % per_week])
+    post["window"] = "weekend" if d.weekday() >= 5 else "weekday"
+    return [post]
 
 
 def get_random_post_time(

@@ -26,6 +26,11 @@ posting_windows:
     start_hour: 19  # Sunday 2nd post (8h+ after the morning biohacker)
     end_hour: 21    # through 8:59 PM CT
 
+# Cadence: 1 = the weekly plan below, day by day (9 posts/week).
+# 2 = ONE post every other day, walking the same posts in the same order (~3-4/week).
+# Not a positive whole number -> treated as 1.
+post_every_n_days: 2
+
 # The pinned topic owns fixed slots every week; every other topic rotates.
 # Must be a sources_key from topics.yaml. Missing/unknown -> falls back to biohacker.
 pinned_topic: biohacker
