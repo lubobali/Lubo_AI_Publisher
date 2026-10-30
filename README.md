@@ -118,7 +118,7 @@ Pipeline: pypdf → clean → ~400-word chunks (50 overlap, sentence-aware) → 
 
 ```
 publisher-web     uvicorn: dashboard + REST API (127.0.0.1:8100, behind nginx + Let's Encrypt)
-publisher-worker  APScheduler: daily_planner 00:01 · publish_approved every 5 min · nightly_backup 04:00
+publisher-worker  APScheduler: daily_planner 00:01 · publish_approved every 5 min · weekly_backup Sun 04:00
 publisher-db      PostgreSQL 16: posts, knowledge base, transcripts, short links (8 tables)
 ```
 

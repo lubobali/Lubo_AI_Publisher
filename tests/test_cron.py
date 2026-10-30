@@ -14,6 +14,17 @@ def test_build_scheduler_registers_planner_and_publish():
     assert triggers.get("publish_approved") == "interval"
 
 
+def test_backup_runs_weekly_on_sunday():
+    with patch.object(cron.BlockingScheduler, "add_job") as mock_add:
+        cron.build_scheduler()
+    jobs = {c.kwargs.get("id"): c for c in mock_add.call_args_list}
+    assert "nightly_backup" not in jobs
+    weekly = jobs["weekly_backup"]
+    assert weekly.args[1] == "cron"
+    assert weekly.kwargs["day_of_week"] == "sun"
+    assert (weekly.kwargs["hour"], weekly.kwargs["minute"]) == (4, 0)
+
+
 def _bio_post():
     return {"topic": {"name": "Biohacker", "sources_key": "biohacker"}, "window": "morning", "show_offset": 1}
 

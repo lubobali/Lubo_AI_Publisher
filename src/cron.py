@@ -238,15 +238,11 @@ def _run_publish() -> None:
 
 
 def _run_backup() -> None:
-    """Nightly backup to Backblaze B2 (DB dump + new published posts). No-op if B2 unconfigured."""
-
-    session = SessionLocal()
+    """Weekly backup to Backblaze B2 (DB dump, skipped when unchanged). No-op if B2 unconfigured."""
     try:
-        run_backup(session)
+        run_backup()
     except Exception:
-        logger.exception("Nightly backup failed")
-    finally:
-        session.close()
+        logger.exception("Weekly backup failed")
 
 
 def _plan_today_times(posts: list[dict], now: datetime) -> list[datetime]:
@@ -304,7 +300,7 @@ def build_scheduler() -> BlockingScheduler:
     sched = BlockingScheduler(timezone=TIMEZONE)
     sched.add_job(lambda: _schedule_todays_posts(sched), "cron", hour=0, minute=1, id="daily_planner")
     sched.add_job(_run_publish, "interval", minutes=PUBLISH_INTERVAL_MIN, id="publish_approved")
-    sched.add_job(_run_backup, "cron", hour=4, minute=0, id="nightly_backup")
+    sched.add_job(_run_backup, "cron", day_of_week="sun", hour=4, minute=0, id="weekly_backup")
     return sched
 
 

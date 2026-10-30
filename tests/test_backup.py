@@ -2,26 +2,22 @@
 
 External boundary (boto3 S3 client + the pg_dump subprocess) is MOCKED via a fake client
 and monkeypatched _dump_database. The real logic under test: enable-gating, region parsing,
-post serialization, object-key naming, image handling, and retention math.
+the dump fingerprint, skip-when-unchanged, object-key naming, and keep-newest-N pruning.
 """
 
-import json
+import gzip
 from datetime import UTC, datetime, timedelta
-from unittest.mock import mock_open, patch
 
 from src import backup
-from src.models import PublisherPost
 
 
 class _FakeClient:
     """Captures S3 calls so tests can assert on keys/bodies without touching the network."""
 
-    def __init__(self, listing=None, pages=None):
+    def __init__(self, listing=None):
         self.puts = []
         self.deletes = []
         self._listing = listing or []
-        self._pages = pages  # list of listings; served one per call via ContinuationToken
-        self.list_calls = []
 
     def put_object(self, **kw):
         self.puts.append(kw)
@@ -30,48 +26,7 @@ class _FakeClient:
         self.deletes.append(kw)
 
     def list_objects_v2(self, **kw):
-        self.list_calls.append(kw)
-        if self._pages is None:
-            return {"Contents": [o for o in self._listing if o["Key"].startswith(kw.get("Prefix", ""))]}
-        i = int(kw.get("ContinuationToken", "0"))
-        resp = {"Contents": self._pages[i]}
-        if i + 1 < len(self._pages):
-            resp["IsTruncated"] = True
-            resp["NextContinuationToken"] = str(i + 1)
-        return resp
-
-
-class _FakeSession:
-    def __init__(self, items):
-        self._items = items
-
-    def query(self, _model):
-        return self
-
-    def all(self):
-        return self._items
-
-
-def _post(**over):
-    defaults = dict(
-        id=7,
-        posted_at=datetime(2026, 6, 26, 20, 0, tzinfo=UTC),
-        topic_category="ai_news",
-        topic_title="How agents are transforming work",
-        source_url="https://openai.com/index/x",
-        post_text="some post body",
-        image_path=None,
-        hashtags=["AI", "Agents"],
-        linkedin_post_urn="urn:li:share:1",
-        posting_time_ct="15:30",
-        day_of_week="Friday",
-        status="published",
-        langfuse_trace_id=None,
-        created_at=datetime(2026, 6, 26, 19, 0, tzinfo=UTC),
-        post_embedding=[0.1, 0.2, 0.3],
-    )
-    defaults.update(over)
-    return PublisherPost(**defaults)
+        return {"Contents": [o for o in self._listing if o["Key"].startswith(kw.get("Prefix", ""))]}
 
 
 _ALL_B2 = {
@@ -80,6 +35,9 @@ _ALL_B2 = {
     "B2_ENDPOINT": "https://s3.us-east-005.backblazeb2.com",
     "B2_BUCKET": "lubo-publisher",
 }
+
+_NOW = datetime(2026, 11, 1, 9, 0, 0, tzinfo=UTC)
+_DUMP = b"--\n\\restrict abc123\nCREATE TABLE t (id int);\nCOPY t FROM stdin;\n1\n\\.\n\\unrestrict abc123\n"
 
 
 class TestEnabledAndRegion:
@@ -98,124 +56,89 @@ class TestEnabledAndRegion:
         assert backup._region_from_endpoint("https://s3.eu-central-003.backblazeb2.com") == "eu-central-003"
 
 
-class TestPostSerialization:
-    def test_serializes_fields_and_iso_dates(self):
-        d = backup.post_to_dict(_post())
-        assert d["id"] == 7
-        assert d["topic_category"] == "ai_news"
-        assert d["posted_at"] == "2026-06-26T20:00:00+00:00"  # datetime -> ISO
-        assert d["hashtags"] == ["AI", "Agents"]
-        assert "post_embedding" not in d  # the big vector is omitted from the readable archive
+class TestDumpFingerprint:
+    def test_ignores_pg_dump_random_restrict_key(self):
+        # pg_dump 17 writes a new random \restrict key into every dump, so the same DB
+        # would otherwise never look unchanged.
+        other_key = _DUMP.replace(b"abc123", b"zzz999")
+        assert backup.dump_fingerprint(_DUMP) == backup.dump_fingerprint(other_key)
 
-    def test_handles_empty_hashtags(self):
-        assert backup.post_to_dict(_post(hashtags=None))["hashtags"] == []
+    def test_changes_when_data_changes(self):
+        changed = _DUMP.replace(b"1\n\\.", b"2\n\\.")
+        assert backup.dump_fingerprint(_DUMP) != backup.dump_fingerprint(changed)
 
 
 class TestBackupDatabase:
-    def test_uploads_gzip_dump_with_dated_key(self, monkeypatch):
+    def test_uploads_gzip_dump_with_dated_fingerprint_key(self, monkeypatch):
         monkeypatch.setenv("B2_BUCKET", "lubo-publisher")
-        monkeypatch.setattr(backup, "_dump_database", lambda: b"GZIP-BYTES")
+        monkeypatch.setattr(backup, "_dump_database", lambda: _DUMP)
         client = _FakeClient()
-        key = backup.backup_database(client, now=datetime(2026, 6, 26, 4, 0, 0, tzinfo=UTC))
-        assert key == "db-dumps/publisher-20260626-040000.sql.gz"
+        key = backup.backup_database(client, now=_NOW)
+        fp = backup.dump_fingerprint(_DUMP)
+        assert key == f"db-dumps/publisher-20261101-090000-{fp}.sql.gz"
         assert client.puts[0]["Key"] == key
-        assert client.puts[0]["Body"] == b"GZIP-BYTES"
         assert client.puts[0]["Bucket"] == "lubo-publisher"
+        assert gzip.decompress(client.puts[0]["Body"]) == _DUMP
 
-
-class TestArchivePost:
-    def test_uploads_json_only_when_no_image(self, monkeypatch):
+    def test_skips_upload_when_newest_dump_is_unchanged(self, monkeypatch):
         monkeypatch.setenv("B2_BUCKET", "lubo-publisher")
-        client = _FakeClient()
-        n = backup.archive_post(_post(image_path=None), client)
-        assert n == 1
-        assert client.puts[0]["Key"] == "posts/7/post.json"
-        assert client.puts[0]["ContentType"] == "application/json"
-        body = json.loads(client.puts[0]["Body"].decode())
-        assert body["topic_title"] == "How agents are transforming work"
-
-    def test_uploads_image_when_file_exists(self, monkeypatch):
-        monkeypatch.setenv("B2_BUCKET", "lubo-publisher")
-        monkeypatch.setattr(backup.os.path, "exists", lambda _p: True)
-        client = _FakeClient()
-        with patch("builtins.open", mock_open(read_data=b"PNGDATA")):
-            n = backup.archive_post(_post(image_path="/app/screenshots/abc.png"), client)
-        assert n == 2
-        keys = [p["Key"] for p in client.puts]
-        assert "posts/7/post.json" in keys
-        assert "posts/7/abc.png" in keys
-
-    def test_skips_image_when_file_missing(self, monkeypatch):
-        monkeypatch.setenv("B2_BUCKET", "lubo-publisher")
-        monkeypatch.setattr(backup.os.path, "exists", lambda _p: False)
-        client = _FakeClient()
-        n = backup.archive_post(_post(image_path="/app/screenshots/missing.png"), client)
-        assert n == 1  # only the json
-
-
-class TestArchivedPostIds:
-    def test_collects_ids_across_all_pages(self, monkeypatch):
-        monkeypatch.setenv("B2_BUCKET", "lubo-publisher")
-        pages = [
-            [{"Key": "posts/1/post.json"}, {"Key": "posts/1/card.png"}],
-            [{"Key": "posts/2/post.json"}, {"Key": "posts/notanid/post.json"}],
+        monkeypatch.setattr(backup, "_dump_database", lambda: _DUMP)
+        fp = backup.dump_fingerprint(_DUMP)
+        listing = [
+            {"Key": "db-dumps/publisher-20261018-090000-aaaa.sql.gz", "LastModified": _NOW - timedelta(days=14)},
+            {"Key": f"db-dumps/publisher-20261025-090000-{fp}.sql.gz", "LastModified": _NOW - timedelta(days=7)},
         ]
-        client = _FakeClient(pages=pages)
-        assert backup._archived_post_ids(client) == {1, 2}
-        assert len(client.list_calls) == 2
-        assert client.list_calls[0]["Prefix"] == "posts/"
-
-
-class TestArchivePosts:
-    def test_archives_new_published_posts(self, monkeypatch):
-        monkeypatch.setenv("B2_BUCKET", "lubo-publisher")
-        session = _FakeSession([_post(id=1), _post(id=2)])
-        client = _FakeClient()
-        total = backup.archive_posts(session, client)
-        assert total == 2
-        assert {p["Key"] for p in client.puts} == {"posts/1/post.json", "posts/2/post.json"}
-
-    def test_skips_posts_already_in_b2(self, monkeypatch):
-        # Re-uploading every post nightly stacked versions and filled the free 10 GB.
-        monkeypatch.setenv("B2_BUCKET", "lubo-publisher")
-        session = _FakeSession([_post(id=1), _post(id=2)])
-        client = _FakeClient(listing=[{"Key": "posts/1/post.json"}])
-        total = backup.archive_posts(session, client)
-        assert total == 1
-        assert [p["Key"] for p in client.puts] == ["posts/2/post.json"]
-
-    def test_skips_unpublished_posts(self, monkeypatch):
-        # pending/approved/rejected still change or get dropped; the nightly DB dump covers them.
-        monkeypatch.setenv("B2_BUCKET", "lubo-publisher")
-        session = _FakeSession(
-            [_post(id=1, status="pending"), _post(id=2, status="approved"), _post(id=3, status="rejected")]
-        )
-        client = _FakeClient()
-        assert backup.archive_posts(session, client) == 0
+        client = _FakeClient(listing=listing)
+        assert backup.backup_database(client, now=_NOW) is None
         assert client.puts == []
+
+    def test_uploads_when_only_an_older_dump_matches(self, monkeypatch):
+        # Data went A -> B -> back to A: the newest dump (B) differs, so A is uploaded again.
+        monkeypatch.setenv("B2_BUCKET", "lubo-publisher")
+        monkeypatch.setattr(backup, "_dump_database", lambda: _DUMP)
+        fp = backup.dump_fingerprint(_DUMP)
+        listing = [
+            {"Key": f"db-dumps/publisher-20261018-090000-{fp}.sql.gz", "LastModified": _NOW - timedelta(days=14)},
+            {"Key": "db-dumps/publisher-20261025-090000-bbbb.sql.gz", "LastModified": _NOW - timedelta(days=7)},
+        ]
+        client = _FakeClient(listing=listing)
+        assert backup.backup_database(client, now=_NOW) is not None
+        assert len(client.puts) == 1
 
 
 class TestPruneOldDumps:
-    def test_deletes_only_dumps_past_retention(self, monkeypatch):
+    def test_keeps_only_newest_n_dumps(self, monkeypatch):
         monkeypatch.setenv("B2_BUCKET", "lubo-publisher")
-        now = datetime(2026, 6, 26, tzinfo=UTC)
-        listing = [
-            {"Key": "db-dumps/old.sql.gz", "LastModified": now - timedelta(days=40)},
-            {"Key": "db-dumps/recent.sql.gz", "LastModified": now - timedelta(days=5)},
-        ]
+        listing = [{"Key": f"db-dumps/d{i}.sql.gz", "LastModified": _NOW - timedelta(days=7 * i)} for i in range(6)]
         client = _FakeClient(listing=listing)
-        deleted = backup.prune_old_dumps(client, retention_days=30, now=now)
-        assert deleted == 1
-        assert client.deletes == [{"Bucket": "lubo-publisher", "Key": "db-dumps/old.sql.gz"}]
+        deleted = backup.prune_old_dumps(client, keep=4)
+        assert deleted == 2
+        assert {d["Key"] for d in client.deletes} == {"db-dumps/d4.sql.gz", "db-dumps/d5.sql.gz"}
 
+    def test_never_deletes_when_at_or_under_keep(self, monkeypatch):
+        # Count-based (not age-based): a quiet month with skipped uploads must not
+        # age out the only backup.
+        monkeypatch.setenv("B2_BUCKET", "lubo-publisher")
+        listing = [{"Key": "db-dumps/only.sql.gz", "LastModified": _NOW - timedelta(days=365)}]
+        client = _FakeClient(listing=listing)
+        assert backup.prune_old_dumps(client, keep=4) == 0
+        assert client.deletes == []
 
-class TestRetentionDefault:
-    def test_keeps_one_week_of_dumps_by_default(self):
-        assert backup.DEFAULT_RETENTION_DAYS == 7
+    def test_default_keeps_four_weekly_dumps(self):
+        assert backup.DEFAULT_KEEP_DUMPS == 4
 
 
 class TestRunBackup:
     def test_skips_when_not_configured(self, monkeypatch):
         for k in _ALL_B2:
             monkeypatch.delenv(k, raising=False)
-        assert backup.run_backup(_FakeSession([])) is False
+        assert backup.run_backup() is False
+
+    def test_uploads_only_the_db_dump(self, monkeypatch):
+        for k, v in _ALL_B2.items():
+            monkeypatch.setenv(k, v)
+        monkeypatch.setattr(backup, "_dump_database", lambda: _DUMP)
+        client = _FakeClient()
+        monkeypatch.setattr(backup, "get_client", lambda: client)
+        assert backup.run_backup() is True
+        assert [p["Key"].startswith("db-dumps/") for p in client.puts] == [True]

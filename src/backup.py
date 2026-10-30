@@ -1,33 +1,34 @@
 """Backblaze B2 backups (S3-compatible API).
 
-Two off-site layers to a private B2 bucket:
+One off-site layer to a private B2 bucket, run weekly:
   - backup_database(): pg_dump the whole DB -> gzip -> db-dumps/  (full restore: posts + KB)
-  - archive_posts():   each published post -> posts/<id>/post.json (+ its screenshot), uploaded
-                       ONCE (posts already in B2 are skipped, so nightly runs add only new posts)
-plus prune_old_dumps() retention for the rolling daily dumps (default 7 days).
+    IDEMPOTENT: the key carries a fingerprint of the dump; when the newest dump in B2 has
+    the same fingerprint, nothing changed and nothing is uploaded.
+  - prune_old_dumps(): keep only the newest DEFAULT_KEEP_DUMPS dumps (by count, not age, so
+    weeks of skipped uploads never age out the only backup).
 
 NON-FATAL: if B2 is not configured (B2_* env missing), run_backup() is a logged no-op and
 never crashes the worker. The external boundary (boto3 S3 client + the pg_dump subprocess)
-is mocked in tests; the key naming, JSON serialization and retention math are real.
+is mocked in tests; the fingerprint, key naming, skip logic and pruning are real.
 """
 
 from __future__ import annotations
 
 import gzip
-import json
+import hashlib
 import logging
 import os
+import re
 import subprocess
-from datetime import UTC, datetime, timedelta
-
-from src.models import PublisherPost
+from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
 
 DB_DUMP_PREFIX = "db-dumps/"
-POSTS_PREFIX = "posts/"
-DEFAULT_RETENTION_DAYS = int(os.getenv("B2_DUMP_RETENTION_DAYS", "7"))
+DEFAULT_KEEP_DUMPS = int(os.getenv("B2_DUMP_KEEP", "4"))
 _REQUIRED = ("B2_KEY_ID", "B2_APP_KEY", "B2_ENDPOINT", "B2_BUCKET")
+# pg_dump 17 wraps every dump in "\restrict <random key>" / "\unrestrict <key>" lines.
+_RESTRICT_LINE = re.compile(rb"^\\(?:un)?restrict [^\n]*\n?", re.MULTILINE)
 
 
 def b2_enabled() -> bool:
@@ -56,136 +57,70 @@ def get_client():
 
 
 def _dump_database() -> bytes:
-    """pg_dump the DB at DATABASE_URL, gzip-compressed. Raises CalledProcessError on failure."""
+    """pg_dump the DB at DATABASE_URL (plain SQL). Raises CalledProcessError on failure."""
     url = os.environ["DATABASE_URL"]
     proc = subprocess.run(
         ["pg_dump", "--no-owner", "--no-privileges", url],
         capture_output=True,
         check=True,
     )
-    return gzip.compress(proc.stdout)
+    return proc.stdout
 
 
-def backup_database(client=None, *, now: datetime | None = None) -> str:
-    """Dump the whole DB and upload it to db-dumps/. Returns the object key."""
+def dump_fingerprint(dump: bytes) -> str:
+    """Short content hash of a plain pg_dump, ignoring its random \\restrict key lines.
+
+    >>> a = b"\\\\restrict k1\\nCOPY t;\\n\\\\unrestrict k1\\n"
+    >>> dump_fingerprint(a) == dump_fingerprint(a.replace(b"k1", b"k2"))
+    True
+    """
+    return hashlib.sha256(_RESTRICT_LINE.sub(b"", dump)).hexdigest()[:16]
+
+
+def _list_dumps(client) -> list[dict]:
+    """db-dumps/ objects, newest first (by LastModified)."""
+    resp = client.list_objects_v2(Bucket=os.environ["B2_BUCKET"], Prefix=DB_DUMP_PREFIX)
+    return sorted(resp.get("Contents", []), key=lambda o: o["LastModified"], reverse=True)
+
+
+def backup_database(client=None, *, now: datetime | None = None) -> str | None:
+    """Dump the whole DB and upload it to db-dumps/, unless the newest dump is identical.
+
+    Returns the new object key, or None when nothing changed since the newest dump.
+    """
     client = client or get_client()
     now = now or datetime.now(UTC)
-    key = f"{DB_DUMP_PREFIX}publisher-{now:%Y%m%d-%H%M%S}.sql.gz"
-    client.put_object(Bucket=os.environ["B2_BUCKET"], Key=key, Body=_dump_database())
+    dump = _dump_database()
+    fp = dump_fingerprint(dump)
+    dumps = _list_dumps(client)
+    if dumps and dumps[0]["Key"].endswith(f"-{fp}.sql.gz"):
+        logger.info("DB unchanged since %s — skipping B2 upload", dumps[0]["Key"])
+        return None
+    key = f"{DB_DUMP_PREFIX}publisher-{now:%Y%m%d-%H%M%S}-{fp}.sql.gz"
+    client.put_object(Bucket=os.environ["B2_BUCKET"], Key=key, Body=gzip.compress(dump))
     logger.info("DB backup uploaded to B2: %s", key)
     return key
 
 
-def post_to_dict(post: PublisherPost) -> dict:
-    """Serialize a post to a plain dict for the readable archive (omits the big embedding)."""
-
-    def _dt(v):
-        return v.isoformat() if hasattr(v, "isoformat") else v
-
-    return {
-        "id": post.id,
-        "posted_at": _dt(post.posted_at),
-        "topic_category": post.topic_category,
-        "topic_title": post.topic_title,
-        "source_url": post.source_url,
-        "post_text": post.post_text,
-        "image_path": post.image_path,
-        "hashtags": list(post.hashtags) if post.hashtags else [],
-        "linkedin_post_urn": post.linkedin_post_urn,
-        "posting_time_ct": post.posting_time_ct,
-        "day_of_week": post.day_of_week,
-        "status": post.status,
-        "langfuse_trace_id": post.langfuse_trace_id,
-        "created_at": _dt(post.created_at),
-    }
-
-
-def archive_post(post: PublisherPost, client=None) -> int:
-    """Upload one post's JSON (+ its screenshot if the file exists). Returns # objects uploaded."""
+def prune_old_dumps(client=None, *, keep: int = DEFAULT_KEEP_DUMPS) -> int:
+    """Delete all but the newest `keep` dumps. Returns # deleted."""
     client = client or get_client()
     bucket = os.environ["B2_BUCKET"]
-    client.put_object(
-        Bucket=bucket,
-        Key=f"{POSTS_PREFIX}{post.id}/post.json",
-        Body=json.dumps(post_to_dict(post), indent=2, ensure_ascii=False).encode("utf-8"),
-        ContentType="application/json",
-    )
-    uploaded = 1
-    img = post.image_path
-    if img and os.path.exists(img):
-        with open(img, "rb") as f:
-            client.put_object(
-                Bucket=bucket,
-                Key=f"{POSTS_PREFIX}{post.id}/{os.path.basename(img)}",
-                Body=f.read(),
-                ContentType="image/png",
-            )
-        uploaded += 1
-    return uploaded
-
-
-def _archived_post_ids(client) -> set[int]:
-    """Ids of posts that already have a posts/<id>/post.json in B2 (follows every listing page)."""
-    bucket = os.environ["B2_BUCKET"]
-    ids: set[int] = set()
-    kwargs = {"Bucket": bucket, "Prefix": POSTS_PREFIX}
-    while True:
-        resp = client.list_objects_v2(**kwargs)
-        for obj in resp.get("Contents", []):
-            parts = obj["Key"][len(POSTS_PREFIX) :].split("/")
-            if len(parts) == 2 and parts[1] == "post.json" and parts[0].isdigit():
-                ids.add(int(parts[0]))
-        if not resp.get("IsTruncated"):
-            return ids
-        kwargs["ContinuationToken"] = resp["NextContinuationToken"]
-
-
-def archive_posts(session, client=None) -> int:
-    """Archive published posts not yet in B2 (one failure does not abort the rest). Returns # objects.
-
-    Each post is uploaded once: re-uploading every post nightly stacked a new version of every
-    file each night and filled the free 10 GB. Unpublished posts still change or get dropped;
-    the nightly DB dump covers them.
-    """
-    client = client or get_client()
-    done = _archived_post_ids(client)
-    total = 0
-    for post in session.query(PublisherPost).all():
-        if post.status != "published" or post.id in done:
-            continue
-        try:
-            total += archive_post(post, client)
-        except Exception:
-            logger.exception("Failed to archive post %s", getattr(post, "id", "?"))
-    logger.info("Archived posts to B2 (%d objects)", total)
-    return total
-
-
-def prune_old_dumps(client=None, *, retention_days: int = DEFAULT_RETENTION_DAYS, now: datetime | None = None) -> int:
-    """Delete db-dumps older than retention_days (by LastModified). Returns # deleted."""
-    client = client or get_client()
-    bucket = os.environ["B2_BUCKET"]
-    now = now or datetime.now(UTC)
-    cutoff = now - timedelta(days=retention_days)
-    resp = client.list_objects_v2(Bucket=bucket, Prefix=DB_DUMP_PREFIX)
     deleted = 0
-    for obj in resp.get("Contents", []):
-        last_modified = obj.get("LastModified")
-        if last_modified and last_modified < cutoff:
-            client.delete_object(Bucket=bucket, Key=obj["Key"])
-            deleted += 1
+    for obj in _list_dumps(client)[keep:]:
+        client.delete_object(Bucket=bucket, Key=obj["Key"])
+        deleted += 1
     if deleted:
-        logger.info("Pruned %d DB dumps older than %dd", deleted, retention_days)
+        logger.info("Pruned %d old DB dumps (keeping newest %d)", deleted, keep)
     return deleted
 
 
-def run_backup(session) -> bool:
-    """Full nightly backup: DB dump + new published posts + prune. No-op if B2 unconfigured."""
+def run_backup() -> bool:
+    """Weekly backup: DB dump (skipped when unchanged) + prune. No-op if B2 unconfigured."""
     if not b2_enabled():
         logger.info("B2 not configured (B2_* env missing) — skipping backup")
         return False
     client = get_client()
     backup_database(client)
-    archive_posts(session, client)
     prune_old_dumps(client)
     return True
