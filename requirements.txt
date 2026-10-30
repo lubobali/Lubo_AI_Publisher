@@ -33,9 +33,6 @@ yfinance==1.4.1
 # Scheduling
 apscheduler==3.11.0
 
-# Backups (Backblaze B2 — S3-compatible)
-boto3==1.43.36
-
 # X (Twitter) publishing
 tweepy==4.16.0
 

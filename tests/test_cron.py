@@ -14,15 +14,12 @@ def test_build_scheduler_registers_planner_and_publish():
     assert triggers.get("publish_approved") == "interval"
 
 
-def test_backup_runs_weekly_on_sunday():
+def test_no_backup_job():
+    # Off-site B2 backups were retired 2026-10-30 (nothing ever read them; code is on GitHub).
     with patch.object(cron.BlockingScheduler, "add_job") as mock_add:
         cron.build_scheduler()
-    jobs = {c.kwargs.get("id"): c for c in mock_add.call_args_list}
-    assert "nightly_backup" not in jobs
-    weekly = jobs["weekly_backup"]
-    assert weekly.args[1] == "cron"
-    assert weekly.kwargs["day_of_week"] == "sun"
-    assert (weekly.kwargs["hour"], weekly.kwargs["minute"]) == (4, 0)
+    ids = {c.kwargs.get("id") for c in mock_add.call_args_list}
+    assert ids == {"daily_planner", "publish_approved"}
 
 
 def _bio_post():

@@ -375,7 +375,7 @@ docker compose up -d --build
 - `deploy/publisher.lubot.ai.conf` is my nginx vhost. Use it as a template (reverse proxy to `127.0.0.1:8100` + Let's Encrypt).
 - **Protect the dashboard.** Anyone who can open it can publish as you. Put it behind auth (basic auth, Cloudflare Access, Tailscale…).
 - My worker mounts another repo read-only (`/srv/lubot-staging`) for the git/WakaTime topics. **Remove that volume** or point it at your own data.
-- Backups to Backblaze B2 switch on only if `B2_*` is set. Without it they're a no-op, so set up *some* backup. Your knowledge base takes hours to rebuild.
+- There is no built-in backup. If you care about the post history, back up the Postgres volume yourself. The knowledge base can be rebuilt from the books (it takes hours).
 - Never run the test suite against the production database. Tests use `publisher_test`, and `conftest.py` redirects any database whose name doesn't end in `_test`.
 
 ---

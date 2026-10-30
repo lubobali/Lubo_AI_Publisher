@@ -118,7 +118,7 @@ Pipeline: pypdf → clean → ~400-word chunks (50 overlap, sentence-aware) → 
 
 ```
 publisher-web     uvicorn: dashboard + REST API (127.0.0.1:8100, behind nginx + Let's Encrypt)
-publisher-worker  APScheduler: daily_planner 00:01 · publish_approved every 5 min · weekly_backup Sun 04:00
+publisher-worker  APScheduler: daily_planner 00:01 · publish_approved every 5 min
 publisher-db      PostgreSQL 16: posts, knowledge base, transcripts, short links (8 tables)
 ```
 
@@ -140,7 +140,7 @@ Docker Compose on a Hetzner box, Forgejo CI with a real Postgres service, mirror
 | App | Python 3.12, FastAPI, SQLAlchemy 2.0, PostgreSQL 16, APScheduler |
 | Publishing | LinkedIn REST API, X API (tweepy), UTM short links |
 | Observability | Langfuse traces + quality scores (optional) |
-| Ops | Docker Compose, nginx, Backblaze B2 backups, Forgejo CI |
+| Ops | Docker Compose, nginx, Forgejo CI |
 
 ---
 
@@ -150,7 +150,7 @@ Docker Compose on a Hetzner box, Forgejo CI with a real Postgres service, mirror
 config/                    ← start here: topics, sources, schedule, voice
 templates/voice_samples.txt  your real posts (style reference)
 src/
-  cron.py                  worker: planner, publisher loop, backups
+  cron.py                  worker: planner, publisher loop
   scheduler.py             the pipeline: Pipeline.generate_post() + publishing
   topic_rotator.py         weekly rotation
   scraper.py               RSS / HackerNews scraper + ranking
@@ -169,7 +169,7 @@ src/
   publisher.py             platform interface (LinkedIn, X, add your own)
   linkedin_client.py, x_client.py, shortlinks.py
   api.py                   FastAPI + dashboard
-  analytics_worker.py, backup.py, models.py, db.py, observability.py
+  analytics_worker.py, models.py, db.py, observability.py
 scripts/                   ingest_books, ingest_stock_feeds, test_pipeline, linkedin_auth, make_carousel
 static/                    dashboard.html, fonts, logo, vendored ECharts
 deploy/                    example nginx vhost

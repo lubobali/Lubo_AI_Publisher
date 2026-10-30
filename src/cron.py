@@ -20,7 +20,6 @@ from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 
-from src.backup import run_backup
 from src.db import SessionLocal
 from src.scheduler import (
     Pipeline,
@@ -237,14 +236,6 @@ def _run_publish() -> None:
     asyncio.run(_go())
 
 
-def _run_backup() -> None:
-    """Weekly backup to Backblaze B2 (DB dump, skipped when unchanged). No-op if B2 unconfigured."""
-    try:
-        run_backup()
-    except Exception:
-        logger.exception("Weekly backup failed")
-
-
 def _plan_today_times(posts: list[dict], now: datetime) -> list[datetime]:
     """Assign each of today's posts a datetime in its window, >= min gap apart.
 
@@ -300,7 +291,6 @@ def build_scheduler() -> BlockingScheduler:
     sched = BlockingScheduler(timezone=TIMEZONE)
     sched.add_job(lambda: _schedule_todays_posts(sched), "cron", hour=0, minute=1, id="daily_planner")
     sched.add_job(_run_publish, "interval", minutes=PUBLISH_INTERVAL_MIN, id="publish_approved")
-    sched.add_job(_run_backup, "cron", day_of_week="sun", hour=4, minute=0, id="weekly_backup")
     return sched
 
 
