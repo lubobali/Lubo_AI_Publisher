@@ -2,8 +2,9 @@
 
 Two off-site layers to a private B2 bucket:
   - backup_database(): pg_dump the whole DB -> gzip -> db-dumps/  (full restore: posts + KB)
-  - archive_posts():   each post -> posts/<id>/post.json (+ its screenshot)  (readable archive)
-plus prune_old_dumps() retention for the rolling daily dumps.
+  - archive_posts():   each published post -> posts/<id>/post.json (+ its screenshot), uploaded
+                       ONCE (posts already in B2 are skipped, so nightly runs add only new posts)
+plus prune_old_dumps() retention for the rolling daily dumps (default 7 days).
 
 NON-FATAL: if B2 is not configured (B2_* env missing), run_backup() is a logged no-op and
 never crashes the worker. The external boundary (boto3 S3 client + the pg_dump subprocess)
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 DB_DUMP_PREFIX = "db-dumps/"
 POSTS_PREFIX = "posts/"
-DEFAULT_RETENTION_DAYS = int(os.getenv("B2_DUMP_RETENTION_DAYS", "30"))
+DEFAULT_RETENTION_DAYS = int(os.getenv("B2_DUMP_RETENTION_DAYS", "7"))
 _REQUIRED = ("B2_KEY_ID", "B2_APP_KEY", "B2_ENDPOINT", "B2_BUCKET")
 
 
@@ -123,11 +124,35 @@ def archive_post(post: PublisherPost, client=None) -> int:
     return uploaded
 
 
+def _archived_post_ids(client) -> set[int]:
+    """Ids of posts that already have a posts/<id>/post.json in B2 (follows every listing page)."""
+    bucket = os.environ["B2_BUCKET"]
+    ids: set[int] = set()
+    kwargs = {"Bucket": bucket, "Prefix": POSTS_PREFIX}
+    while True:
+        resp = client.list_objects_v2(**kwargs)
+        for obj in resp.get("Contents", []):
+            parts = obj["Key"][len(POSTS_PREFIX) :].split("/")
+            if len(parts) == 2 and parts[1] == "post.json" and parts[0].isdigit():
+                ids.add(int(parts[0]))
+        if not resp.get("IsTruncated"):
+            return ids
+        kwargs["ContinuationToken"] = resp["NextContinuationToken"]
+
+
 def archive_posts(session, client=None) -> int:
-    """Archive every post in the DB (one failure does not abort the rest). Returns # objects."""
+    """Archive published posts not yet in B2 (one failure does not abort the rest). Returns # objects.
+
+    Each post is uploaded once: re-uploading every post nightly stacked a new version of every
+    file each night and filled the free 10 GB. Unpublished posts still change or get dropped;
+    the nightly DB dump covers them.
+    """
     client = client or get_client()
+    done = _archived_post_ids(client)
     total = 0
     for post in session.query(PublisherPost).all():
+        if post.status != "published" or post.id in done:
+            continue
         try:
             total += archive_post(post, client)
         except Exception:
@@ -155,7 +180,7 @@ def prune_old_dumps(client=None, *, retention_days: int = DEFAULT_RETENTION_DAYS
 
 
 def run_backup(session) -> bool:
-    """Full nightly backup: DB dump + per-post files + prune. No-op if B2 unconfigured."""
+    """Full nightly backup: DB dump + new published posts + prune. No-op if B2 unconfigured."""
     if not b2_enabled():
         logger.info("B2 not configured (B2_* env missing) — skipping backup")
         return False

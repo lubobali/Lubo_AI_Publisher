@@ -16,10 +16,12 @@ from src.models import PublisherPost
 class _FakeClient:
     """Captures S3 calls so tests can assert on keys/bodies without touching the network."""
 
-    def __init__(self, listing=None):
+    def __init__(self, listing=None, pages=None):
         self.puts = []
         self.deletes = []
         self._listing = listing or []
+        self._pages = pages  # list of listings; served one per call via ContinuationToken
+        self.list_calls = []
 
     def put_object(self, **kw):
         self.puts.append(kw)
@@ -28,7 +30,15 @@ class _FakeClient:
         self.deletes.append(kw)
 
     def list_objects_v2(self, **kw):
-        return {"Contents": self._listing}
+        self.list_calls.append(kw)
+        if self._pages is None:
+            return {"Contents": [o for o in self._listing if o["Key"].startswith(kw.get("Prefix", ""))]}
+        i = int(kw.get("ContinuationToken", "0"))
+        resp = {"Contents": self._pages[i]}
+        if i + 1 < len(self._pages):
+            resp["IsTruncated"] = True
+            resp["NextContinuationToken"] = str(i + 1)
+        return resp
 
 
 class _FakeSession:
@@ -143,14 +153,46 @@ class TestArchivePost:
         assert n == 1  # only the json
 
 
+class TestArchivedPostIds:
+    def test_collects_ids_across_all_pages(self, monkeypatch):
+        monkeypatch.setenv("B2_BUCKET", "lubo-publisher")
+        pages = [
+            [{"Key": "posts/1/post.json"}, {"Key": "posts/1/card.png"}],
+            [{"Key": "posts/2/post.json"}, {"Key": "posts/notanid/post.json"}],
+        ]
+        client = _FakeClient(pages=pages)
+        assert backup._archived_post_ids(client) == {1, 2}
+        assert len(client.list_calls) == 2
+        assert client.list_calls[0]["Prefix"] == "posts/"
+
+
 class TestArchivePosts:
-    def test_archives_every_post(self, monkeypatch):
+    def test_archives_new_published_posts(self, monkeypatch):
         monkeypatch.setenv("B2_BUCKET", "lubo-publisher")
         session = _FakeSession([_post(id=1), _post(id=2)])
         client = _FakeClient()
         total = backup.archive_posts(session, client)
         assert total == 2
         assert {p["Key"] for p in client.puts} == {"posts/1/post.json", "posts/2/post.json"}
+
+    def test_skips_posts_already_in_b2(self, monkeypatch):
+        # Re-uploading every post nightly stacked versions and filled the free 10 GB.
+        monkeypatch.setenv("B2_BUCKET", "lubo-publisher")
+        session = _FakeSession([_post(id=1), _post(id=2)])
+        client = _FakeClient(listing=[{"Key": "posts/1/post.json"}])
+        total = backup.archive_posts(session, client)
+        assert total == 1
+        assert [p["Key"] for p in client.puts] == ["posts/2/post.json"]
+
+    def test_skips_unpublished_posts(self, monkeypatch):
+        # pending/approved/rejected still change or get dropped; the nightly DB dump covers them.
+        monkeypatch.setenv("B2_BUCKET", "lubo-publisher")
+        session = _FakeSession(
+            [_post(id=1, status="pending"), _post(id=2, status="approved"), _post(id=3, status="rejected")]
+        )
+        client = _FakeClient()
+        assert backup.archive_posts(session, client) == 0
+        assert client.puts == []
 
 
 class TestPruneOldDumps:
@@ -165,6 +207,11 @@ class TestPruneOldDumps:
         deleted = backup.prune_old_dumps(client, retention_days=30, now=now)
         assert deleted == 1
         assert client.deletes == [{"Bucket": "lubo-publisher", "Key": "db-dumps/old.sql.gz"}]
+
+
+class TestRetentionDefault:
+    def test_keeps_one_week_of_dumps_by_default(self):
+        assert backup.DEFAULT_RETENTION_DAYS == 7
 
 
 class TestRunBackup:

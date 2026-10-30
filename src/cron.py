@@ -238,7 +238,7 @@ def _run_publish() -> None:
 
 
 def _run_backup() -> None:
-    """Nightly backup to Backblaze B2 (DB dump + per-post files). No-op if B2 unconfigured."""
+    """Nightly backup to Backblaze B2 (DB dump + new published posts). No-op if B2 unconfigured."""
 
     session = SessionLocal()
     try:
